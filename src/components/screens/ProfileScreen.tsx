@@ -35,6 +35,8 @@ export const ProfileScreen: React.FC = () => {
     userProfile, 
     setUserProfile, 
     accountType, 
+    isTeacherContactUnlocked,
+    isTeacherContactAccessLocked,
     isServerVerifiedAdmin,
     logout, 
     setActiveScreen,
@@ -198,34 +200,30 @@ export const ProfileScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* Teacher's Contact Lifetime Access Status Card */}
+      {/* Teacher Contact access status */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${
-              userProfile.isTeacherContactUnlocked ? 'bg-teal-50 text-[#0D9488]' : 'bg-blue-50 text-[#2563EB]'
-            }`}>
+            <div className="w-8 h-8 rounded-lg bg-teal-50 text-[#0D9488] flex items-center justify-center font-bold">
               <Phone className="w-4 h-4" />
             </div>
             <div>
               <h3 className="font-bold text-sm text-[#172554]">Teacher's Contact Access</h3>
               <p className="text-[11px] text-slate-500">
-                {userProfile.isTeacherContactUnlocked 
-                  ? 'BDT 10 Paid · Lifetime Access Active' 
-                  : 'BDT 10 One-Time Payment Required'}
+                {isTeacherContactUnlocked
+                  ? isTeacherContactAccessLocked && userProfile.isTeacherContactUnlocked
+                    ? 'Lifetime access active'
+                    : 'Free and available'
+                  : 'Access restricted by administrator'}
               </p>
             </div>
           </div>
 
           <button
             onClick={() => setActiveScreen('teachers')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer ${
-              userProfile.isTeacherContactUnlocked
-                ? 'bg-teal-50 text-[#0D9488] border border-teal-200 hover:bg-teal-100'
-                : 'bg-[#2563EB] text-white hover:bg-blue-700 shadow-xs'
-            }`}
+            className="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer bg-teal-50 text-[#0D9488] border border-teal-200 hover:bg-teal-100"
           >
-            {userProfile.isTeacherContactUnlocked ? 'Open Directory' : 'Unlock for BDT 10'}
+            Open Directory
           </button>
         </div>
       </div>

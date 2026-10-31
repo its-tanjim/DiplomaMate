@@ -103,10 +103,11 @@ const roleLabel: Record<ManagedRole, string> = {
 };
 
 export const AdminManagementScreen: React.FC = () => {
-  const { authToken, isServerVerifiedAdmin } = useApp();
-  const [section, setSection] = useState<'overview' | 'accounts' | 'communities' | 'audit'>('overview');
+  const { authToken, isServerVerifiedAdmin, updateTeacherContactAccessLock } = useApp();
+  const [section, setSection] = useState<'overview' | 'accounts' | 'communities' | 'audit' | 'access'>('overview');
   const [payload, setPayload] = useState<ManagementPayload | null>(null);
   const [memberships, setMemberships] = useState<CommunityMembershipRecord[]>([]);
+  const [teacherContactsLocked, setTeacherContactsLocked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [accountDetailsLoading, setAccountDetailsLoading] = useState(false);
@@ -141,9 +142,10 @@ export const AdminManagementScreen: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const [management, communityData] = await Promise.all([
+      const [management, communityData, accessSettings] = await Promise.all([
         request('/api/admin/management'),
-        request('/api/admin/communities')
+        request('/api/admin/communities'),
+        request('/api/teacher-contacts/access')
       ]);
       setPayload({
         stats: management.stats,
@@ -152,6 +154,7 @@ export const AdminManagementScreen: React.FC = () => {
         auditLogs: management.auditLogs
       });
       setMemberships(communityData.memberships || []);
+      setTeacherContactsLocked(accessSettings.locked === true);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load management data.');
     } finally {
@@ -183,6 +186,21 @@ export const AdminManagementScreen: React.FC = () => {
   const notifySuccess = (message: string) => {
     setSuccess(message);
     window.setTimeout(() => setSuccess(''), 3500);
+  };
+
+  const updateTeacherContactAccess = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const result = await updateTeacherContactAccessLock(!teacherContactsLocked);
+      if (!result.success) throw new Error(result.message);
+      setTeacherContactsLocked(!teacherContactsLocked);
+      notifySuccess(result.message);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not update Teacher Contact access.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const viewAccount = async (account: AdminAccount) => {
@@ -368,12 +386,13 @@ export const AdminManagementScreen: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:grid-cols-5">
         {([
           ['overview', 'Overview'],
           ['accounts', 'Accounts'],
           ['communities', 'Communities'],
-          ['audit', 'Audit log']
+          ['audit', 'Audit log'],
+          ['access', 'Feature access']
         ] as const).map(([id, label]) => (
           <button key={id} type="button" onClick={() => setSection(id)}
             className={`rounded-lg px-2 py-2 text-xs font-bold ${section === id ? 'bg-white text-[#172554] shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
@@ -430,6 +449,45 @@ export const AdminManagementScreen: React.FC = () => {
                     ))}
                   </div>
                 ) : <p className="text-xs text-slate-500">No admin actions have been recorded yet.</p>}
+              </div>
+            </div>
+          )}
+
+          {section === 'access' && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-[#172554]">Teacher Contact access</h2>
+                  <p className="mt-1 max-w-xl text-xs text-slate-600">
+                    {teacherContactsLocked
+                      ? 'Access is locked. The existing payment and unlock flow is active.'
+                      : 'Teacher Contacts are free and available to users without payment.'}
+                  </p>
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    Changing this setting does not modify user accounts or payment history.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void updateTeacherContactAccess()}
+                  disabled={saving}
+                  className={`rounded-xl px-4 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 ${
+                    teacherContactsLocked ? 'bg-teal-700 hover:bg-teal-800' : 'bg-slate-700 hover:bg-slate-800'
+                  }`}
+                >
+                  {saving
+                    ? 'Saving...'
+                    : teacherContactsLocked
+                      ? 'Make free for everyone'
+                      : 'Lock Teacher Contacts'}
+                </button>
+              </div>
+              <div className={`mt-4 rounded-xl border p-3 text-xs font-semibold ${
+                teacherContactsLocked
+                  ? 'border-amber-200 bg-amber-50 text-amber-800'
+                  : 'border-teal-200 bg-teal-50 text-teal-800'
+              }`}>
+                Current status: {teacherContactsLocked ? 'Locked' : 'Free and unlocked'}
               </div>
             </div>
           )}

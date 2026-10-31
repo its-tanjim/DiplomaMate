@@ -13,7 +13,7 @@
       "section": "A1",
       "phone": "+880 1819-876543",
       "accountType": "class_captain",
-      "captainVerificationStatus": "Approved",
+      "captainVerificationStatus": "NotApplied",
       "attendanceRate": "98%"
     },
     {
@@ -224,6 +224,25 @@
       "accountType": "student",
       "captainVerificationStatus": "NotApplied",
       "attendanceRate": "91%"
+    },
+    {
+      "id": "std_efd9d5ae-f8c5-4275-ac12-2fe7f913dc0a",
+      "name": "Mahafuj Hasanath",
+      "email": "student@polytechnic.edu.bd",
+      "classRoll": "06",
+      "boardRoll": "843906",
+      "regNumber": "1502342950",
+      "college": "Barishal Polytechnic Institute",
+      "department": "Computer Science and Technology (CST)",
+      "semester": 4,
+      "shift": "Day",
+      "section": "B2",
+      "phone": "+880 1700-000000",
+      "accountType": "student",
+      "captainVerificationStatus": "NotApplied",
+      "attendanceRate": "",
+      "createdAt": "2026-10-31T08:39:56.264Z",
+      "isRegisteredAccount": true
     }
   ],
   "teacherAccounts": [
@@ -1260,7 +1279,7 @@
       "regNumber": "1502187320",
       "phone": "+880 1819-876543",
       "session": "2021-2022",
-      "status": "Approved",
+      "status": "NotApplied",
       "appliedAt": "05 Oct 2026, 09:15 AM",
       "verificationFormUrl": "/sample_verification_form.pdf",
       "verificationFormName": "BTEB_CR_Form_Signed_Nusrat.pdf",
@@ -1271,10 +1290,11 @@
         "comments": "Recommended. Nusrat is disciplined, regular, and active in department coordination."
       },
       "adminDecision": {
-        "decidedBy": "Academic Department Admin",
-        "decidedAt": "07 Oct 2026, 02:00 PM",
-        "notes": "Approved as Primary Class Captain for 6th Sem CST Sec A1."
-      }
+        "decidedBy": "Academic System Administrator (its.tanjim.06@gmail.com)",
+        "decidedAt": "2026-10-31T08:50:01.751Z",
+        "notes": "11"
+      },
+      "rejectionReason": "11"
     },
     {
       "id": "app_cr_02",
@@ -1325,6 +1345,14 @@
     "std_01"
   ],
   "adminAuditLogs": [
+    {
+      "id": "audit_a669ad98-903a-4603-a0cc-60240c83cf91",
+      "adminId": "sysadmin_1792821774886",
+      "action": "captain_revoked",
+      "targetId": "cr_01",
+      "targetName": "Nusrat Jahan",
+      "timestamp": "2026-10-31T08:50:01.751Z"
+    },
     {
       "id": "audit_095f8a74-a9a3-4590-b5c9-37bccae9dc00",
       "adminId": "sysadmin_1792821774886",

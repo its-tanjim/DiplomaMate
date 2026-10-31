@@ -140,11 +140,13 @@ interface AppContextType {
   toggleReminder: (id: string) => void;
   deleteReminder: (id: string) => void;
   
-  // Teachers & Premium Access (BDT 10 Lifetime)
+  // Teacher Contact access; legacy payment-based unlock is retained for future use.
   teachers: TeacherContact[];
   addTeacher: (teacher: Omit<TeacherContact, 'id'>) => Promise<{ success: boolean; message: string }>;
   archiveTeacherContact: (contactId: string, reason: string) => Promise<{ success: boolean; message: string }>;
   isTeacherContactUnlocked: boolean;
+  isTeacherContactAccessLocked: boolean;
+  updateTeacherContactAccessLock: (locked: boolean) => Promise<{ success: boolean; message: string }>;
   unlockTeacherContactsWithPayment: (provider: 'bKash' | 'Nagad' | 'Rocket' | 'Card', transactionId: string) => Promise<{ success: boolean; message: string }>;
 
   
@@ -352,6 +354,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}teachers`);
     return saved ? removeLegacyDemoContent(JSON.parse(saved), LEGACY_DEMO_CONTENT_IDS.teachers) : [];
   });
+  const [isTeacherContactAccessLocked, setIsTeacherContactAccessLocked] = useState(false);
 
   const [applications, setApplications] = useState<CaptainApplication[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}applications`);
@@ -407,6 +410,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Fetch verified teachers, contacts, and shift schedule configurations from backend on mount
   useEffect(() => {
+    fetch('/api/teacher-contacts/access')
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok || !data.success || typeof data.locked !== 'boolean') {
+          throw new Error(data.error || 'Could not load Teacher Contact access settings.');
+        }
+        setIsTeacherContactAccessLocked(data.locked);
+      })
+      .catch(error => {
+        console.error('Teacher Contact access settings request failed:', error);
+      });
+
     fetch('/api/teachers')
       .then(res => res.json())
       .then(data => {
@@ -1521,6 +1536,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateTeacherContactAccessLock = async (
+    locked: boolean
+  ): Promise<{ success: boolean; message: string }> => {
+    const token = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+    if (!token) {
+      return { success: false, message: 'A verified administrator session is required.' };
+    }
+
+    try {
+      const response = await fetch('/api/admin/settings/teacher-contact-access', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ locked })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success || typeof data.locked !== 'boolean') {
+        return { success: false, message: data.error || 'Could not update Teacher Contact access.' };
+      }
+
+      setIsTeacherContactAccessLocked(data.locked);
+      return { success: true, message: data.message || 'Teacher Contact access updated.' };
+    } catch (error) {
+      console.error('Teacher Contact access update request failed:', error);
+      return { success: false, message: 'Could not connect to the access settings service.' };
+    }
+  };
+
   // 3. CLASS ROUTINE & OCR (STRICT ACADEMIC GROUP ISOLATION)
   const activeUserCollegeObj = resolveStrictCollege(userProfile.college);
   const activeUserDeptObj = resolveStrictTechnology(userProfile.department);
@@ -2381,7 +2426,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         teachers,
         addTeacher,
         archiveTeacherContact,
-        isTeacherContactUnlocked: Boolean(userProfile.isTeacherContactUnlocked),
+        isTeacherContactUnlocked:
+          !isTeacherContactAccessLocked || Boolean(userProfile.isTeacherContactUnlocked),
+        isTeacherContactAccessLocked,
+        updateTeacherContactAccessLock,
         unlockTeacherContactsWithPayment,
         applications,
         submitCaptainApplication,

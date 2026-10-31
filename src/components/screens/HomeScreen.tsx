@@ -38,6 +38,7 @@ export const HomeScreen: React.FC = () => {
     addAnnouncement,
     switchAccountType,
     isTeacherContactUnlocked,
+    isTeacherContactAccessLocked,
     jobs
   } = useApp();
 
@@ -477,7 +478,9 @@ export const HomeScreen: React.FC = () => {
                     ? 'bg-teal-50 text-[#0D9488] border border-teal-200' 
                     : 'bg-amber-50 text-amber-700 border border-amber-200'
                 }`}>
-                  {isTeacherContactUnlocked ? '✓ Unlocked' : 'BDT 10 Once'}
+                  {isTeacherContactAccessLocked
+                    ? isTeacherContactUnlocked ? 'Lifetime access' : 'Access restricted'
+                    : 'Free access'}
                 </span>
                 <span className="text-xs font-semibold text-[#0D9488] group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                   Directory <ChevronRight className="w-3.5 h-3.5" />
@@ -492,7 +495,7 @@ export const HomeScreen: React.FC = () => {
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-600">
                 <span className="font-semibold text-[#0D9488]">{teachers.length} Faculty Contacts</span>
                 <span className="text-slate-300">·</span>
-                <span>{isTeacherContactUnlocked ? 'Direct Call & SMS' : 'Lifetime Access'}</span>
+                <span>{isTeacherContactUnlocked ? 'Direct Call & SMS' : 'Admin-managed access'}</span>
               </div>
             </div>
           </button>

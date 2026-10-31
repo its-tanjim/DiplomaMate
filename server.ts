@@ -3816,6 +3816,7 @@ interface PersistentAcademicStore {
   jobs: JobCircular[];
   campusNotices: CampusNoticeItem[];
   campusNoticeReports: CampusNoticeReportRecord[];
+  teacherContactAccessLocked: boolean;
 }
 
 const ACADEMIC_STORE_FILE = path.join(DATA_DIR, 'academic-store.json');
@@ -4046,7 +4047,8 @@ function buildInitialAcademicStore(): PersistentAcademicStore {
     adminAuditLogs: [],
     jobs: [...(INITIAL_JOBS as JobCircular[])],
     campusNotices: [...(INITIAL_CAMPUS_NOTICES as CampusNoticeItem[])],
-    campusNoticeReports: []
+    campusNoticeReports: [],
+    teacherContactAccessLocked: false
   };
 }
 
@@ -4134,7 +4136,8 @@ function loadAcademicStore(): PersistentAcademicStore {
         adminAuditLogs: Array.isArray(parsed.adminAuditLogs) ? parsed.adminAuditLogs : [],
         jobs: loadedJobs,
         campusNotices: loadedCampusNotices,
-        campusNoticeReports: Array.isArray(parsed.campusNoticeReports) ? parsed.campusNoticeReports : []
+        campusNoticeReports: Array.isArray(parsed.campusNoticeReports) ? parsed.campusNoticeReports : [],
+        teacherContactAccessLocked: parsed.teacherContactAccessLocked === true
       };
       saveAcademicStore(storeObj);
       return storeObj;
@@ -4164,6 +4167,46 @@ function saveAcademicStore(store: PersistentAcademicStore): void {
 }
 
 const academicStore: PersistentAcademicStore = loadAcademicStore();
+
+app.get('/api/teacher-contacts/access', (_req: Request, res: Response) => {
+  return res.status(200).json({
+    success: true,
+    locked: academicStore.teacherContactAccessLocked
+  });
+});
+
+app.put('/api/admin/settings/teacher-contact-access', requireSystemAdmin, (req: Request, res: Response) => {
+  const locked = req.body?.locked;
+  if (typeof locked !== 'boolean') {
+    return res.status(400).json({ success: false, error: 'The locked setting must be a boolean.' });
+  }
+
+  const previousValue = academicStore.teacherContactAccessLocked;
+  const previousAuditLogs = [...academicStore.adminAuditLogs];
+  academicStore.teacherContactAccessLocked = locked;
+  const admin = (req as any).adminSession as ServerSession;
+  appendAdminAudit(
+    admin,
+    locked ? 'teacher_contact_access_locked' : 'teacher_contact_access_unlocked',
+    'teacher_contacts',
+    'Teacher Contact access'
+  );
+
+  try {
+    saveAcademicStore(academicStore);
+  } catch (error) {
+    academicStore.teacherContactAccessLocked = previousValue;
+    academicStore.adminAuditLogs = previousAuditLogs;
+    console.error('Teacher Contact access setting update failed:', error);
+    return res.status(500).json({ success: false, error: 'Could not save the Teacher Contact access setting.' });
+  }
+
+  return res.status(200).json({
+    success: true,
+    locked,
+    message: locked ? 'Teacher Contact access is now locked.' : 'Teacher Contact access is now free.'
+  });
+});
 
 function ensureStudentAccountForSession(body: Record<string, unknown>): { error?: string; status?: number; userId?: string } {
   const userId = String(body.userId || '').trim();

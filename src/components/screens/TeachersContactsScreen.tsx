@@ -37,6 +37,7 @@ export const TeachersContactsScreen: React.FC = () => {
     archiveTeacherContact,
     accountType, 
     isTeacherContactUnlocked, 
+    isTeacherContactAccessLocked,
     unlockTeacherContactsWithPayment, 
     userProfile,
     setActiveScreen,
@@ -217,7 +218,7 @@ export const TeachersContactsScreen: React.FC = () => {
     }
   };
 
-  // If locked, render the Premium BDT 10 Paywall
+  // Keep the existing payment flow available if an administrator locks this feature.
   if (!isTeacherContactUnlocked) {
     return (
       <div className="space-y-4 pb-12">
@@ -358,7 +359,7 @@ export const TeachersContactsScreen: React.FC = () => {
               </h1>
               <span className="bg-teal-50 text-[#0D9488] border border-teal-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3" />
-                <span>BDT 10 Active</span>
+                <span>{isTeacherContactAccessLocked ? 'Lifetime access' : 'Free access'}</span>
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
