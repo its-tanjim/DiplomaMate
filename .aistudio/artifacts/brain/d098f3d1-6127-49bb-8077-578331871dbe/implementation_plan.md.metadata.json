@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation Plan for Academic Community in DiplomaMate:\n- Schema extensions for communities, memberships, messages, attachments, and reports in academic-store.json\n- Server-side academic eligibility enforcement and role authorization (Student, Class Captain, Teacher, Admin)\n- Community directory, search, message threads, file sharing (PDF, docs, small videos), pinning, per-community mute\n- New student onboarding community recommendations\n- Moderation tools and Admin abuse control endpoints\n- End-to-end verification and testing suite",
+  "updatedAt":  "2026-10-25T00:50:12.102014658Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

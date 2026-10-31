@@ -1,0 +1,603 @@
+{
+  "batches": [
+    {
+      "id": "batch_bteb_2016_8th_2024",
+      "title": "Official BTEB 8th Semester Regular Result (2016 Regulation)",
+      "semester": 8,
+      "regulation": "2016",
+      "examYear": 2024,
+      "examType": "Regular",
+      "publishedDate": "2024-11-28",
+      "importedAt": "2025-02-20T09:00:00.000Z",
+      "importedBy": "BTEB Official Gazette Sync",
+      "sourceFileName": "RESULT_8th_2016_Regulation.pdf",
+      "totalRecords": 1,
+      "passCount": 1,
+      "referredCount": 0,
+      "withheldCount": 0,
+      "notes": "Verified official BTEB gazette record from RESULT_8th_2016_Regulation.pdf"
+    },
+    {
+      "id": "batch_bteb_2016_7th_2024",
+      "title": "Official BTEB 7th Semester Regular Result (2016 Regulation)",
+      "semester": 7,
+      "regulation": "2016",
+      "examYear": 2024,
+      "examType": "Regular",
+      "publishedDate": "2024-06-02",
+      "importedAt": "2025-02-20T09:00:00.000Z",
+      "importedBy": "BTEB Official Gazette Sync",
+      "sourceFileName": "Result_7th_2016_Regulation.pdf",
+      "totalRecords": 1,
+      "passCount": 1,
+      "referredCount": 0,
+      "withheldCount": 0,
+      "notes": "Verified official BTEB gazette record from Result_7th_2016_Regulation.pdf"
+    },
+    {
+      "id": "batch_bteb_2016_6th_2023",
+      "title": "Official BTEB 6th Semester Regular Result (2016 Regulation)",
+      "semester": 6,
+      "regulation": "2016",
+      "examYear": 2023,
+      "examType": "Regular",
+      "publishedDate": "2023-12-10",
+      "importedAt": "2025-02-20T09:00:00.000Z",
+      "importedBy": "BTEB Official Gazette Sync",
+      "sourceFileName": "Result_6th_2016_Regulation.PDF",
+      "totalRecords": 1,
+      "passCount": 1,
+      "referredCount": 0,
+      "withheldCount": 0,
+      "notes": "Verified official BTEB gazette record from Result_6th_2016_Regulation.PDF"
+    },
+    {
+      "id": "batch_bteb_2016_5th_2023",
+      "title": "Official BTEB 5th Semester Regular Result (2016 Regulation)",
+      "semester": 5,
+      "regulation": "2016",
+      "examYear": 2023,
+      "examType": "Regular",
+      "publishedDate": "2023-07-09",
+      "importedAt": "2025-02-20T09:00:00.000Z",
+      "importedBy": "BTEB Official Gazette Sync",
+      "sourceFileName": "Result_5th_2016_Regulation.PDF",
+      "totalRecords": 2,
+      "passCount": 1,
+      "referredCount": 1,
+      "withheldCount": 0,
+      "notes": "Verified official BTEB gazette records from Result_5th_2016_Regulation.PDF"
+    },
+    {
+      "id": "batch_bteb_2016_4th_2022",
+      "title": "Official BTEB 4th Semester Regular Result (2016 Regulation)",
+      "semester": 4,
+      "regulation": "2016",
+      "examYear": 2022,
+      "examType": "Regular",
+      "publishedDate": "2022-12-28",
+      "importedAt": "2025-02-20T09:00:00.000Z",
+      "importedBy": "BTEB Official Gazette Sync",
+      "sourceFileName": "result_4th.pdf",
+      "totalRecords": 3,
+      "passCount": 0,
+      "referredCount": 3,
+      "withheldCount": 0,
+      "notes": "Verified official BTEB gazette records from result_4th.pdf"
+    },
+    {
+      "id": "batch_bteb_2022_4th_2025",
+      "title": "Official BTEB 4th Semester Regular Result (2022 Regulation)",
+      "semester": 4,
+      "regulation": "2022",
+      "examYear": 2025,
+      "examType": "Regular",
+      "publishedDate": "2025-09-21",
+      "importedAt": "2025-09-22T09:00:00.000Z",
+      "importedBy": "BTEB Official Gazette Sync",
+      "sourceFileName": "RESULT_4th_2022_Regulation.pdf",
+      "totalRecords": 1,
+      "passCount": 0,
+      "referredCount": 1,
+      "withheldCount": 0,
+      "notes": "Verified official BTEB gazette record from RESULT_4th_2022_Regulation.pdf"
+    },
+    {
+      "id": "batch_bteb_2022_3rd_2024",
+      "title": "Official BTEB 3rd Semester Regular Result (2022 Regulation)",
+      "semester": 3,
+      "regulation": "2022",
+      "examYear": 2024,
+      "examType": "Regular",
+      "publishedDate": "2024-11-28",
+      "importedAt": "2025-02-20T09:00:00.000Z",
+      "importedBy": "BTEB Official Gazette Sync",
+      "sourceFileName": "Result_3rd_2022_Regulation.pdf",
+      "totalRecords": 1,
+      "passCount": 0,
+      "referredCount": 1,
+      "withheldCount": 0,
+      "notes": "Verified official BTEB gazette record from Result_3rd_2022_Regulation.pdf"
+    },
+    {
+      "id": "batch_bteb_2022_2nd_2025",
+      "title": "Official BTEB 2nd Semester Regular Result (2022 Regulation)",
+      "semester": 2,
+      "regulation": "2022",
+      "examYear": 2025,
+      "examType": "Regular",
+      "publishedDate": "2025-09-21",
+      "importedAt": "2025-09-22T09:00:00.000Z",
+      "importedBy": "BTEB Official Gazette Sync",
+      "sourceFileName": "RESULT_2nd_2022_Regulation.pdf",
+      "totalRecords": 2,
+      "passCount": 1,
+      "referredCount": 1,
+      "withheldCount": 0,
+      "notes": "Verified official BTEB gazette records from RESULT_2nd_2022_Regulation.pdf & Result_2nd_2022_Regulation.pdf"
+    },
+    {
+      "id": "batch_bteb_2022_1st_2024",
+      "title": "Official BTEB 1st Semester Regular Result (2022 Regulation)",
+      "semester": 1,
+      "regulation": "2022",
+      "examYear": 2024,
+      "examType": "Regular",
+      "publishedDate": "2024-11-28",
+      "importedAt": "2025-02-20T09:00:00.000Z",
+      "importedBy": "BTEB Official Gazette Sync",
+      "sourceFileName": "Result_1st_2022_Regulation.PDF",
+      "totalRecords": 2,
+      "passCount": 2,
+      "referredCount": 0,
+      "withheldCount": 0,
+      "notes": "Verified official BTEB gazette records from Result_1st_2022_Regulation.PDF & Result_1st_2022_Regulation.pdf"
+    }
+  ],
+  "records": [
+    {
+      "id": "rec_542880_sem8",
+      "batchId": "batch_bteb_2016_8th_2024",
+      "batchTitle": "Official BTEB 8th Semester Regular Result (2016 Regulation)",
+      "rollNumber": "542880",
+      "semester": 8,
+      "regulation": "2016",
+      "examYear": 2024,
+      "examType": "Regular",
+      "publishedDate": "2024-11-28",
+      "sourceFileName": "RESULT_8th_2016_Regulation.pdf",
+      "instituteCode": "35048",
+      "collegeName": "Barguna Polytechnic Institute (বরগুনা পলিটেকনিক ইনস্টিটিউট)",
+      "status": "PASSED",
+      "gpa": 4.0,
+      "cgpa": 3.43,
+      "referredSubjects": [],
+      "clearedSubjects": [],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-02-20T09:00:00.000Z"
+    },
+    {
+      "id": "rec_542880_sem7",
+      "batchId": "batch_bteb_2016_7th_2024",
+      "batchTitle": "Official BTEB 7th Semester Regular Result (2016 Regulation)",
+      "rollNumber": "542880",
+      "semester": 7,
+      "regulation": "2016",
+      "examYear": 2024,
+      "examType": "Regular",
+      "publishedDate": "2024-06-02",
+      "sourceFileName": "Result_7th_2016_Regulation.pdf",
+      "instituteCode": "35048",
+      "collegeName": "Barguna Polytechnic Institute (বরগুনা পলিটেকনিক ইনস্টিটিউট)",
+      "status": "PASSED",
+      "gpa": 3.63,
+      "cgpa": null,
+      "referredSubjects": [],
+      "clearedSubjects": [],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-02-20T09:00:00.000Z"
+    },
+    {
+      "id": "rec_542880_sem6",
+      "batchId": "batch_bteb_2016_6th_2023",
+      "batchTitle": "Official BTEB 6th Semester Regular Result (2016 Regulation)",
+      "rollNumber": "542880",
+      "semester": 6,
+      "regulation": "2016",
+      "examYear": 2023,
+      "examType": "Regular",
+      "publishedDate": "2023-12-10",
+      "sourceFileName": "Result_6th_2016_Regulation.PDF",
+      "instituteCode": "35048",
+      "collegeName": "Barguna Polytechnic Institute (বরগুনা পলিটেকনিক ইনস্টিটিউট)",
+      "status": "PASSED",
+      "gpa": 3.31,
+      "cgpa": null,
+      "referredSubjects": [],
+      "clearedSubjects": [],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-02-20T09:00:00.000Z"
+    },
+    {
+      "id": "rec_542880_sem5",
+      "batchId": "batch_bteb_2016_5th_2023",
+      "batchTitle": "Official BTEB 5th Semester Regular Result (2016 Regulation)",
+      "rollNumber": "542880",
+      "semester": 5,
+      "regulation": "2016",
+      "examYear": 2023,
+      "examType": "Regular",
+      "publishedDate": "2023-07-09",
+      "sourceFileName": "Result_5th_2016_Regulation.PDF",
+      "instituteCode": "35048",
+      "collegeName": "Barguna Polytechnic Institute (বরগুনা পলিটেকনিক ইনস্টিটিউট)",
+      "status": "PASSED",
+      "gpa": 3.21,
+      "cgpa": null,
+      "referredSubjects": [],
+      "clearedSubjects": [],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-02-20T09:00:00.000Z"
+    },
+    {
+      "id": "rec_542880_sem4",
+      "batchId": "batch_bteb_2016_4th_2022",
+      "batchTitle": "Official BTEB 4th Semester Regular Result (2016 Regulation)",
+      "rollNumber": "542880",
+      "semester": 4,
+      "regulation": "2016",
+      "examYear": 2022,
+      "examType": "Regular",
+      "publishedDate": "2022-12-28",
+      "sourceFileName": "result_4th.pdf",
+      "instituteCode": "35048",
+      "collegeName": "Barguna Polytechnic Institute (বরগুনা পলিটেকনিক ইনস্টিটিউট)",
+      "status": "PASSED",
+      "gpa": null,
+      "cgpa": null,
+      "referredSubjects": [],
+      "clearedSubjects": [
+        {
+          "code": "66841",
+          "name": "Subject 66841",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        }
+      ],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-02-20T09:00:00.000Z"
+    },
+    {
+      "id": "rec_750102_sem2",
+      "batchId": "batch_bteb_2022_2nd_2025",
+      "batchTitle": "Official BTEB 2nd Semester Regular Result (2022 Regulation)",
+      "rollNumber": "750102",
+      "semester": 2,
+      "regulation": "2022",
+      "examYear": 2025,
+      "examType": "Regular",
+      "publishedDate": "2025-09-21",
+      "sourceFileName": "RESULT_2nd_2022_Regulation.pdf",
+      "instituteCode": "50702",
+      "collegeName": "Confidence Polytechnic Institute",
+      "status": "REFERRED",
+      "gpa": null,
+      "cgpa": null,
+      "referredSubjects": [
+        {
+          "code": "25912",
+          "name": "Physics-I",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        },
+        {
+          "code": "25921",
+          "name": "Mathematics-II",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        },
+        {
+          "code": "26721",
+          "name": "Basic Electricity",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        },
+        {
+          "code": "27021",
+          "name": "Subject 27021",
+          "failedComponent": "T",
+          "nameSource": "unmapped"
+        }
+      ],
+      "clearedSubjects": [],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-09-22T09:00:00.000Z"
+    },
+    {
+      "id": "rec_750102_sem1",
+      "batchId": "batch_bteb_2022_1st_2024",
+      "batchTitle": "Official BTEB 1st Semester Regular Result (2022 Regulation)",
+      "rollNumber": "750102",
+      "semester": 1,
+      "regulation": "2022",
+      "examYear": 2024,
+      "examType": "Regular",
+      "publishedDate": "2024-11-28",
+      "sourceFileName": "Result_1st_2022_Regulation.pdf",
+      "instituteCode": "50702",
+      "collegeName": "Confidence Polytechnic Institute",
+      "status": "PASSED",
+      "gpa": null,
+      "cgpa": null,
+      "referredSubjects": [],
+      "clearedSubjects": [
+        {
+          "code": "25912",
+          "name": "Physics-I",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        }
+      ],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-02-20T09:00:00.000Z"
+    },
+    {
+      "id": "rec_750104_sem4",
+      "batchId": "batch_bteb_2022_4th_2025",
+      "batchTitle": "Official BTEB 4th Semester Regular Result (2022 Regulation)",
+      "rollNumber": "750104",
+      "semester": 4,
+      "regulation": "2022",
+      "examYear": 2025,
+      "examType": "Regular",
+      "publishedDate": "2025-09-21",
+      "sourceFileName": "RESULT_4th_2022_Regulation.pdf",
+      "instituteCode": "50702",
+      "collegeName": "Confidence Polytechnic Institute",
+      "status": "REFERRED",
+      "gpa": null,
+      "cgpa": null,
+      "referredSubjects": [
+        {
+          "code": "25931",
+          "name": "Mathematics-III",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        }
+      ],
+      "clearedSubjects": [
+        {
+          "code": "26811",
+          "name": "Basic Electronics",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        },
+        {
+          "code": "27032",
+          "name": "Subject 27032",
+          "failedComponent": "T",
+          "nameSource": "unmapped"
+        },
+        {
+          "code": "29041",
+          "name": "Environmental Studies",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        }
+      ],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-09-22T09:00:00.000Z"
+    },
+    {
+      "id": "rec_750104_sem3",
+      "batchId": "batch_bteb_2022_3rd_2024",
+      "batchTitle": "Official BTEB 3rd Semester Regular Result (2022 Regulation)",
+      "rollNumber": "750104",
+      "semester": 3,
+      "regulation": "2022",
+      "examYear": 2024,
+      "examType": "Regular",
+      "publishedDate": "2024-11-28",
+      "sourceFileName": "Result_3rd_2022_Regulation.pdf",
+      "instituteCode": "50702",
+      "collegeName": "Confidence Polytechnic Institute",
+      "status": "REFERRED",
+      "gpa": null,
+      "cgpa": null,
+      "referredSubjects": [
+        {
+          "code": "25931",
+          "name": "Mathematics-III",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        }
+      ],
+      "clearedSubjects": [
+        {
+          "code": "25913",
+          "name": "Chemistry",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        }
+      ],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-02-20T09:00:00.000Z"
+    },
+    {
+      "id": "rec_750104_sem2",
+      "batchId": "batch_bteb_2022_2nd_2025",
+      "batchTitle": "Official BTEB 2nd Semester Regular Result (2022 Regulation)",
+      "rollNumber": "750104",
+      "semester": 2,
+      "regulation": "2022",
+      "examYear": 2024,
+      "examType": "Regular",
+      "publishedDate": "2024-06-02",
+      "sourceFileName": "Result_2nd_2022_Regulation.pdf",
+      "instituteCode": "50702",
+      "collegeName": "Confidence Polytechnic Institute",
+      "status": "PASSED",
+      "gpa": 3.06,
+      "cgpa": null,
+      "referredSubjects": [],
+      "clearedSubjects": [],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-02-20T09:00:00.000Z"
+    },
+    {
+      "id": "rec_750104_sem1",
+      "batchId": "batch_bteb_2022_1st_2024",
+      "batchTitle": "Official BTEB 1st Semester Regular Result (2022 Regulation)",
+      "rollNumber": "750104",
+      "semester": 1,
+      "regulation": "2022",
+      "examYear": 2023,
+      "examType": "Regular",
+      "publishedDate": "2023-12-10",
+      "sourceFileName": "Result_1st_2022_Regulation.PDF",
+      "instituteCode": "50702",
+      "collegeName": "Confidence Polytechnic Institute",
+      "status": "PASSED",
+      "gpa": null,
+      "cgpa": null,
+      "referredSubjects": [],
+      "clearedSubjects": [
+        {
+          "code": "25911",
+          "name": "Mathematics-I",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        }
+      ],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-02-20T09:00:00.000Z"
+    },
+    {
+      "id": "rec_542891_sem5",
+      "batchId": "batch_bteb_2016_5th_2023",
+      "batchTitle": "Official BTEB 5th Semester Regular Result (2016 Regulation)",
+      "rollNumber": "542891",
+      "semester": 5,
+      "regulation": "2016",
+      "examYear": 2023,
+      "examType": "Regular",
+      "publishedDate": "2023-07-09",
+      "sourceFileName": "Result_5th_2016_Regulation.PDF",
+      "instituteCode": "35048",
+      "collegeName": "Barguna Polytechnic Institute (বরগুনা পলিটেকনিক ইনস্টিটিউট)",
+      "status": "REFERRED",
+      "gpa": null,
+      "cgpa": null,
+      "referredSubjects": [
+        {
+          "code": "65841",
+          "name": "Business Organization & Communication",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        },
+        {
+          "code": "66841",
+          "name": "Subject 66841",
+          "failedComponent": "T",
+          "nameSource": "unmapped"
+        },
+        {
+          "code": "66843",
+          "name": "Subject 66843",
+          "failedComponent": "T",
+          "nameSource": "unmapped"
+        },
+        {
+          "code": "66854",
+          "name": "Subject 66854",
+          "failedComponent": "T",
+          "nameSource": "unmapped"
+        }
+      ],
+      "clearedSubjects": [],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-02-20T09:00:00.000Z"
+    },
+    {
+      "id": "rec_542891_sem4",
+      "batchId": "batch_bteb_2016_4th_2022",
+      "batchTitle": "Official BTEB 4th Semester Regular Result (2016 Regulation)",
+      "rollNumber": "542891",
+      "semester": 4,
+      "regulation": "2016",
+      "examYear": 2022,
+      "examType": "Regular",
+      "publishedDate": "2022-12-28",
+      "sourceFileName": "result_4th.pdf",
+      "instituteCode": "35048",
+      "collegeName": "Barguna Polytechnic Institute (বরগুনা পলিটেকনিক ইনস্টিটিউট)",
+      "status": "REFERRED",
+      "gpa": null,
+      "cgpa": null,
+      "referredSubjects": [
+        {
+          "code": "65841",
+          "name": "Business Organization & Communication",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        },
+        {
+          "code": "66841",
+          "name": "Subject 66841",
+          "failedComponent": "T",
+          "nameSource": "unmapped"
+        },
+        {
+          "code": "66843",
+          "name": "Subject 66843",
+          "failedComponent": "T",
+          "nameSource": "unmapped"
+        }
+      ],
+      "clearedSubjects": [],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-02-20T09:00:00.000Z"
+    },
+    {
+      "id": "rec_542915_sem4",
+      "batchId": "batch_bteb_2016_4th_2022",
+      "batchTitle": "Official BTEB 4th Semester Regular Result (2016 Regulation)",
+      "rollNumber": "542915",
+      "semester": 4,
+      "regulation": "2016",
+      "examYear": 2022,
+      "examType": "Regular",
+      "publishedDate": "2022-12-28",
+      "sourceFileName": "result_4th.pdf",
+      "instituteCode": "35048",
+      "collegeName": "Barguna Polytechnic Institute (বরগুনা পলিটেকনিক ইনস্টিটিউট)",
+      "status": "REFERRED",
+      "gpa": null,
+      "cgpa": null,
+      "referredSubjects": [
+        {
+          "code": "65841",
+          "name": "Business Organization & Communication",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        },
+        {
+          "code": "66642",
+          "name": "Data Structure & Algorithm",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        },
+        {
+          "code": "66645",
+          "name": "Computer Peripherals",
+          "failedComponent": "T",
+          "nameSource": "curriculum-mapped"
+        }
+      ],
+      "clearedSubjects": [],
+      "dataSource": "official-bteb-import",
+      "importedAt": "2025-02-20T09:00:00.000Z"
+    }
+  ],
+  "importLogs": []
+}

@@ -1,0 +1,133 @@
+{
+  "department_name": "Refrigeration and Air Conditioning Technology",
+  "department_code": "72",
+  "regulation": "2022",
+
+  "semesters": [
+    {
+      "semester": "1st Semester",
+      "total_subjects": 8,
+      "periods_per_week": 32,
+      "total_credits": 20,
+      "total_marks": 1000,
+      "subjects": [
+        {"code": "21011", "name": "Engineering Drawing", "credit": 2, "theory_per_week": 0, "practical_per_week": 6, "marks": 100},
+        {"code": "25711", "name": "Bangla-I", "credit": 2, "theory_per_week": 2, "practical_per_week": 0, "marks": 100},
+        {"code": "25712", "name": "English-I", "credit": 2, "theory_per_week": 2, "practical_per_week": 0, "marks": 100},
+        {"code": "25811", "name": "Social Science", "credit": 2, "theory_per_week": 2, "practical_per_week": 0, "marks": 100},
+        {"code": "25911", "name": "Mathematics -I", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200},
+        {"code": "25912", "name": "Physics -I", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200},
+        {"code": "27011", "name": "Basic Workshop Practice", "credit": 1, "theory_per_week": 0, "practical_per_week": 3, "marks": 50},
+        {"code": "27211", "name": "RAC Fundamental", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150}
+      ]
+    },
+    {
+      "semester": "2nd Semester",
+      "total_subjects": 8,
+      "periods_per_week": 34,
+      "total_credits": 22,
+      "total_marks": 1100,
+      "subjects": [
+        {"code": "25721", "name": "Bangla -II", "credit": 2, "theory_per_week": 2, "practical_per_week": 0, "marks": 100},
+        {"code": "25722", "name": "English-II", "credit": 2, "theory_per_week": 2, "practical_per_week": 0, "marks": 100},
+        {"code": "25812", "name": "Physical Education & Life Skills Development", "credit": 1, "theory_per_week": 0, "practical_per_week": 3, "marks": 50},
+        {"code": "25913", "name": "Chemistry", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200},
+        {"code": "25921", "name": "Mathematics-II", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200},
+        {"code": "26711", "name": "Basic Electricity", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200},
+        {"code": "27021", "name": "Mechanical Engineering Drawing", "credit": 3, "theory_per_week": 1, "practical_per_week": 6, "marks": 150},
+        {"code": "27031", "name": "Mechanical Engineering Materials", "credit": 2, "theory_per_week": 2, "practical_per_week": 0, "marks": 100}
+      ]
+    },
+    {
+      "semester": "3rd Semester",
+      "total_subjects": 7,
+      "periods_per_week": 35,
+      "total_credits": 23,
+      "total_marks": 1150,
+      "subjects": [
+        {"code": "25831", "name": "Business Communication", "credit": 2, "theory_per_week": 2, "practical_per_week": 0, "marks": 100},
+        {"code": "25922", "name": "Physics-II", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200},
+        {"code": "25931", "name": "Mathematics-III", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200},
+        {"code": "26211", "name": "Automobile Fundamentals", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "26811", "name": "Basic Electronics", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "27131", "name": "Engineering Thermodynamics", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200},
+        {"code": "27231", "name": "RAC Cycles and Components", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150}
+      ]
+    },
+    {
+      "semester": "4th Semester",
+      "total_subjects": 7,
+      "periods_per_week": 35,
+      "total_credits": 19,
+      "total_marks": 950,
+      "subjects": [
+        {"code": "25841", "name": "Accounting", "credit": 2, "theory_per_week": 2, "practical_per_week": 0, "marks": 100},
+        {"code": "27012", "name": "Machine Shop Practice-I", "credit": 3, "theory_per_week": 1, "practical_per_week": 6, "marks": 150},
+        {"code": "27041", "name": "Engineering Mechanics", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "27241", "name": "Circuits and Electrical Machine in RAC", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "27242", "name": "Transport RAC", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "29041", "name": "Environmental Studies", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "28511", "name": "Computer Office Application", "credit": 2, "theory_per_week": 0, "practical_per_week": 6, "marks": 100}
+      ]
+    },
+    {
+      "semester": "5th Semester",
+      "total_subjects": 7,
+      "periods_per_week": 33,
+      "total_credits": 21,
+      "total_marks": 1050,
+      "subjects": [
+        {"code": "25851", "name": "Principles of Marketing", "credit": 2, "theory_per_week": 2, "practical_per_week": 0, "marks": 100},
+        {"code": "27043", "name": "Metallurgy", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "27051", "name": "Fluid Mechanics & Machineries", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200},
+        {"code": "27052", "name": "Mechanical Estimating & Costing", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "27251", "name": "Heating Ventilation & Air Conditioning (HVAC)", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "27252", "name": "Commercial & Industrial RAC", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "28567", "name": "Programming in C", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150}
+      ]
+    },
+    {
+      "semester": "6th Semester",
+      "total_subjects": 7,
+      "periods_per_week": 34,
+      "total_credits": 22,
+      "total_marks": 1100,
+      "subjects": [
+        {"code": "25852", "name": "Industrial Management", "credit": 2, "theory_per_week": 2, "practical_per_week": 0, "marks": 100},
+        {"code": "27055", "name": "Manufacturing Process", "credit": 3, "theory_per_week": 3, "practical_per_week": 0, "marks": 150},
+        {"code": "27061", "name": "Strength of Materials", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200},
+        {"code": "27063", "name": "CAD & CAM", "credit": 3, "theory_per_week": 1, "practical_per_week": 6, "marks": 150},
+        {"code": "27065", "name": "Plant Engineering & Maintainance", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "27261", "name": "Cooling & Heating Load Calculation", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200},
+        {"code": "27262", "name": "RAC Plant Installation Maintenance & Operation", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150}
+      ]
+    },
+    {
+      "semester": "7th Semester",
+      "total_subjects": 7,
+      "periods_per_week": 33,
+      "total_credits": 21,
+      "total_marks": 1050,
+      "subjects": [
+        {"code": "25853", "name": "Innovation & Entrepreneurship", "credit": 2, "theory_per_week": 2, "practical_per_week": 0, "marks": 100},
+        {"code": "27075", "name": "Production Planning & Control", "credit": 3, "theory_per_week": 3, "practical_per_week": 0, "marks": 150},
+        {"code": "27271", "name": "RAC System Analysis", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "27272", "name": "RAC Project", "credit": 2, "theory_per_week": 0, "practical_per_week": 6, "marks": 100},
+        {"code": "27273", "name": "Advance RAC", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200},
+        {"code": "27274", "name": "RAC for Food Preservation", "credit": 3, "theory_per_week": 2, "practical_per_week": 3, "marks": 150},
+        {"code": "29231", "name": "Mechatronics & PLC", "credit": 4, "theory_per_week": 3, "practical_per_week": 3, "marks": 200}
+      ]
+    },
+    {
+      "semester": "8th Semester",
+      "total_subjects": 2,
+      "periods_per_week": 36,
+      "total_credits": 12,
+      "total_marks": 600,
+      "subjects": [
+        {"code": "27281", "name": "Industrial Attachment", "credit": 8, "theory_per_week": 0, "practical_per_week": 24, "marks": 400},
+        {"code": "27281", "name": "Project Presentation", "credit": 4, "theory_per_week": 0, "practical_per_week": 12, "marks": 200}
+      ]
+    }
+  ]
+}

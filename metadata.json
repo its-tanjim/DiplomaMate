@@ -1,0 +1,6 @@
+{
+  "name": "DiplomaMate",
+  "description": "Mobile-friendly companion app for diploma engineering students and class captains in Bangladesh with routine, notes, assignments, reminders, and teacher contacts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

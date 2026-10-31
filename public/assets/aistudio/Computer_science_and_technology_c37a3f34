@@ -1,0 +1,503 @@
+{
+  "department_name": "Computer Science & Technology",
+  "department_code": "85",
+  "regulation": "2022",
+  "semesters": [
+    {
+      "semester": "1st Semester",
+      "total_subjects": 7,
+      "periods_per_week": 34,
+      "total_credits": 20,
+      "total_marks": 1000,
+      "subjects": [
+        {
+          "code": "21011",
+          "name": "Engineering Drawing",
+          "credit": 2,
+          "theory_per_week": 0,
+          "practical_per_week": 6,
+          "marks": 100
+        },
+        {
+          "code": "25711",
+          "name": "Bangla-I",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "25712",
+          "name": "English-I",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "25911",
+          "name": "Mathematics -I",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "25912",
+          "name": "Physics -I",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "28511",
+          "name": "Computer Office Application",
+          "credit": 2,
+          "theory_per_week": 0,
+          "practical_per_week": 6,
+          "marks": 100
+        },
+        {
+          "code": "26711",
+          "name": "Basic Electricity",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        }
+      ]
+    },
+    {
+      "semester": "2nd Semester",
+      "total_subjects": 8,
+      "periods_per_week": 35,
+      "total_credits": 21,
+      "total_marks": 1050,
+      "subjects": [
+        {
+          "code": "25721",
+          "name": "Bangla -II",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "25722",
+          "name": "English-II",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "25812",
+          "name": "Physical Education & Life Skills Development",
+          "credit": 1,
+          "theory_per_week": 0,
+          "practical_per_week": 3,
+          "marks": 50
+        },
+        {
+          "code": "25913",
+          "name": "Chemistry",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "25921",
+          "name": "Mathematics-II",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "28521",
+          "name": "Python Programming",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28522",
+          "name": "Computer Graphics Design-I",
+          "credit": 2,
+          "theory_per_week": 0,
+          "practical_per_week": 6,
+          "marks": 100
+        },
+        {
+          "code": "26811",
+          "name": "Basic Electronics",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        }
+      ]
+    },
+    {
+      "semester": "3rd Semester",
+      "total_subjects": 7,
+      "periods_per_week": 35,
+      "total_credits": 21,
+      "total_marks": 1050,
+      "subjects": [
+        {
+          "code": "25811",
+          "name": "Social Science",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "25922",
+          "name": "Physics-II",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "25931",
+          "name": "Mathematics-III",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "28531",
+          "name": "Application Development Using Python",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28532",
+          "name": "Computer Graphics Design-II",
+          "credit": 1,
+          "theory_per_week": 0,
+          "practical_per_week": 3,
+          "marks": 50
+        },
+        {
+          "code": "28533",
+          "name": "IT Support Services",
+          "credit": 4,
+          "theory_per_week": 2,
+          "practical_per_week": 6,
+          "marks": 200
+        },
+        {
+          "code": "26831",
+          "name": "Digital Electronics-I",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        }
+      ]
+    },
+    {
+      "semester": "4th Semester",
+      "total_subjects": 7,
+      "periods_per_week": 35,
+      "total_credits": 21,
+      "total_marks": 1050,
+      "subjects": [
+        {
+          "code": "25831",
+          "name": "Business Communication",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "28541",
+          "name": "Java Programming",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28542",
+          "name": "Data Structure & Algorithm",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28543",
+          "name": "Computer Peripherals & Interfacing",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "28544",
+          "name": "Web Design & Development-I",
+          "credit": 3,
+          "theory_per_week": 1,
+          "practical_per_week": 6,
+          "marks": 150
+        },
+        {
+          "code": "26841",
+          "name": "Digital Electronics-II",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "29041",
+          "name": "Environmental Studies",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        }
+      ]
+    },
+    {
+      "semester": "5th Semester",
+      "total_subjects": 7,
+      "periods_per_week": 34,
+      "total_credits": 20,
+      "total_marks": 1000,
+      "subjects": [
+        {
+          "code": "25841",
+          "name": "Accounting",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "28551",
+          "name": "Application Development Using Java",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28552",
+          "name": "Web Design & Development-II",
+          "credit": 3,
+          "theory_per_week": 1,
+          "practical_per_week": 6,
+          "marks": 150
+        },
+        {
+          "code": "28553",
+          "name": "Computer Architecture & Microprocessor",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "28554",
+          "name": "Data Communication",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "28555",
+          "name": "Operating System",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28556",
+          "name": "Project Work-I",
+          "credit": 1,
+          "theory_per_week": 0,
+          "practical_per_week": 3,
+          "marks": 50
+        }
+      ]
+    },
+    {
+      "semester": "6th Semester",
+      "total_subjects": 8,
+      "periods_per_week": 34,
+      "total_credits": 20,
+      "total_marks": 1000,
+      "subjects": [
+        {
+          "code": "25851",
+          "name": "Principles of Marketing",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "25852",
+          "name": "Industrial Management",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "28561",
+          "name": "Database Management System",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28562",
+          "name": "Computer Networking",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28563",
+          "name": "Sensor & IoT System",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28564",
+          "name": "Microcontroller Based System Design & Development",
+          "credit": 4,
+          "theory_per_week": 2,
+          "practical_per_week": 6,
+          "marks": 200
+        },
+        {
+          "code": "28565",
+          "name": "Surveillance Security System",
+          "credit": 2,
+          "theory_per_week": 1,
+          "practical_per_week": 3,
+          "marks": 100
+        },
+        {
+          "code": "28566",
+          "name": "Web Development Project",
+          "credit": 1,
+          "theory_per_week": 0,
+          "practical_per_week": 3,
+          "marks": 50
+        }
+      ]
+    },
+    {
+      "semester": "7th Semester",
+      "total_subjects": 7,
+      "periods_per_week": 33,
+      "total_credits": 19,
+      "total_marks": 950,
+      "subjects": [
+        {
+          "code": "25853",
+          "name": "Innovation & Entrepreneurship",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "28571",
+          "name": "Digital Marketing Technique",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28572",
+          "name": "Network Administration & Services",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "28573",
+          "name": "Cyber Security & Ethics",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28574",
+          "name": "Apps Development Project",
+          "credit": 2,
+          "theory_per_week": 1,
+          "practical_per_week": 3,
+          "marks": 100
+        },
+        {
+          "code": "28575",
+          "name": "Multimedia & Animation",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28576",
+          "name": "Project Work-II",
+          "credit": 2,
+          "theory_per_week": 0,
+          "practical_per_week": 6,
+          "marks": 100
+        }
+      ]
+    },
+    {
+      "semester": "8th Semester",
+      "total_subjects": 2,
+      "periods_per_week": 36,
+      "total_credits": 12,
+      "total_marks": 600,
+      "subjects": [
+        {
+          "code": "28581",
+          "name": "Industrial Attachment",
+          "credit": 8,
+          "theory_per_week": 0,
+          "practical_per_week": 24,
+          "marks": 400
+        },
+        {
+          "code": "28581",
+          "name": "Project Presentation",
+          "credit": 4,
+          "theory_per_week": 0,
+          "practical_per_week": 12,
+          "marks": 200
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,520 @@
+{
+  "department_name": "Chemical Technology",
+  "department_code": "63",
+  "regulation": "2022",
+  
+  "semesters": [
+    {
+      "semester": "1st Semester",
+      "total_subjects": 8,
+      "periods_per_week": 34,
+      "total_credits": 20,
+      "total_marks": 1000,
+      "subjects": [
+        {
+          "code": "21011",
+          "name": "Engineering Drawing",
+          "credit": 2,
+          "theory_per_week": 0,
+          "practical_per_week": 6,
+          "marks": 100
+        },
+        {
+          "code": "25711",
+          "name": "Bangla-I",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "25712",
+          "name": "English-I",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "25812",
+          "name": "Physical Education & Life Skills Development",
+          "credit": 1,
+          "theory_per_week": 0,
+          "practical_per_week": 3,
+          "marks": 50
+        },
+        {
+          "code": "25911",
+          "name": "Mathematics -I",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "25913",
+          "name": "Chemistry",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "26311",
+          "name": "Chemical Engineering Fundamentals",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26312",
+          "name": "Safety in Chemical Industry",
+          "credit": 2,
+          "theory_per_week": 1,
+          "practical_per_week": 3,
+          "marks": 100
+        }
+      ]
+    },
+    {
+      "semester": "2nd Semester",
+      "total_subjects": 8,
+      "periods_per_week": 35,
+      "total_credits": 21,
+      "total_marks": 1050,
+      "subjects": [
+        {
+          "code": "25721",
+          "name": "Bangla -II",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "25722",
+          "name": "English-II",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "25912",
+          "name": "Physics -I",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "25921",
+          "name": "Mathematics-II",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "26321",
+          "name": "Basic Stoichiometry",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26322",
+          "name": "Chemical Engineering Drawing",
+          "credit": 2,
+          "theory_per_week": 0,
+          "practical_per_week": 6,
+          "marks": 100
+        },
+        {
+          "code": "26811",
+          "name": "Basic Electronics",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "27011",
+          "name": "Basic Workshop Practice",
+          "credit": 1,
+          "theory_per_week": 0,
+          "practical_per_week": 3,
+          "marks": 50
+        }
+      ]
+    },
+    {
+      "semester": "3rd Semester",
+      "total_subjects": 7,
+      "periods_per_week": 35,
+      "total_credits": 23,
+      "total_marks": 1150,
+      "subjects": [
+        {
+          "code": "25811",
+          "name": "Social Science",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "25922",
+          "name": "Physics-II",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "25931",
+          "name": "Mathematics-III",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "26331",
+          "name": "Chemical Engineering Operation-I",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26332",
+          "name": "Industrial Chemistry",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26333",
+          "name": "Chemical Engineering Materials",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26711",
+          "name": "Basic Electricity",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        }
+      ]
+    },
+    {
+      "semester": "4th Semester",
+      "total_subjects": 8,
+      "periods_per_week": 35,
+      "total_credits": 21,
+      "total_marks": 1050,
+      "subjects": [
+        {
+          "code": "25831",
+          "name": "Business Communication",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "25841",
+          "name": "Accounting",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "26341",
+          "name": "Chemical Engineering Operation-II",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26342",
+          "name": "Chemical Process Industries-I",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26343",
+          "name": "Oil, Fats & Waxes",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26344",
+          "name": "Analytical Chemistry",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "28511",
+          "name": "Computer Office Application",
+          "credit": 2,
+          "theory_per_week": 0,
+          "practical_per_week": 6,
+          "marks": 100
+        },
+        {
+          "code": "27041",
+          "name": "Engineering Mechanics",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        }
+      ]
+    },
+    {
+      "semester": "5th Semester",
+      "total_subjects": 7,
+      "periods_per_week": 33,
+      "total_credits": 21,
+      "total_marks": 1050,
+      "subjects": [
+        {
+          "code": "25852",
+          "name": "Industrial Management",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "26351",
+          "name": "Chemical Engineering Operation-III",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "26352",
+          "name": "Chemical Process Industries-II",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26353",
+          "name": "Water Treatment Technology",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26354",
+          "name": "Industrial Instrumentation & Process Control",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26355",
+          "name": "Refrigeration & Cold Storage",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26356",
+          "name": "Industrial Production Engineering",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        }
+      ]
+    },
+    {
+      "semester": "6th Semester",
+      "total_subjects": 7,
+      "periods_per_week": 33,
+      "total_credits": 21,
+      "total_marks": 1050,
+      "subjects": [
+        {
+          "code": "25851",
+          "name": "Principles of Marketing",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "26361",
+          "name": "Chemical Engineering Operation-IV",
+          "credit": 4,
+          "theory_per_week": 3,
+          "practical_per_week": 3,
+          "marks": 200
+        },
+        {
+          "code": "26362",
+          "name": "Chemical Process Industries-III",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26363",
+          "name": "Petroleum & Petrochemicals",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26364",
+          "name": "Industrial Stoichiometry & Thermodynamics",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26365",
+          "name": "Instrumental Methods of Analysis",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26366",
+          "name": "Jute & Textile Technology",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        }
+      ]
+    },
+    {
+      "semester": "7th Semester",
+      "total_subjects": 8,
+      "periods_per_week": 35,
+      "total_credits": 21,
+      "total_marks": 1050,
+      "subjects": [
+        {
+          "code": "25853",
+          "name": "Innovation & Entrepreneurship",
+          "credit": 2,
+          "theory_per_week": 2,
+          "practical_per_week": 0,
+          "marks": 100
+        },
+        {
+          "code": "26371",
+          "name": "Chemical Engineering Operation-V",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26372",
+          "name": "Chemical Process Industries-IV",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26373",
+          "name": "Natural Gas & Fertilizer",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26374",
+          "name": "Plastic & Polymer Technology",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26375",
+          "name": "Corrosion Technology",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        },
+        {
+          "code": "26376",
+          "name": "Chemical Engineering Project",
+          "credit": 1,
+          "theory_per_week": 0,
+          "practical_per_week": 3,
+          "marks": 50
+        },
+        {
+          "code": "29041",
+          "name": "Environmental Studies",
+          "credit": 3,
+          "theory_per_week": 2,
+          "practical_per_week": 3,
+          "marks": 150
+        }
+      ]
+    },
+    {
+      "semester": "8th Semester",
+      "total_subjects": 2,
+      "periods_per_week": 36,
+      "total_credits": 12,
+      "total_marks": 600,
+      "subjects": [
+        {
+          "code": "26381",
+          "name": "Industrial Attachment",
+          "credit": 8,
+          "theory_per_week": 0,
+          "practical_per_week": 24,
+          "marks": 400
+        },
+        {
+          "code": "26381",
+          "name": "Project Presentation",
+          "credit": 4,
+          "theory_per_week": 0,
+          "practical_per_week": 12,
+          "marks": 200
+        }
+      ]
+    }
+  ]
+}
