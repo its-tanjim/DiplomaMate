@@ -1025,7 +1025,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                   type="password"
                   required
                   maxLength={8}
-                  placeholder="Enter 4-8 digit PIN (Default demo: 1234)"
+                  placeholder="Enter your faculty PIN"
                   value={teacherPinInput}
                   onChange={(e) => setTeacherPinInput(e.target.value)}
                   className="w-full px-2.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"

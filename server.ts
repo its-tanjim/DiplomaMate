@@ -28,12 +28,11 @@ import {
 import { UPLOADED_DEPARTMENT_DATASETS } from './src/data/uploadedDepartmentDatasets';
 import {
   MOCK_ENROLLED_STUDENTS,
-  INITIAL_NOTES,
-  INITIAL_ASSIGNMENTS,
   INITIAL_ROUTINE,
   INITIAL_APPLICATIONS,
   INITIAL_JOBS,
   INITIAL_CAMPUS_NOTICES,
+  LEGACY_DEMO_CONTENT_IDS,
   type EnrolledStudent
 } from './src/data/mockData';
 import type {
@@ -436,103 +435,8 @@ function generateSalt(): string {
   return crypto.randomBytes(16).toString('hex');
 }
 
-// Seed teachers with hashed PINs (default PIN: '1234')
-const defaultSalt1 = generateSalt();
-const defaultSalt2 = generateSalt();
-const defaultSalt3 = generateSalt();
-const defaultSalt4 = generateSalt();
-
-const serverTeachers: Map<string, ServerTeacher> = new Map([
-  [
-    'tch_01',
-    {
-      id: 'tch_01',
-      name: 'Engr. Md. Mahbubur Rahman',
-      email: 'mahbubur.cst@dpi.gov.bd',
-      phone: '+880 1711-223344',
-      college: 'Dhaka Polytechnic Institute (DPI), Tejgaon',
-      department: 'Computer Science & Technology (CST)',
-      designation: 'Chief Instructor & Head of Dept',
-      teachingSubjects: ['Database Management System (66664)', 'System Analysis & Design (66671)'],
-      semestersTaught: [6, 7],
-      shift: 'Both',
-      sectionsTaught: ['A1', 'B1'],
-      verificationStatus: 'Verified',
-      pinSalt: defaultSalt1,
-      pinHash: hashPinWithSalt('1234', defaultSalt1),
-      failedPinAttempts: 0,
-      lockoutUntil: null,
-      createdAt: '2026-09-01'
-    }
-  ],
-  [
-    'tch_02',
-    {
-      id: 'tch_02',
-      name: 'Engr. Shamima Nasrin',
-      email: 'shamima.nasrin@dpi.gov.bd',
-      phone: '+880 1819-334455',
-      college: 'Dhaka Polytechnic Institute (DPI), Tejgaon',
-      department: 'Computer Science & Technology (CST)',
-      designation: 'Senior Instructor & 6th Sem Guide Teacher',
-      teachingSubjects: ['Microprocessor & Interfacing (66662)', 'Computer Architecture (66652)'],
-      semestersTaught: [5, 6],
-      shift: 'Morning',
-      sectionsTaught: ['A1', 'A2'],
-      verificationStatus: 'Verified',
-      pinSalt: defaultSalt2,
-      pinHash: hashPinWithSalt('1234', defaultSalt2),
-      failedPinAttempts: 0,
-      lockoutUntil: null,
-      createdAt: '2026-09-10'
-    }
-  ],
-  [
-    'tch_03',
-    {
-      id: 'tch_03',
-      name: 'Engr. Md. Rafiqul Islam',
-      email: 'rafiqul.cst@dpi.gov.bd',
-      phone: '+880 1912-556677',
-      college: 'Dhaka Polytechnic Institute (DPI), Tejgaon',
-      department: 'Computer Science & Technology (CST)',
-      designation: 'Senior Instructor',
-      teachingSubjects: ['Web Development Project (66661)', 'Data Structures (66642)'],
-      semestersTaught: [4, 6],
-      shift: 'Both',
-      sectionsTaught: ['A1', 'B1'],
-      verificationStatus: 'Verified',
-      pinSalt: defaultSalt3,
-      pinHash: hashPinWithSalt('1234', defaultSalt3),
-      failedPinAttempts: 0,
-      lockoutUntil: null,
-      createdAt: '2026-09-15'
-    }
-  ],
-  [
-    'tch_04',
-    {
-      id: 'tch_04',
-      name: 'Engr. Kazi Farhan Ahmed',
-      email: 'farhan.cst@dpi.gov.bd',
-      phone: '+880 1515-998877',
-      college: 'Dhaka Polytechnic Institute (DPI), Tejgaon',
-      department: 'Computer Science & Technology (CST)',
-      designation: 'Junior Instructor (New Faculty)',
-      teachingSubjects: ['Data Communication & Networking (66665)'],
-      semestersTaught: [6],
-      shift: 'Morning',
-      sectionsTaught: ['A1'],
-      verificationStatus: 'Pending',
-      pinSalt: defaultSalt4,
-      pinHash: hashPinWithSalt('1234', defaultSalt4),
-      failedPinAttempts: 0,
-      lockoutUntil: null,
-      createdAt: '2026-10-22',
-      adminNotes: 'Awaiting departmental credentials review'
-    }
-  ]
-]);
+const serverTeachers: Map<string, ServerTeacher> = new Map();
+const legacyUnregisteredTeachers: Map<string, ServerTeacher> = new Map();
 
 // Helper to strip sensitive secrets before sending teacher object to client
 function sanitizeTeacher(teacher: ServerTeacher) {
@@ -576,142 +480,7 @@ export interface ServerTeacherContact {
   auditTrail: ServerContactAuditEntry[];
 }
 
-// Seed in-memory teacher contacts
-const serverTeacherContacts: Map<string, ServerTeacherContact> = new Map([
-  [
-    'tch_1',
-    {
-      id: 'tch_1',
-      teacherId: 'tch_01',
-      college: 'Dhaka Polytechnic Institute',
-      department: 'Computer Science and Technology (CST)',
-      name: 'Engr. Md. Mahbubur Rahman',
-      designation: 'Chief Instructor & Head of Department',
-      subject: 'Database Management System (66664)',
-      teachingSubjects: ['Database Management System (66664)', 'System Analysis & Design (66671)'],
-      semestersTaught: [6, 7],
-      phone: '+880 1711-234567',
-      email: 'mahbubur.cst@dpi.gov.bd',
-      room: 'CST Dept Head Office, Academic Bldg 2 (Room 301)',
-      consultingHours: 'Sun & Wed: 11:30 AM - 01:00 PM',
-      isArchived: false,
-      auditTrail: [
-        {
-          action: 'created',
-          performedBy: 'System Seed',
-          performedByRole: 'system',
-          timestamp: '2026-09-01, 10:00 AM'
-        }
-      ]
-    }
-  ],
-  [
-    'tch_2',
-    {
-      id: 'tch_2',
-      teacherId: 'tch_02',
-      college: 'Dhaka Polytechnic Institute',
-      department: 'Computer Science and Technology (CST)',
-      name: 'Engr. Shamima Nasrin',
-      designation: 'Senior Instructor & 6th Sem Guide Teacher',
-      subject: 'Microprocessor & Interfacing (66662)',
-      teachingSubjects: ['Microprocessor & Interfacing (66662)', 'Computer Architecture (66652)'],
-      semestersTaught: [5, 6],
-      phone: '+880 1819-345678',
-      email: 'shamima.nasrin@dpi.gov.bd',
-      room: 'Faculty Lounge 2, Room 303',
-      consultingHours: 'Mon & Thu: 10:15 AM - 11:30 AM',
-      isArchived: false,
-      auditTrail: [
-        {
-          action: 'created',
-          performedBy: 'System Seed',
-          performedByRole: 'system',
-          timestamp: '2026-09-10, 11:00 AM'
-        }
-      ]
-    }
-  ],
-  [
-    'tch_3',
-    {
-      id: 'tch_3',
-      teacherId: 'tch_03',
-      college: 'Dhaka Polytechnic Institute',
-      department: 'Computer Science and Technology (CST)',
-      name: 'Engr. Md. Rafiqul Islam',
-      designation: 'Senior Instructor',
-      subject: 'Web Development Project (66661)',
-      teachingSubjects: ['Web Development Project (66661)', 'Data Structures (66642)'],
-      semestersTaught: [4, 6],
-      phone: '+880 1912-456789',
-      email: 'rafiqul.islam@dpi.gov.bd',
-      room: 'Software Development Lab (Room 402)',
-      consultingHours: 'Sat & Wed: 01:15 PM - 02:30 PM',
-      isArchived: false,
-      auditTrail: [
-        {
-          action: 'created',
-          performedBy: 'System Seed',
-          performedByRole: 'system',
-          timestamp: '2026-09-15, 02:00 PM'
-        }
-      ]
-    }
-  ],
-  [
-    'tch_4',
-    {
-      id: 'tch_4',
-      college: 'Dhaka Polytechnic Institute',
-      department: 'Computer Science and Technology (CST)',
-      name: 'Engr. Tanmoy Roy',
-      designation: 'Junior Instructor',
-      subject: 'Surveillance & Security System (66663)',
-      teachingSubjects: ['Surveillance & Security System (66663)'],
-      semestersTaught: [6],
-      phone: '+880 1623-567890',
-      email: 'tanmoy.roy@dpi.gov.bd',
-      room: 'Hardware & Microprocessor Lab (Room 308)',
-      consultingHours: 'Sat & Tue: 10:00 AM - 12:00 PM',
-      isArchived: false,
-      auditTrail: [
-        {
-          action: 'created',
-          performedBy: 'System Seed',
-          performedByRole: 'system',
-          timestamp: '2026-09-20, 09:30 AM'
-        }
-      ]
-    }
-  ],
-  [
-    'tch_5',
-    {
-      id: 'tch_5',
-      college: 'Dhaka Polytechnic Institute',
-      department: 'Computer Science and Technology (CST)',
-      name: 'Engr. Kazi Farhan',
-      designation: 'Junior Instructor',
-      subject: 'Data Communication & Networking (66665)',
-      teachingSubjects: ['Data Communication & Networking (66665)'],
-      semestersTaught: [6],
-      phone: '+880 1734-678901',
-      email: 'kazi.farhan@dpi.gov.bd',
-      room: 'CISCO Networking Lab (Room 405)',
-      consultingHours: 'Sun & Thu: 12:00 PM - 01:30 PM',
-      isArchived: false,
-      auditTrail: [
-        {
-          action: 'created',
-          performedBy: 'System Seed',
-          performedByRole: 'system',
-          timestamp: '2026-09-25, 03:00 PM'
-        }
-      ]
-    }
-  ]
-]);
+const serverTeacherContacts: Map<string, ServerTeacherContact> = new Map();
 
 // Normalization helper for scope checking (handles Dhaka vs Dhaka Polytechnic Institute (DPI), Tejgaon)
 function areCollegesEquivalent(col1?: string, col2?: string): boolean {
@@ -872,20 +641,10 @@ app.post('/api/teachers/register', (req: Request, res: Response) => {
     serverTeachers.set(teacherId, newTeacher);
     saveAcademicStore(academicStore);
 
-    const session = createServerSession({
-      userId: newTeacher.id,
-      role: 'teacher',
-      name: newTeacher.name,
-      email: newTeacher.email,
-      college: newTeacher.college,
-      department: newTeacher.department
-    });
-
     return res.status(201).json({
       success: true,
       message: 'Teacher registration submitted. Your account is pending departmental administrator approval.',
-      teacher: sanitizeTeacher(newTeacher),
-      sessionToken: session.token
+      teacher: sanitizeTeacher(newTeacher)
     });
   } catch (error) {
     console.error('Teacher registration error:', error);
@@ -899,7 +658,7 @@ app.post('/api/teachers/register', (req: Request, res: Response) => {
  */
 app.post('/api/auth/session', (req: Request, res: Response) => {
   try {
-    const { userId, role, name, email, college, department, boardRoll, classRoll, regNumber, semester, shift, section } = req.body;
+    const { userId, role } = req.body;
 
     // Never allow public session creation to grant system_admin or teacher privileges
     if (role === 'system_admin' || role === 'admin' || role === 'teacher') {
@@ -914,30 +673,36 @@ app.post('/api/auth/session', (req: Request, res: Response) => {
       return res.status(403).json({ success: false, error: 'This account has been deactivated.' });
     }
 
-    const accountSync = ensureStudentAccountForSession(req.body || {});
-    if (accountSync.error) {
-      return res.status(accountSync.status || 409).json({ success: false, error: accountSync.error });
+    const accountCheck = ensureStudentAccountForSession(req.body || {});
+    if (accountCheck.error || !accountCheck.userId) {
+      return res.status(accountCheck.status || 401).json({
+        success: false,
+        error: accountCheck.error || 'A registered student account is required.'
+      });
     }
-    const sessionUserId = accountSync.userId || requestedUserId;
+    const sessionUserId = accountCheck.userId;
     const persistedStudent = academicStore.students.find(student => student.id === sessionUserId);
     const canUseCaptainRole =
       persistedStudent?.isRegisteredAccount === true &&
       persistedStudent?.accountType === 'class_captain' &&
       persistedStudent.captainVerificationStatus === 'Approved';
-    const safeRole: AccountType = role === 'class_captain' && canUseCaptainRole ? 'class_captain' : 'student';
+    if (role === 'class_captain' && !canUseCaptainRole) {
+      return res.status(403).json({ success: false, error: 'Class Captain access requires administrator approval.' });
+    }
+    const safeRole: AccountType = role === 'class_captain' ? 'class_captain' : 'student';
     const session = createServerSession({
-      userId: sessionUserId || `stu_${Date.now()}`,
+      userId: sessionUserId,
       role: safeRole,
-      name: String(name || 'Diploma Student').trim(),
-      email: String(email || 'student@polytechnic.edu.bd').trim(),
-      college: college ? String(college).trim() : undefined,
-      department: department ? String(department).trim() : undefined,
-      boardRoll: boardRoll ? String(boardRoll).trim() : undefined,
-      classRoll: classRoll ? String(classRoll).trim() : undefined,
-      regNumber: regNumber ? String(regNumber).trim() : undefined,
-      semester: semester ? (Number(semester) as SemesterNumber) : undefined,
-      shift: shift === 'Day' ? 'Day' : 'Morning',
-      section: (['A1', 'A2', 'B1', 'B2'].includes(String(section)) ? String(section) : 'A1') as Section
+      name: persistedStudent!.name,
+      email: persistedStudent!.email || '',
+      college: persistedStudent!.college,
+      department: persistedStudent!.department,
+      boardRoll: persistedStudent!.boardRoll,
+      classRoll: persistedStudent!.classRoll,
+      regNumber: persistedStudent!.regNumber,
+      semester: Number(persistedStudent!.semester) as SemesterNumber,
+      shift: persistedStudent!.shift,
+      section: persistedStudent!.section
     });
 
     return res.status(200).json({
@@ -960,6 +725,55 @@ app.post('/api/auth/session', (req: Request, res: Response) => {
     console.error('Auth session creation error:', error);
     return res.status(500).json({ success: false, error: 'Failed to create session.' });
   }
+});
+
+app.post('/api/students/login', (req: Request, res: Response) => {
+  const boardRoll = String(req.body?.boardRoll || '').trim();
+  const regNumber = String(req.body?.regNumber || '').trim();
+  const requestedRole = req.body?.role === 'class_captain' ? 'class_captain' : 'student';
+  if (!boardRoll || !regNumber) {
+    return res.status(400).json({ success: false, error: 'Board Roll and Registration Number are required.' });
+  }
+
+  const student = academicStore.students.find(
+    account => account.boardRoll === boardRoll && account.regNumber === regNumber && account.isRegisteredAccount === true
+  );
+  if (!student) {
+    return res.status(401).json({ success: false, error: 'No registered account matches those credentials.' });
+  }
+  if (deletedAccountIds.has(student.id)) {
+    return res.status(403).json({ success: false, error: 'This account has been deactivated.' });
+  }
+
+  if (
+    requestedRole === 'class_captain' &&
+    (student.accountType !== 'class_captain' || student.captainVerificationStatus !== 'Approved')
+  ) {
+    return res.status(403).json({ success: false, error: 'Class Captain access requires administrator approval.' });
+  }
+
+  const sessionRole: AccountType = requestedRole === 'class_captain' ? 'class_captain' : 'student';
+  const session = createServerSession({
+    userId: student.id,
+    role: sessionRole,
+    name: student.name,
+    email: student.email || '',
+    college: student.college,
+    department: student.department,
+    boardRoll: student.boardRoll,
+    classRoll: student.classRoll,
+    regNumber: student.regNumber,
+    semester: Number(student.semester) as SemesterNumber,
+    shift: student.shift,
+    section: student.section
+  });
+
+  return res.status(200).json({
+    success: true,
+    account: student,
+    sessionToken: session.token,
+    session: { userId: session.userId, role: session.role }
+  });
 });
 
 /**
@@ -1259,6 +1073,13 @@ app.post('/api/teachers/login', (req: Request, res: Response) => {
       return res.status(401).json({
         success: false,
         error: `Invalid Teacher PIN. ${attemptsLeft} attempt(s) remaining before security lockout.`
+      });
+    }
+
+    if (targetTeacher.verificationStatus !== 'Verified') {
+      return res.status(403).json({
+        success: false,
+        error: 'Your teacher account must be approved by an administrator before signing in.'
       });
     }
 
@@ -1852,19 +1673,6 @@ app.post('/api/verification/teacher-approve', (req: Request, res: Response) => {
       }
     }
 
-    // Check for legacy codes fallback for backwards compatibility
-    if (!teacher) {
-      const legacyMap: Record<string, string> = {
-        'TCH-DPI-2026': 'tch_01',
-        'TCH-CST-666': 'tch_02',
-        'FACULTY-BTEB-77': 'tch_03'
-      };
-      const foundId = legacyMap[cleanPin.toUpperCase()];
-      if (foundId && serverTeachers.has(foundId)) {
-        teacher = serverTeachers.get(foundId);
-      }
-    }
-
     if (!teacher) {
       return res.status(401).json({ 
         success: false, 
@@ -1881,24 +1689,20 @@ app.post('/api/verification/teacher-approve', (req: Request, res: Response) => {
       });
     }
 
-    // Validate PIN
-    const isLegacyCode = cleanPin.toUpperCase().startsWith('TCH-') || cleanPin.toUpperCase().startsWith('FACULTY-');
-    if (!isLegacyCode) {
-      const checkHash = hashPinWithSalt(cleanPin, teacher.pinSalt);
-      if (checkHash !== teacher.pinHash) {
-        teacher.failedPinAttempts += 1;
-        if (teacher.failedPinAttempts >= 5) {
-          teacher.lockoutUntil = Date.now() + 15 * 60 * 1000;
-          return res.status(429).json({
-            success: false,
-            error: 'Maximum PIN attempts reached (5/5). Account locked for 15 minutes.'
-          });
-        }
-        return res.status(401).json({
+    const checkHash = hashPinWithSalt(cleanPin, teacher.pinSalt);
+    if (checkHash !== teacher.pinHash) {
+      teacher.failedPinAttempts += 1;
+      if (teacher.failedPinAttempts >= 5) {
+        teacher.lockoutUntil = Date.now() + 15 * 60 * 1000;
+        return res.status(429).json({
           success: false,
-          error: `Incorrect Teacher PIN. ${5 - teacher.failedPinAttempts} attempt(s) remaining.`
+          error: 'Maximum PIN attempts reached (5/5). Account locked for 15 minutes.'
         });
       }
+      return res.status(401).json({
+        success: false,
+        error: `Incorrect Teacher PIN. ${5 - teacher.failedPinAttempts} attempt(s) remaining.`
+      });
     }
 
     // Reset failed attempts on valid PIN
@@ -1969,7 +1773,6 @@ app.post('/api/verification/teacher-approve', (req: Request, res: Response) => {
         teacherId: teacher.id,
         teacherName: teacher.name,
         teacherDesignation: teacher.designation,
-        teacherPinOrCode: 'VERIFIED_FACULTY_CREDENTIAL',
         endorsedAt,
         comments: comments || 'Endorsed as authorized student Class Captain for this section cohort.'
       },
@@ -4138,72 +3941,6 @@ export function migrateAndValidateRoutineRecord(raw: any): {
 }
 
 function buildInitialAcademicStore(): PersistentAcademicStore {
-  const initialSubmissions: AssignmentSubmissionRecord[] = [
-    {
-      id: 'sub_seed_asg_3_std_01',
-      assignmentId: 'asg_3',
-      studentId: 'std_01',
-      studentName: 'Tanvir Ahmed',
-      boardRoll: '542891',
-      classRoll: '02',
-      regNumber: '1502187342',
-      college: 'Dhaka Polytechnic Institute',
-      department: 'Computer Science and Technology (CST)',
-      semester: 6,
-      shift: 'Morning',
-      section: 'A1',
-      submittedAt: '17 Oct 2026, 11:20 PM',
-      lastUpdatedAt: '17 Oct 2026, 11:20 PM',
-      submissionNote: 'GitHub repo: github.com/tanvir-dpi/diploma-mate-app',
-      attachmentName: 'Tanvir_542891_Portal_Phase1.pdf',
-      attachmentType: 'PDF',
-      attachmentSize: '1.2 MB',
-      attemptCount: 1
-    },
-    {
-      id: 'sub_seed_asg_3_cr_01',
-      assignmentId: 'asg_3',
-      studentId: 'cr_01',
-      studentName: 'Nusrat Jahan',
-      boardRoll: '542880',
-      classRoll: '01',
-      regNumber: '1502187320',
-      college: 'Dhaka Polytechnic Institute',
-      department: 'Computer Science and Technology (CST)',
-      semester: 6,
-      shift: 'Morning',
-      section: 'A1',
-      submittedAt: '17 Oct 2026, 09:45 PM',
-      lastUpdatedAt: '17 Oct 2026, 09:45 PM',
-      submissionNote: 'Submitted complete source code and ER architecture PDF.',
-      attachmentName: 'Nusrat_542880_WebProject_Phase1.pdf',
-      attachmentType: 'PDF',
-      attachmentSize: '1.8 MB',
-      attemptCount: 1
-    },
-    {
-      id: 'sub_seed_asg_1_cr_01',
-      assignmentId: 'asg_1',
-      studentId: 'cr_01',
-      studentName: 'Nusrat Jahan',
-      boardRoll: '542880',
-      classRoll: '01',
-      regNumber: '1502187320',
-      college: 'Dhaka Polytechnic Institute',
-      department: 'Computer Science and Technology (CST)',
-      semester: 6,
-      shift: 'Morning',
-      section: 'A1',
-      submittedAt: '22 Oct 2026, 04:15 PM',
-      lastUpdatedAt: '22 Oct 2026, 04:15 PM',
-      submissionNote: 'Attached 3NF E-Commerce schema diagram and SQL DDL script.',
-      attachmentName: 'Nusrat_542880_3NF_Ecommerce_Schema.pdf',
-      attachmentType: 'PDF',
-      attachmentSize: '940 KB',
-      attemptCount: 1
-    }
-  ];
-
   // Seed 2 realistic recorded attendance sessions in Oct 2026 for Semester 6 Morning A1
   const seedCohortStudents = MOCK_ENROLLED_STUDENTS.filter(
     s => s.semester === 6 && s.shift === 'Morning' && s.section === 'A1'
@@ -4290,9 +4027,9 @@ function buildInitialAcademicStore(): PersistentAcademicStore {
     students: [...MOCK_ENROLLED_STUDENTS],
     teacherAccounts: Array.from(serverTeachers.values()),
     attendanceSheets: initialSheets,
-    notes: [...INITIAL_NOTES],
-    assignments: [...INITIAL_ASSIGNMENTS],
-    assignmentSubmissions: initialSubmissions,
+    notes: [],
+    assignments: [],
+    assignmentSubmissions: [],
     shiftSchedules: {
       [buildShiftScheduleKey('Morning', 'default')]: buildDefaultShiftScheduleConfig('Morning', { scopeKey: 'default' }),
       [buildShiftScheduleKey('Day', 'default')]: buildDefaultShiftScheduleConfig('Day', { scopeKey: 'default' })
@@ -4353,14 +4090,18 @@ function loadAcademicStore(): PersistentAcademicStore {
         Array.isArray(parsed.campusNotices) && parsed.campusNotices.length > 0
           ? parsed.campusNotices
           : [...(INITIAL_CAMPUS_NOTICES as CampusNoticeItem[])];
-      const loadedTeacherAccounts: ServerTeacher[] = Array.isArray(parsed.teacherAccounts)
+        const loadedTeacherAccounts: ServerTeacher[] = Array.isArray(parsed.teacherAccounts)
         ? parsed.teacherAccounts
         : [];
       loadedTeacherAccounts.forEach(teacher => {
         if (teacher?.id && teacher.pinHash && teacher.pinSalt) {
-          serverTeachers.set(teacher.id, teacher);
-        }
-      });
+            if (teacher.isRegisteredAccount === true) {
+              serverTeachers.set(teacher.id, teacher);
+            } else {
+              legacyUnregisteredTeachers.set(teacher.id, teacher);
+            }
+          }
+        });
 
       const loadedDeletedAccountIds: string[] = Array.isArray(parsed.deletedAccountIds)
         ? parsed.deletedAccountIds.filter((id: unknown): id is string => typeof id === 'string')
@@ -4369,11 +4110,17 @@ function loadAcademicStore(): PersistentAcademicStore {
 
       const storeObj: PersistentAcademicStore = {
         students: Array.isArray(parsed.students) && parsed.students.length > 0 ? parsed.students : [...MOCK_ENROLLED_STUDENTS],
-        teacherAccounts: Array.from(serverTeachers.values()),
+        teacherAccounts: [...legacyUnregisteredTeachers.values(), ...serverTeachers.values()],
         attendanceSheets: Array.isArray(parsed.attendanceSheets) ? parsed.attendanceSheets : [],
-        notes: Array.isArray(parsed.notes) && parsed.notes.length > 0 ? parsed.notes : [...INITIAL_NOTES],
-        assignments: Array.isArray(parsed.assignments) && parsed.assignments.length > 0 ? parsed.assignments : [...INITIAL_ASSIGNMENTS],
-        assignmentSubmissions: Array.isArray(parsed.assignmentSubmissions) ? parsed.assignmentSubmissions : [],
+        notes: Array.isArray(parsed.notes)
+          ? parsed.notes.filter((note: NoteItem) => !LEGACY_DEMO_CONTENT_IDS.notes.includes(note.id))
+          : [],
+        assignments: Array.isArray(parsed.assignments)
+          ? parsed.assignments.filter((assignment: AssignmentItem) => !LEGACY_DEMO_CONTENT_IDS.assignments.includes(assignment.id))
+          : [],
+        assignmentSubmissions: Array.isArray(parsed.assignmentSubmissions)
+          ? parsed.assignmentSubmissions.filter((submission: AssignmentSubmissionRecord) => !LEGACY_DEMO_CONTENT_IDS.assignmentSubmissions.includes(submission.id))
+          : [],
         shiftSchedules: loadedSchedules,
         savedSemesterCalculatorRecords: Array.isArray(parsed.savedSemesterCalculatorRecords) ? parsed.savedSemesterCalculatorRecords : [],
         routines: migratedRoutines,
@@ -4405,7 +4152,7 @@ function saveAcademicStore(store: PersistentAcademicStore): void {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    store.teacherAccounts = Array.from(serverTeachers.values());
+    store.teacherAccounts = [...legacyUnregisteredTeachers.values(), ...serverTeachers.values()];
     store.deletedAccountIds = Array.from(deletedAccountIds);
     const tempFile = `${ACADEMIC_STORE_FILE}.tmp`;
     fs.writeFileSync(tempFile, JSON.stringify(store, null, 2), 'utf-8');
@@ -4422,7 +4169,9 @@ function ensureStudentAccountForSession(body: Record<string, unknown>): { error?
   const userId = String(body.userId || '').trim();
   const boardRoll = String(body.boardRoll || '').trim();
   const regNumber = String(body.regNumber || '').trim();
-  if (!userId || !boardRoll || !regNumber) return {};
+  if (!userId || !boardRoll || !regNumber) {
+    return { error: 'Registered account ID, Board Roll, and Registration Number are required.', status: 400 };
+  }
   if (deletedAccountIds.has(userId)) return { error: 'This account has been deactivated.', status: 403 };
 
   const byId = academicStore.students.find(student => student.id === userId);
@@ -4435,44 +4184,11 @@ function ensureStudentAccountForSession(body: Record<string, unknown>): { error?
     return { error: 'The supplied roll and registration number do not identify the same account.' };
   }
   const existing = byId || byRoll;
-  if (existing) {
-    if (deletedAccountIds.has(existing.id)) return { error: 'This account has been deactivated.', status: 403 };
-    if (!existing.isRegisteredAccount) {
-      existing.isRegisteredAccount = true;
-      saveAcademicStore(academicStore);
-    }
-    return { userId: existing.id };
+  if (!existing || existing.id !== userId || !existing.isRegisteredAccount) {
+    return { error: 'A registered student account is required.', status: 401 };
   }
-
-  const college = resolveStrictCollege(String(body.college || ''));
-  const department = resolveStrictTechnology(String(body.department || ''));
-  const semester = Number(body.semester);
-  const section = String(body.section || 'A1');
-  if (!college || !department || !Number.isInteger(semester) || semester < 1 || semester > 8 ||
-      !['A1', 'A2', 'B1', 'B2'].includes(section)) {
-    return { error: 'A valid academic profile is required to create a student account.', status: 400 };
-  }
-  academicStore.students.push({
-    id: userId,
-    name: String(body.name || 'Diploma Student').trim(),
-    email: String(body.email || '').trim(),
-    classRoll: String(body.classRoll || boardRoll.slice(-2)),
-    boardRoll,
-    regNumber,
-    college: college.name,
-    department: department.name,
-    semester,
-    shift: body.shift === 'Day' ? 'Day' : 'Morning',
-    section: section as EnrolledStudent['section'],
-    phone: String(body.phone || '').trim(),
-    accountType: 'student',
-    captainVerificationStatus: 'NotApplied',
-    attendanceRate: '',
-    createdAt: new Date().toISOString(),
-    isRegisteredAccount: true
-  });
-  saveAcademicStore(academicStore);
-  return { userId };
+  if (deletedAccountIds.has(existing.id)) return { error: 'This account has been deactivated.', status: 403 };
+  return { userId: existing.id };
 }
 
 app.post('/api/students/register', (req: Request, res: Response) => {
@@ -4511,9 +4227,12 @@ app.post('/api/students/register', (req: Request, res: Response) => {
     if (deletedAccountIds.has(existingByRoll.id)) {
       return res.status(403).json({ success: false, error: 'This account has been deactivated.' });
     }
-    if (role === 'class_captain' && existingByRoll.accountType !== 'class_captain') {
+    if (role === 'class_captain') {
       existingByRoll.accountType = 'class_captain';
       existingByRoll.captainVerificationStatus = 'Pending';
+    } else if (role === 'student') {
+      existingByRoll.accountType = 'student';
+      existingByRoll.captainVerificationStatus = 'NotApplied';
     }
     existingByRoll.isRegisteredAccount = true;
     saveAcademicStore(academicStore);

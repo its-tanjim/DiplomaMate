@@ -31,18 +31,11 @@ import {
   DEFAULT_PERIOD_DURATION_MINUTES
 } from '../data/shiftScheduleUtils';
 import { 
-  DEFAULT_STUDENT_PROFILE, 
-  DEFAULT_CAPTAIN_PROFILE,
-  DEFAULT_TEACHER_PROFILE,
-  INITIAL_FACULTY_MEMBERS,
   INITIAL_ROUTINE, 
-  INITIAL_NOTES, 
-  INITIAL_ASSIGNMENTS, 
-  INITIAL_REMINDERS, 
-  INITIAL_TEACHERS,
   INITIAL_ANNOUNCEMENTS,
   INITIAL_APPLICATIONS,
   INITIAL_JOBS,
+  LEGACY_DEMO_CONTENT_IDS,
   DEFAULT_NOTIFICATION_SETTINGS,
   normalizeCollege,
   normalizeTechnology,
@@ -57,7 +50,12 @@ interface AppContextType {
   activeScreen: ScreenType;
   setActiveScreen: (screen: ScreenType) => void;
   isLoggedIn: boolean;
-  login: (profile: StudentProfile) => void;
+  login: (profile: StudentProfile) => Promise<{ success: boolean; message: string }>;
+  authenticateStudent: (
+    boardRoll: string,
+    regNumber: string,
+    role: 'student' | 'class_captain'
+  ) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
   accountType: AccountType;
   setAccountType: (type: AccountType) => void;
@@ -196,6 +194,30 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_KEY_PREFIX = 'diplomamate_';
+const EMPTY_STUDENT_PROFILE: StudentProfile = {
+  id: '',
+  name: '',
+  email: '',
+  college: '',
+  department: '',
+  boardRoll: '',
+  regNumber: '',
+  semester: 1,
+  section: 'A1',
+  shift: 'Morning',
+  session: '',
+  accountType: 'student',
+  captainVerificationStatus: 'NotApplied',
+  isTeacherContactUnlocked: false
+};
+
+const removeLegacyDemoContent = <T extends { id: string }>(
+  records: T[],
+  legacyIds: readonly string[]
+): T[] => {
+  const legacyIdSet = new Set(legacyIds);
+  return records.filter(record => !legacyIdSet.has(record.id));
+};
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
@@ -221,7 +243,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Never allow a localStorage profile to claim system_admin unless verified by server
       return parsed;
     }
-    return DEFAULT_STUDENT_PROFILE;
+    return EMPTY_STUDENT_PROFILE;
   });
 
   const [activeScreen, setActiveScreen] = useState<ScreenType>(() => {
@@ -301,12 +323,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [notes, setNotes] = useState<NoteItem[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}notes`);
-    return saved ? JSON.parse(saved) : INITIAL_NOTES;
+    return saved ? removeLegacyDemoContent(JSON.parse(saved), LEGACY_DEMO_CONTENT_IDS.notes) : [];
   });
 
   const [assignments, setAssignments] = useState<AssignmentItem[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}assignments`);
-    return saved ? JSON.parse(saved) : INITIAL_ASSIGNMENTS;
+    return saved ? removeLegacyDemoContent(JSON.parse(saved), LEGACY_DEMO_CONTENT_IDS.assignments) : [];
   });
 
   const [jobs, setJobs] = useState<JobCircular[]>(() => {
@@ -323,12 +345,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [reminders, setReminders] = useState<ReminderItem[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}reminders`);
-    return saved ? JSON.parse(saved) : INITIAL_REMINDERS;
+    return saved ? removeLegacyDemoContent(JSON.parse(saved), LEGACY_DEMO_CONTENT_IDS.reminders) : [];
   });
 
   const [teachers, setTeachers] = useState<TeacherContact[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}teachers`);
-    return saved ? JSON.parse(saved) : INITIAL_TEACHERS;
+    return saved ? removeLegacyDemoContent(JSON.parse(saved), LEGACY_DEMO_CONTENT_IDS.teachers) : [];
   });
 
   const [applications, setApplications] = useState<CaptainApplication[]>(() => {
@@ -348,7 +370,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [teachersList, setTeachersList] = useState<TeacherProfile[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}teachers_list`);
-    return saved ? JSON.parse(saved) : INITIAL_FACULTY_MEMBERS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [currentTeacherProfile, setCurrentTeacherProfile] = useState<TeacherProfile | null>(() => {
@@ -398,7 +420,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .then(res => res.json())
       .then(data => {
         if (data.success && Array.isArray(data.contacts)) {
-          setTeachers(data.contacts);
+          const serverContacts = removeLegacyDemoContent<TeacherContact>(
+            data.contacts,
+            LEGACY_DEMO_CONTENT_IDS.teachers
+          );
+          setTeachers(current => {
+            const serverContactIds = new Set(serverContacts.map(contact => contact.id));
+            const cachedContacts = removeLegacyDemoContent(current, LEGACY_DEMO_CONTENT_IDS.teachers)
+              .filter(contact => !contact.isArchived && !serverContactIds.has(contact.id));
+            return [...serverContacts, ...cachedContacts];
+          });
         }
       })
       .catch(() => {});
@@ -440,13 +471,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           section: userProfile.section
         })
       })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.sessionToken) {
+        .then(async res => ({ ok: res.ok, data: await res.json() }))
+        .then(({ ok, data }) => {
+          if (ok && data.success && data.sessionToken) {
             setAuthToken(data.sessionToken);
+          } else {
+            setAuthToken(null);
+            setIsLoggedIn(false);
+            setCurrentTeacherProfile(null);
+            setUserProfile(EMPTY_STUDENT_PROFILE);
+            setActiveScreen('welcome');
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          setAuthToken(null);
+          setIsLoggedIn(false);
+          setCurrentTeacherProfile(null);
+          setUserProfile(EMPTY_STUDENT_PROFILE);
+          setActiveScreen('welcome');
+        });
     }
   }, [
     isLoggedIn,
@@ -458,6 +501,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     userProfile.shift,
     userProfile.section
   ]);
+
+  useEffect(() => {
+    if (!isLoggedIn || userProfile.accountType !== 'teacher') return;
+
+    const tokenToCheck = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+    const invalidateTeacherSession = () => {
+      setAuthToken(null);
+      setCurrentTeacherProfile(null);
+      setUserProfile(EMPTY_STUDENT_PROFILE);
+      setIsLoggedIn(false);
+      setActiveScreen('welcome');
+    };
+
+    if (!tokenToCheck) {
+      invalidateTeacherSession();
+      return;
+    }
+
+    fetch('/api/auth/me', {
+      headers: { Authorization: `Bearer ${tokenToCheck}` }
+    })
+      .then(async res => ({ ok: res.ok, data: await res.json() }))
+      .then(({ ok, data }) => {
+        if (
+          !ok ||
+          !data.success ||
+          !data.authenticated ||
+          data.session?.role !== 'teacher' ||
+          data.session.userId !== currentTeacherProfile?.id
+        ) {
+          invalidateTeacherSession();
+        }
+      })
+      .catch(invalidateTeacherSession);
+  }, [isLoggedIn, userProfile.accountType, authToken, currentTeacherProfile?.id]);
 
   const refreshAcademicFeed = async () => {
     try {
@@ -574,7 +652,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsServerVerifiedAdmin(false);
       setIsCheckingAdminSession(false);
       if (userProfile.accountType === 'system_admin') {
-        setUserProfile(DEFAULT_STUDENT_PROFILE);
+        setUserProfile(EMPTY_STUDENT_PROFILE);
         setSystemAdminProfile(null);
       }
       return false;
@@ -596,7 +674,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // If local profile claimed system_admin but server rejected it, strip privilege immediately
         if (userProfile.accountType === 'system_admin') {
           setSystemAdminProfile(null);
-          setUserProfile(DEFAULT_STUDENT_PROFILE);
+          setUserProfile(EMPTY_STUDENT_PROFILE);
         }
         return false;
       }
@@ -662,61 +740,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     userProfile.accountType === 'class_captain' && 
     userProfile.captainVerificationStatus === 'Approved';
 
-  const login = (profile: StudentProfile) => {
-    // Strictly prevent public login() from granting system_admin role
-    const safeAccountType: AccountType =
-      profile.accountType === 'system_admin'
-        ? 'student'
-        : profile.accountType;
+  const authenticateStudent = async (
+    boardRoll: string,
+    regNumber: string,
+    role: 'student' | 'class_captain'
+  ): Promise<{ success: boolean; message: string }> => {
+    try {
+      const response = await fetch('/api/students/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ boardRoll, regNumber, role })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success || !data.account || !data.sessionToken || !data.session) {
+        return { success: false, message: data.error || 'Student authentication failed.' };
+      }
 
-    // Preserve lifetime unlocked status if previously purchased
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}profile`);
-    const savedParsed = saved ? JSON.parse(saved) : null;
-    const isUnlocked = profile.isTeacherContactUnlocked || (savedParsed?.id === profile.id && savedParsed?.isTeacherContactUnlocked);
-    const payment = profile.paymentRecord || (savedParsed?.id === profile.id ? savedParsed?.paymentRecord : undefined);
+      const account = data.account;
+      const savedProfileRaw = localStorage.getItem(`${STORAGE_KEY_PREFIX}profile`);
+      const savedProfile: StudentProfile | null = savedProfileRaw ? JSON.parse(savedProfileRaw) : null;
+      const sameAccount = savedProfile?.id === account.id;
+      const authenticatedProfile: StudentProfile = {
+        id: account.id,
+        name: account.name,
+        email: account.email || '',
+        college: account.college,
+        department: account.department,
+        boardRoll: account.boardRoll,
+        regNumber: account.regNumber,
+        semester: Number(account.semester) as StudentProfile['semester'],
+        section: account.section,
+        shift: account.shift,
+        session: sameAccount && savedProfile ? savedProfile.session : '',
+        accountType: data.session.role,
+        captainVerificationStatus: account.captainVerificationStatus,
+        isTeacherContactUnlocked: sameAccount && Boolean(savedProfile?.isTeacherContactUnlocked),
+        paymentRecord: sameAccount && savedProfile ? savedProfile.paymentRecord : undefined,
+        phone: account.phone || ''
+      };
 
-    const merged: StudentProfile = {
-      ...profile,
-      accountType: safeAccountType,
-      isTeacherContactUnlocked: Boolean(isUnlocked),
-      paymentRecord: payment
-    };
+      setIsServerVerifiedAdmin(false);
+      setSystemAdminProfile(null);
+      setAuthToken(data.sessionToken);
+      setUserProfile(authenticatedProfile);
+      setSelectedShift(authenticatedProfile.shift);
+      setSelectedSection(authenticatedProfile.section);
+      setIsLoggedIn(true);
+      setActiveScreen('home');
+      showToast(`Welcome, ${authenticatedProfile.name}!`);
+      return { success: true, message: 'Signed in successfully.' };
+    } catch {
+      return { success: false, message: 'Could not connect to the student authentication server.' };
+    }
+  };
 
-    setIsServerVerifiedAdmin(false);
-    setSystemAdminProfile(null);
-    setUserProfile(merged);
-    setSelectedShift(profile.shift);
-    setSelectedSection(profile.section);
-    setIsLoggedIn(true);
-    setActiveScreen('home');
-    showToast(`Welcome, ${profile.name}!`);
-
-    // Obtain a server-side session token for this student / class_captain
-    fetch('/api/auth/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: merged.id,
-        role: safeAccountType,
-        name: merged.name,
-        email: merged.email,
-        college: merged.college,
-        department: merged.department,
-        boardRoll: merged.boardRoll,
-        classRoll: merged.boardRoll?.slice(-2) || '01',
-        regNumber: merged.regNumber,
-        semester: merged.semester,
-        shift: merged.shift,
-        section: merged.section
-      })
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.sessionToken) {
-          setAuthToken(data.sessionToken);
-        }
-      })
-      .catch(() => {});
+  const login = (profile: StudentProfile): Promise<{ success: boolean; message: string }> => {
+    const role =
+      profile.accountType === 'class_captain' && profile.captainVerificationStatus === 'Approved'
+        ? 'class_captain'
+        : 'student';
+    return authenticateStudent(profile.boardRoll, profile.regNumber, role);
   };
 
   const logout = () => {
@@ -740,9 +823,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setAccountType = (type: AccountType) => {
-    // Never allow client-side setAccountType to grant system_admin
-    if (type === 'system_admin') {
-      showToast('Forbidden: System Administrator role requires authenticated server login.');
+    if (type === 'system_admin' || type === 'teacher') {
+      showToast('Privileged roles require authentication with the corresponding account.');
       return;
     }
 
@@ -756,7 +838,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       accountType: type
     }));
-    showToast(`Account mode set to ${type === 'class_captain' ? 'Class Captain (CR)' : type === 'teacher' ? 'Teacher' : 'Student'}`);
+    showToast(`Account mode set to ${type === 'class_captain' ? 'Class Captain (CR)' : 'Student'}`);
   };
 
   const switchAccountType = (type: AccountType) => {
@@ -914,10 +996,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await response.json();
       if (!response.ok || !data.success) {
         return { success: false, message: data.error || 'Registration failed' };
-      }
-
-      if (data.sessionToken) {
-        setAuthToken(data.sessionToken);
       }
 
       const teacher: TeacherProfile = {
@@ -2227,22 +2305,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const resetAllData = () => {
     setAllStoredRoutines(INITIAL_ROUTINE);
     setUploadedRoutines([]);
-    setNotes(INITIAL_NOTES);
-    setAssignments(INITIAL_ASSIGNMENTS);
+    setNotes(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.notes));
+    setAssignments(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.assignments));
     setJobs(INITIAL_JOBS);
-    setReminders(INITIAL_REMINDERS);
-    setTeachers(INITIAL_TEACHERS);
+    setReminders(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.reminders));
+    setTeachers(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.teachers));
     setApplications(INITIAL_APPLICATIONS);
     setAnnouncements(INITIAL_ANNOUNCEMENTS);
-    setUserProfile(DEFAULT_STUDENT_PROFILE);
+    setUserProfile(EMPTY_STUDENT_PROFILE);
     setNotifications(DEFAULT_NOTIFICATION_SETTINGS);
-    setSelectedShift(DEFAULT_STUDENT_PROFILE.shift);
-    setSelectedSection(DEFAULT_STUDENT_PROFILE.section);
+    setSelectedShift(EMPTY_STUDENT_PROFILE.shift);
+    setSelectedSection(EMPTY_STUDENT_PROFILE.section);
     setShiftSchedules({
       Morning: buildDefaultShiftScheduleConfig('Morning', { scopeKey: 'default' }),
       Day: buildDefaultShiftScheduleConfig('Day', { scopeKey: 'default' })
     });
-    showToast('All demo data has been reset to defaults.');
+    showToast('Legacy demo content removed; user-created academic content preserved.');
   };
 
   return (
@@ -2254,6 +2332,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveScreen,
         isLoggedIn,
         login,
+        authenticateStudent,
         logout,
         accountType: userProfile.accountType,
         setAccountType,

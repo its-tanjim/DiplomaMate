@@ -6,7 +6,6 @@ import {
   SESSIONS 
 } from '../../data/mockData';
 import { 
-  AccountType, 
   Section, 
   SemesterNumber, 
   Shift, 
@@ -25,7 +24,6 @@ import {
   Building2, 
   GraduationCap, 
   Layers, 
-  Sparkles,
   Phone,
   Mail,
   Calendar,
@@ -37,8 +35,6 @@ export const ProfileScreen: React.FC = () => {
     userProfile, 
     setUserProfile, 
     accountType, 
-    setAccountType,
-    switchAccountType, 
     isServerVerifiedAdmin,
     logout, 
     setActiveScreen,
@@ -57,11 +53,6 @@ export const ProfileScreen: React.FC = () => {
     });
     setIsEditing(false);
     showToast('Profile updated successfully!');
-  };
-
-  const handleToggleAccountType = () => {
-    const nextType: AccountType = accountType === 'student' ? 'class_captain' : 'student';
-    setAccountType(nextType);
   };
 
   return (
@@ -514,16 +505,6 @@ export const ProfileScreen: React.FC = () => {
             </div>
           )}
 
-          {/* Quick Demo Profile Switcher */}
-          <div className="pt-2 border-t border-slate-100 flex flex-col xs:flex-row items-center justify-between gap-2">
-            <span className="text-xs text-slate-500">Need to test the other role?</span>
-            <button
-              onClick={() => switchAccountType(accountType === 'student' ? 'class_captain' : 'student')}
-              className="text-xs font-semibold text-[#2563EB] hover:underline"
-            >
-              Load {accountType === 'student' ? 'Class Captain (Nusrat CR)' : 'Student (Tanvir)'} Demo Data
-            </button>
-          </div>
         </div>
       )}
 

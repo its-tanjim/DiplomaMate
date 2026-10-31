@@ -136,7 +136,7 @@ export const RemindersScreen: React.FC = () => {
         {filteredReminders.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
             <BookmarkCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <h3 className="text-sm font-bold text-[#172554]">No reminders found</h3>
+            <h3 className="text-sm font-bold text-[#172554]">No reminders yet</h3>
             <p className="text-xs text-slate-500 mt-1">Add a new reminder to stay on track with your diploma studies.</p>
           </div>
         ) : (

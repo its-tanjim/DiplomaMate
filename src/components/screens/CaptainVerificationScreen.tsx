@@ -584,14 +584,11 @@ export const CaptainVerificationScreen: React.FC = () => {
               <input
                 type="password"
                 required
-                placeholder="Enter Teacher Faculty PIN (e.g., TCH-DPI-2026)"
+                placeholder="Enter your registered teacher PIN"
                 value={teacherPin}
                 onChange={(e) => setTeacherPin(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554] font-mono"
               />
-              <p className="text-[11px] text-slate-500 mt-1">
-                Valid Faculty PINs for demonstration: <span className="font-mono text-[#0D9488]">TCH-DPI-2026</span>, <span className="font-mono text-[#0D9488]">TCH-CST-666</span>, <span className="font-mono text-[#0D9488]">FACULTY-BTEB-77</span>.
-              </p>
             </div>
 
             <div>

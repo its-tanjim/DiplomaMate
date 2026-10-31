@@ -1,10 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
-  DEFAULT_STUDENT_PROFILE, 
-  DEFAULT_CAPTAIN_PROFILE,
-  DEFAULT_TEACHER_PROFILE,
-  MOCK_ENROLLED_STUDENTS,
   POLYTECHNIC_COLLEGES,
   DEPARTMENTS,
   SESSIONS
@@ -34,7 +30,6 @@ import {
   Calendar, 
   CheckCircle2, 
   AlertTriangle, 
-  Sparkles,
   Lock,
   Building,
   ArrowRight,
@@ -53,15 +48,15 @@ const normalizeDigits = (val: string): string =>
     .replace(/[\s\-_]+/g, '');
 
 export const WelcomeScreen: React.FC = () => {
-  const { login, teacherLogin, teacherRegister, setActiveScreen } = useApp();
+  const { login, authenticateStudent, teacherLogin, teacherRegister, setActiveScreen, showToast } = useApp();
   const [tab, setTab] = useState<'signin' | 'signup'>('signin');
   const [selectedRole, setSelectedRole] = useState<AccountType>('student');
 
   // Sign In Form State
-  const [signInRoll, setSignInRoll] = useState('542891');
-  const [signInReg, setSignInReg] = useState('1502187342');
-  const [teacherPhoneOrEmail, setTeacherPhoneOrEmail] = useState('+880 1819-334455');
-  const [teacherPin, setTeacherPin] = useState('1234');
+  const [signInRoll, setSignInRoll] = useState('');
+  const [signInReg, setSignInReg] = useState('');
+  const [teacherPhoneOrEmail, setTeacherPhoneOrEmail] = useState('');
+  const [teacherPin, setTeacherPin] = useState('');
   const [signInError, setSignInError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -111,48 +106,6 @@ export const WelcomeScreen: React.FC = () => {
     'Guest Lecturer'
   ];
 
-  const findRegisteredOrEnrolledStudent = (cleanRoll: string, cleanReg: string, role: AccountType): StudentProfile => {
-    try {
-      const savedRaw = localStorage.getItem('diplomamate_registered_students');
-      if (savedRaw) {
-        const savedList: StudentProfile[] = JSON.parse(savedRaw);
-        const match = savedList.find(s => normalizeDigits(s.boardRoll) === cleanRoll);
-        if (match) {
-          return {
-            ...match,
-            boardRoll: cleanRoll,
-            regNumber: cleanReg || match.regNumber,
-            accountType: role === 'class_captain' ? 'class_captain' : match.accountType
-          };
-        }
-      }
-    } catch {
-      // ignore localStorage read issues
-    }
-
-    const baseProfile = role === 'class_captain' ? DEFAULT_CAPTAIN_PROFILE : DEFAULT_STUDENT_PROFILE;
-    const enrolledMatch = MOCK_ENROLLED_STUDENTS.find(s => normalizeDigits(s.boardRoll) === cleanRoll);
-    if (enrolledMatch) {
-      return {
-        ...baseProfile,
-        ...enrolledMatch,
-        semester: (enrolledMatch.semester || baseProfile.semester) as SemesterNumber,
-        boardRoll: cleanRoll,
-        regNumber: cleanReg || enrolledMatch.regNumber,
-        accountType: role === 'class_captain' ? 'class_captain' : enrolledMatch.accountType,
-        captainVerificationStatus: role === 'class_captain'
-          ? (enrolledMatch.captainVerificationStatus === 'NotApplied' ? 'Approved' : enrolledMatch.captainVerificationStatus)
-          : enrolledMatch.captainVerificationStatus
-      };
-    }
-
-    return {
-      ...baseProfile,
-      boardRoll: cleanRoll,
-      regNumber: cleanReg
-    };
-  };
-
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setSignInError('');
@@ -180,9 +133,15 @@ export const WelcomeScreen: React.FC = () => {
           setSignInError('Board Roll must be a valid 4 to 8 digit number.');
           return;
         }
+        if (selectedRole !== 'student' && selectedRole !== 'class_captain') {
+          setSignInError('Select a student account type to continue.');
+          return;
+        }
 
-        const resolvedProfile = findRegisteredOrEnrolledStudent(cleanRoll, cleanReg, selectedRole);
-        login(resolvedProfile);
+        const result = await authenticateStudent(cleanRoll, cleanReg, selectedRole);
+        if (!result.success) {
+          setSignInError(result.message);
+        }
       }
     } finally {
       setIsSubmitting(false);
@@ -237,15 +196,10 @@ export const WelcomeScreen: React.FC = () => {
         if (!res.success) {
           setSignInError(res.message);
         } else {
-          // Authenticate and route directly to Teacher Profile Setup screen
-          const loginRes = await teacherLogin(teacherPhone.trim(), teacherNewPin.trim());
-          if (loginRes.success) {
-            setActiveScreen('teacher_setup');
-          } else {
-            setTab('signin');
-            setTeacherPhoneOrEmail(teacherPhone.trim());
-            setTeacherPin(teacherNewPin.trim());
-          }
+          setTab('signin');
+          setTeacherPhoneOrEmail(teacherPhone.trim());
+          setTeacherPin('');
+          showToast('Registration submitted. Sign in after an administrator approves your account.');
         }
       } else {
         const cleanRoll = normalizeDigits(signUpData.boardRoll || '');
@@ -371,23 +325,16 @@ export const WelcomeScreen: React.FC = () => {
     }
   };
 
-  const handleFinishOnboarding = () => {
+  const handleFinishOnboarding = async () => {
     if (onboardingProfile) {
-      login(onboardingProfile);
+      const result = await login(onboardingProfile);
+      if (!result.success) {
+        showToast(result.message);
+        return;
+      }
       if (joinedCommunityIds.length > 0) {
         setActiveScreen('community');
       }
-    }
-  };
-
-  const handleQuickLogin = (role: AccountType) => {
-    setSelectedRole(role);
-    if (role === 'teacher') {
-      teacherLogin('+880 1819-334455', '1234');
-    } else if (role === 'class_captain') {
-      login(DEFAULT_CAPTAIN_PROFILE);
-    } else {
-      login(DEFAULT_STUDENT_PROFILE);
     }
   };
 
@@ -507,45 +454,8 @@ export const WelcomeScreen: React.FC = () => {
           </p>
         </div>
 
-        {/* Quick Demo Login Shortcut Strip (3 Roles) */}
-        <div className="mt-5 bg-white rounded-xl border border-slate-200/80 p-3 shadow-xs">
-          <div className="text-xs font-semibold text-slate-700 mb-2 flex items-center justify-between">
-            <span className="flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Instant Demo Access</span>
-            </span>
-            <span className="text-[10px] text-slate-400">Pre-authenticated</span>
-          </div>
-          <div className="grid grid-cols-3 gap-1.5">
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('student')}
-              className="flex flex-col items-center justify-center py-2 px-1 rounded-lg bg-blue-50 border border-blue-200/80 text-[#2563EB] text-[11px] font-bold hover:bg-blue-100 transition-colors cursor-pointer"
-            >
-              <UserCheck className="w-4 h-4 mb-0.5" />
-              <span>Student</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('class_captain')}
-              className="flex flex-col items-center justify-center py-2 px-1 rounded-lg bg-teal-50 border border-teal-200/80 text-[#0D9488] text-[11px] font-bold hover:bg-teal-100 transition-colors cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4 mb-0.5" />
-              <span>Captain (CR)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('teacher')}
-              className="flex flex-col items-center justify-center py-2 px-1 rounded-lg bg-indigo-50 border border-indigo-200/80 text-indigo-700 text-[11px] font-bold hover:bg-indigo-100 transition-colors cursor-pointer"
-            >
-              <GraduationCap className="w-4 h-4 mb-0.5" />
-              <span>Teacher</span>
-            </button>
-          </div>
-        </div>
-
         {/* Main Card */}
-        <div className="mt-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 sm:p-6">
+        <div className="mt-5 bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 sm:p-6">
           {/* Sign In vs Sign Up Tabs */}
           <div className="flex rounded-lg bg-slate-100 p-1 mb-4">
             <button
@@ -648,7 +558,6 @@ export const WelcomeScreen: React.FC = () => {
                   <div>
                     <label className="block text-xs font-semibold text-[#172554] mb-1 flex items-center justify-between">
                       <span>Faculty Security PIN</span>
-                      <span className="text-[10px] text-slate-400 font-mono">Demo: 1234</span>
                     </label>
                     <input
                       type="password"
@@ -674,7 +583,7 @@ export const WelcomeScreen: React.FC = () => {
                     <input
                       type="text"
                       required
-                      placeholder="e.g. 542891"
+                      placeholder="Enter your Board Roll Number"
                       value={signInRoll}
                       onChange={(e) => setSignInRoll(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -688,7 +597,7 @@ export const WelcomeScreen: React.FC = () => {
                     <input
                       type="text"
                       required
-                      placeholder="e.g. 1502187342"
+                      placeholder="Enter your Registration Number"
                       value={signInReg}
                       onChange={(e) => setSignInReg(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -865,7 +774,7 @@ export const WelcomeScreen: React.FC = () => {
                         type="password"
                         required
                         maxLength={8}
-                        placeholder="e.g. 1234"
+                        placeholder="Enter your PIN"
                         value={teacherNewPin}
                         onChange={(e) => setTeacherNewPin(e.target.value)}
                         className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-center font-mono"
@@ -915,7 +824,7 @@ export const WelcomeScreen: React.FC = () => {
                       <input
                         type="text"
                         required
-                        placeholder="542891"
+                        placeholder="Enter your Board Roll"
                         value={signUpData.boardRoll}
                         onChange={(e) => setSignUpData({ ...signUpData, boardRoll: e.target.value })}
                         className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-mono"
@@ -926,7 +835,7 @@ export const WelcomeScreen: React.FC = () => {
                       <input
                         type="text"
                         required
-                        placeholder="1502187342"
+                        placeholder="Enter your Registration Number"
                         value={signUpData.regNumber}
                         onChange={(e) => setSignUpData({ ...signUpData, regNumber: e.target.value })}
                         className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-mono"

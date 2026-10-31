@@ -1053,9 +1053,15 @@ export const CommunityScreen: React.FC = () => {
                   <div className="w-12 h-12 rounded-full bg-blue-50 text-[#2563EB] mx-auto flex items-center justify-center mb-3">
                     <Users className="w-6 h-6" />
                   </div>
-                  <h3 className="font-bold text-base text-[#172554]">No joined communities yet</h3>
+                  <h3 className="font-bold text-base text-[#172554]">
+                    {communities.length === 0 ? 'No communities created yet' : 'No joined communities yet'}
+                  </h3>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
-                    You haven't joined any academic groups. Check the "Discover Cohort Groups" tab to find and join study groups for your polytechnic department.
+                    {communities.length === 0
+                      ? accountType === 'system_admin' && isServerVerifiedAdmin
+                        ? 'Create an academic community for students to collaborate.'
+                        : 'No academic communities have been created yet. Check back later.'
+                      : 'You have not joined any academic groups. Check the "Discover Cohort Groups" tab to find and join study groups for your polytechnic department.'}
                   </p>
                   <button
                     onClick={() => setActiveTab('discover')}
@@ -1250,7 +1256,13 @@ export const CommunityScreen: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {communities.map((comm) => (
+                    {communities.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="p-6 text-center text-slate-500">
+                          No communities created yet.
+                        </td>
+                      </tr>
+                    ) : communities.map((comm) => (
                       <tr key={comm.id} className="hover:bg-slate-50/80">
                         <td className="p-3 font-semibold text-slate-800">{comm.name}</td>
                         <td className="p-3 text-slate-600">{comm.department} · Sem {comm.semester}</td>

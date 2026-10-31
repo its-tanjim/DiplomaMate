@@ -2120,11 +2120,11 @@ export const NotesAssignmentsScreen: React.FC = () => {
           {filteredAssignments.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
               <FileCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <h3 className="text-sm font-bold text-[#172554]">No assignments found!</h3>
+              <h3 className="text-sm font-bold text-[#172554]">No assignments yet</h3>
               <p className="text-xs text-slate-500 mt-1">
                 {isTeacher
                   ? 'Click "Post Assignment" above to publish a new assignment for your class.'
-                  : 'Enjoy your free time or prepare for upcoming lab work.'}
+                  : 'No assignments have been published for your class yet.'}
               </p>
             </div>
           ) : (

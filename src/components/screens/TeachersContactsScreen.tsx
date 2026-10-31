@@ -430,8 +430,12 @@ export const TeachersContactsScreen: React.FC = () => {
         {filteredTeachers.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
             <Contact2 className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <h3 className="text-sm font-bold text-[#172554]">No teachers found</h3>
-            <p className="text-xs text-slate-500 mt-1">Try another search term or filter.</p>
+            <h3 className="text-sm font-bold text-[#172554]">
+              {teachers.length === 0 ? 'No teacher contacts yet' : 'No teachers found'}
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              {teachers.length === 0 ? 'Teacher contacts will appear here when available.' : 'Try another search term or filter.'}
+            </p>
           </div>
         ) : (
           filteredTeachers.map((tch) => {

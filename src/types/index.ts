@@ -128,7 +128,6 @@ export interface CaptainApplication {
     teacherId?: string;
     teacherName: string;
     teacherDesignation: string;
-    teacherPinOrCode: string;
     endorsedAt: string;
     comments?: string;
   };
@@ -1206,4 +1205,3 @@ export interface DocumentScanResult {
   captainFormData?: CaptainFormExtractionData;
   videoData?: VideoExtractionData;
 }
-

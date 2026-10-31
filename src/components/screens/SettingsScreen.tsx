@@ -323,8 +323,8 @@ export const SettingsScreen: React.FC = () => {
       {/* Reset Data Option */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex items-center justify-between">
         <div>
-          <h3 className="text-xs font-bold text-[#172554]">Restore Default Demo Data</h3>
-          <p className="text-[11px] text-slate-500">Reset routine, teachers, assignments and reminders</p>
+          <h3 className="text-xs font-bold text-[#172554]">Reset Local Demo Data</h3>
+          <p className="text-[11px] text-slate-500">Reset routine and remove legacy notes, assignments, reminders, and teacher contacts</p>
         </div>
         <button
           onClick={resetAllData}
