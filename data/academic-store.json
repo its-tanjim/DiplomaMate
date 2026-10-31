@@ -30,7 +30,8 @@
       "phone": "+880 1712-345678",
       "accountType": "student",
       "captainVerificationStatus": "NotApplied",
-      "attendanceRate": "92%"
+      "attendanceRate": "92%",
+      "isRegisteredAccount": true
     },
     {
       "id": "std_02_rahim",
@@ -247,12 +248,13 @@
         "A1",
         "B1"
       ],
-      "verificationStatus": "Verified",
+      "verificationStatus": "Rejected",
       "pinSalt": "22bea4e6a80dd768218e328cffa83930",
       "pinHash": "17045b76f49b9071a90cba4a1da4bd2df7cd29470fb0b68382e18309d91994d5",
       "failedPinAttempts": 0,
       "lockoutUntil": null,
-      "createdAt": "2026-09-01"
+      "createdAt": "2026-09-01",
+      "adminNotes": "11\n"
     },
     {
       "id": "tch_02",
@@ -275,12 +277,13 @@
         "A1",
         "A2"
       ],
-      "verificationStatus": "Verified",
+      "verificationStatus": "Rejected",
       "pinSalt": "4cd2636945640fcd21d560f1c4bbee74",
       "pinHash": "6601291f36dbd7c151a3c6447cf103d53a7075919ffee517f45c834569d247da",
       "failedPinAttempts": 0,
       "lockoutUntil": null,
-      "createdAt": "2026-09-10"
+      "createdAt": "2026-09-10",
+      "adminNotes": "22"
     },
     {
       "id": "tch_03",
@@ -303,12 +306,13 @@
         "A1",
         "B1"
       ],
-      "verificationStatus": "Verified",
+      "verificationStatus": "Rejected",
       "pinSalt": "51de84945169656766e8970f8d67fc06",
       "pinHash": "389edc343ee6eae2e20938f69991bf3d1f2ab024b38b77a709d008e651615418",
       "failedPinAttempts": 0,
       "lockoutUntil": null,
-      "createdAt": "2026-09-15"
+      "createdAt": "2026-09-15",
+      "adminNotes": "22"
     },
     {
       "id": "tch_04",
@@ -328,13 +332,13 @@
       "sectionsTaught": [
         "A1"
       ],
-      "verificationStatus": "Pending",
+      "verificationStatus": "Rejected",
       "pinSalt": "1b40ad12422647818db000010bbffd64",
       "pinHash": "65086e79d512be4257072497a02bf537b690221f1d1757a3e92d3023b09ea112",
       "failedPinAttempts": 0,
       "lockoutUntil": null,
       "createdAt": "2026-10-22",
-      "adminNotes": "Awaiting departmental credentials review"
+      "adminNotes": "2"
     }
   ],
   "attendanceSheets": [
@@ -1538,8 +1542,9 @@
       "is_active": false,
       "avatar_emoji": "📚",
       "created_at": "2026-10-25T01:11:09.567Z",
-      "updated_at": "2026-10-31T06:43:58.530Z",
-      "pinned_notice_id": "msg_1792890669592_38qjd"
+      "updated_at": "2026-10-31T07:49:46.759Z",
+      "pinned_notice_id": "msg_1792890669592_38qjd",
+      "deleted_at": "2026-10-31T07:49:46.759Z"
     },
     {
       "id": "comm_1792890669571_3m5vj",
@@ -1564,8 +1569,9 @@
       "is_active": false,
       "avatar_emoji": "🎓",
       "created_at": "2026-10-25T01:11:09.571Z",
-      "updated_at": "2026-10-31T06:44:19.393Z",
-      "pinned_notice_id": "msg_1792890669571_welcome"
+      "updated_at": "2026-10-31T07:49:50.743Z",
+      "pinned_notice_id": "msg_1792890669571_welcome",
+      "deleted_at": "2026-10-31T07:49:50.743Z"
     },
     {
       "id": "comm_1792890794311_rb4fa",
@@ -1590,8 +1596,9 @@
       "is_active": false,
       "avatar_emoji": "📚",
       "created_at": "2026-10-25T01:13:14.311Z",
-      "updated_at": "2026-10-31T06:44:25.112Z",
-      "pinned_notice_id": "msg_1792890794333_b68d8"
+      "updated_at": "2026-10-31T07:49:54.143Z",
+      "pinned_notice_id": "msg_1792890794333_b68d8",
+      "deleted_at": "2026-10-31T07:49:54.143Z"
     },
     {
       "id": "comm_1792890794314_thgik",
@@ -1616,8 +1623,9 @@
       "is_active": false,
       "avatar_emoji": "🎓",
       "created_at": "2026-10-25T01:13:14.314Z",
-      "updated_at": "2026-10-31T06:44:28.721Z",
-      "pinned_notice_id": "msg_1792890794314_welcome"
+      "updated_at": "2026-10-31T07:49:57.023Z",
+      "pinned_notice_id": "msg_1792890794314_welcome",
+      "deleted_at": "2026-10-31T07:49:57.023Z"
     }
   ],
   "communityMemberships": [
@@ -1956,8 +1964,88 @@
       "created_at": "2026-10-25T01:13:14.350Z"
     }
   ],
-  "deletedAccountIds": [],
-  "adminAuditLogs": [],
+  "deletedAccountIds": [
+    "std_01"
+  ],
+  "adminAuditLogs": [
+    {
+      "id": "audit_095f8a74-a9a3-4590-b5c9-37bccae9dc00",
+      "adminId": "sysadmin_1792821774886",
+      "action": "account_rejected",
+      "targetId": "tch_02",
+      "targetName": "Engr. Shamima Nasrin",
+      "timestamp": "2026-10-31T07:50:41.607Z"
+    },
+    {
+      "id": "audit_82dfe50d-9ff6-4297-bd33-ad33ece06d6c",
+      "adminId": "sysadmin_1792821774886",
+      "action": "account_rejected",
+      "targetId": "tch_03",
+      "targetName": "Engr. Md. Rafiqul Islam",
+      "timestamp": "2026-10-31T07:50:31.103Z"
+    },
+    {
+      "id": "audit_2842cccd-425b-40cc-88c4-1e00e64bca03",
+      "adminId": "sysadmin_1792821774886",
+      "action": "account_rejected",
+      "targetId": "tch_04",
+      "targetName": "Engr. Kazi Farhan Ahmed",
+      "timestamp": "2026-10-31T07:50:18.487Z"
+    },
+    {
+      "id": "audit_dc06e46f-ca7c-4978-887a-dbb9881c238b",
+      "adminId": "sysadmin_1792821774886",
+      "action": "community_deleted",
+      "targetId": "comm_1792890794314_thgik",
+      "targetName": "Microprocessor Lab Project Group",
+      "timestamp": "2026-10-31T07:49:57.023Z",
+      "details": "Soft-deleted; messages and memberships retained."
+    },
+    {
+      "id": "audit_4cc2b35c-0b6d-43d1-9bd5-6d2e09e6e6a5",
+      "adminId": "sysadmin_1792821774886",
+      "action": "community_deleted",
+      "targetId": "comm_1792890794311_rb4fa",
+      "targetName": "CST 6th Semester Study Group",
+      "timestamp": "2026-10-31T07:49:54.143Z",
+      "details": "Soft-deleted; messages and memberships retained."
+    },
+    {
+      "id": "audit_b762d20b-4a44-4cb5-a85d-ec8ed58b53c5",
+      "adminId": "sysadmin_1792821774886",
+      "action": "community_deleted",
+      "targetId": "comm_1792890669571_3m5vj",
+      "targetName": "Microprocessor Lab Project Group",
+      "timestamp": "2026-10-31T07:49:50.743Z",
+      "details": "Soft-deleted; messages and memberships retained."
+    },
+    {
+      "id": "audit_42e475bf-98b4-4347-b6b6-a3f40ea822c0",
+      "adminId": "sysadmin_1792821774886",
+      "action": "community_deleted",
+      "targetId": "comm_1792890669567_qo385",
+      "targetName": "CST 6th Semester Study Group",
+      "timestamp": "2026-10-31T07:49:46.759Z",
+      "details": "Soft-deleted; messages and memberships retained."
+    },
+    {
+      "id": "audit_673f107c-c872-45d3-831d-5881cd5ef706",
+      "adminId": "sysadmin_1792821774886",
+      "action": "account_deleted",
+      "targetId": "std_01",
+      "targetName": "Tanvir Ahmed",
+      "timestamp": "2026-10-31T07:49:26.928Z",
+      "details": "Soft-deleted; related academic records retained."
+    },
+    {
+      "id": "audit_ca866853-7e95-4131-8f0f-c11c88f946e3",
+      "adminId": "sysadmin_1792821774886",
+      "action": "account_rejected",
+      "targetId": "tch_01",
+      "targetName": "Engr. Md. Mahbubur Rahman",
+      "timestamp": "2026-10-31T07:49:12.496Z"
+    }
+  ],
   "jobs": [
     {
       "id": "job_01",
