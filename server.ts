@@ -119,6 +119,28 @@ const app = express();
 // AI Studio dev environment requires port 3000. Use process.env.PORT only in production container deployments.
 const PORT = process.env.NODE_ENV === 'production' && process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+const allowedAppOrigins = new Set(['https://localhost']);
+for (const configuredUrl of [process.env.APP_URL, process.env.VITE_API_BASE_URL]) {
+  if (!configuredUrl?.trim()) continue;
+  const parsedUrl = new URL(configuredUrl.trim());
+  if (parsedUrl.protocol !== 'https:' || parsedUrl.username || parsedUrl.password) {
+    throw new Error('APP_URL and VITE_API_BASE_URL must use HTTPS and must not contain credentials.');
+  }
+  allowedAppOrigins.add(parsedUrl.origin);
+}
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const origin = req.get('Origin');
+  if (origin && allowedAppOrigins.has(origin)) {
+    res.vary('Origin');
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+  }
+  next();
+});
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
