@@ -3094,16 +3094,18 @@ async function fetchLiveBtebResults(
       }
 
       if (response.status === 403 || response.status >= 500) {
-        const err: any = new Error(`External BTEB result server returned HTTP ${response.status}`);
-        err.code = 'UPSTREAM_UNAVAILABLE';
-        throw err;
-      }
+        const responseBody = await response.text();
+        console.error(
+        `[BTEB Results Lookup] Upstream HTTP ${response.status} response:`,
+        responseBody.slice(0, 1000)
+       );
 
-      if (!response.ok) {
-        const err: any = new Error(`Unexpected HTTP ${response.status} from external BTEB result service`);
+        const err: any = new Error(
+       `External BTEB result server returned HTTP ${response.status}`
+       );
         err.code = 'UPSTREAM_UNAVAILABLE';
         throw err;
-      }
+     }
 
       const json = (await response.json()) as any;
       if (json && json.success && Array.isArray(json.data)) {
