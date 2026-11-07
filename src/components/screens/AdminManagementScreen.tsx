@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '../../services/apiClient';
 import {
   AcademicCommunity,
   CommunityMembershipRecord
@@ -127,7 +128,7 @@ export const AdminManagementScreen: React.FC = () => {
   }), [authToken]);
 
   const request = async (url: string, init: RequestInit = {}) => {
-    const response = await fetch(url, {
+    const response = await apiFetch(url, {
       ...init,
       headers: { ...headers, ...(init.headers || {}) }
     });
@@ -368,7 +369,7 @@ export const AdminManagementScreen: React.FC = () => {
   const addableAccounts = (payload?.accounts || []).filter(item => !item.deleted && !memberIds.has(item.id));
 
   if (!isServerVerifiedAdmin) {
-    return <div className="rounded-2xl border border-rose-200 bg-white p-5 text-sm text-rose-700">A server-verified administrator session is required.</div>;
+    return <div className="rounded-2xl border border-rose-200 bg-surface p-5 text-sm text-rose-700">A server-verified administrator session is required.</div>;
   }
 
   return (
@@ -395,14 +396,14 @@ export const AdminManagementScreen: React.FC = () => {
           ['access', 'Feature access']
         ] as const).map(([id, label]) => (
           <button key={id} type="button" onClick={() => setSection(id)}
-            className={`rounded-lg px-2 py-2 text-xs font-bold ${section === id ? 'bg-white text-[#172554] shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
+            className={`rounded-lg px-2 py-2 text-xs font-bold ${section === id ? 'bg-surface text-text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
             {label}
           </button>
         ))}
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white p-10 text-sm text-slate-600">
+        <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-surface p-10 text-sm text-slate-600">
           <LoaderCircle className="h-5 w-5 animate-spin" /> Loading management data...
         </div>
       ) : (
@@ -411,7 +412,7 @@ export const AdminManagementScreen: React.FC = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-[#172554]">Admin Dashboard</h2>
+                  <h2 className="text-lg font-bold text-text-primary">Admin Dashboard</h2>
                   <p className="text-xs text-slate-500">Live counts from the server-backed academic account and community stores.</p>
                 </div>
                 <button type="button" onClick={() => void loadManagement()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
@@ -423,22 +424,22 @@ export const AdminManagementScreen: React.FC = () => {
                   ['Total users', payload?.stats.totalUsers ?? 0, Users, 'bg-blue-50 text-blue-700'],
                   ['Pending accounts', payload?.stats.pendingAccounts ?? 0, Clock, 'bg-amber-50 text-amber-700'],
                   ['Approved accounts', payload?.stats.approvedAccounts ?? 0, CheckCircle2, 'bg-teal-50 text-teal-700'],
-                  ['Students', payload?.stats.students ?? 0, GraduationCap, 'bg-indigo-50 text-indigo-700'],
+                  ['Students', payload?.stats.students ?? 0, GraduationCap, 'bg-blue-50 text-blue-700'],
                   ['Class Captains', payload?.stats.captains ?? 0, ShieldCheck, 'bg-violet-50 text-violet-700'],
                   ['Teachers', payload?.stats.teachers ?? 0, BookOpen, 'bg-sky-50 text-sky-700'],
-                  ['Communities', payload?.stats.totalCommunities ?? 0, Users, 'bg-emerald-50 text-emerald-700']
+                  ['Communities', payload?.stats.totalCommunities ?? 0, Users, 'bg-green-50 text-green-700']
                 ] as const).map(([label, count, Icon, colorClass]) => (
-                  <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div key={String(label)} className="rounded-2xl border border-slate-200 bg-surface p-4 shadow-sm">
                     <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${colorClass}`}>
                       <Icon className="h-4 w-4" />
                     </div>
-                    <div className="text-2xl font-bold text-[#172554]">{count}</div>
+                    <div className="text-2xl font-bold text-text-primary">{count}</div>
                     <div className="mt-1 text-xs font-medium text-slate-500">{label}</div>
                   </div>
                 ))}
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-bold text-[#172554]"><Activity className="h-4 w-4 text-teal-600" />Recent admin actions</div>
+              <div className="rounded-2xl border border-slate-200 bg-surface p-4">
+                <div className="mb-3 flex items-center gap-2 text-sm font-bold text-text-primary"><Activity className="h-4 w-4 text-teal-600" />Recent admin actions</div>
                 {(payload?.auditLogs || []).slice(0, 5).length ? (
                   <div className="divide-y divide-slate-100">
                     {(payload?.auditLogs || []).slice(0, 5).map(log => (
@@ -454,10 +455,10 @@ export const AdminManagementScreen: React.FC = () => {
           )}
 
           {section === 'access' && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-surface p-4 shadow-sm">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-[#172554]">Teacher Contact access</h2>
+                  <h2 className="text-lg font-bold text-text-primary">Teacher Contact access</h2>
                   <p className="mt-1 max-w-xl text-xs text-slate-600">
                     {teacherContactsLocked
                       ? 'Access is locked. The existing payment and unlock flow is active.'
@@ -494,36 +495,36 @@ export const AdminManagementScreen: React.FC = () => {
 
           {section === 'accounts' && (
             <div className="space-y-3">
-              <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="rounded-2xl border border-slate-200 bg-surface p-3 shadow-sm">
                 <div className="flex flex-col gap-2 md:flex-row">
                   <div className="relative min-w-0 flex-1">
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                     <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name, roll, department, semester..."
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs outline-none focus:border-blue-400" />
                   </div>
-                  <select value={roleFilter} onChange={event => setRoleFilter(event.target.value as 'All' | ManagedRole)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
+                  <select value={roleFilter} onChange={event => setRoleFilter(event.target.value as 'All' | ManagedRole)} className="rounded-xl border border-slate-200 bg-surface px-3 py-2 text-xs">
                     <option value="All">All roles</option><option value="student">Student</option><option value="class_captain">Class Captain</option><option value="teacher">Teacher</option>
                   </select>
-                  <select value={statusFilter} onChange={event => setStatusFilter(event.target.value as 'All' | ApprovalStatus)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
+                  <select value={statusFilter} onChange={event => setStatusFilter(event.target.value as 'All' | ApprovalStatus)} className="rounded-xl border border-slate-200 bg-surface px-3 py-2 text-xs">
                     <option value="All">All statuses</option><option value="Pending">Pending</option><option value="Approved">Approved</option><option value="Rejected">Rejected</option>
                   </select>
                 </div>
               </div>
               <div className="grid gap-2">
                 {filteredAccounts.map(account => (
-                  <article key={account.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                  <article key={account.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-surface p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="truncate text-sm font-bold text-[#172554]">{account.name}</h3>
+                        <h3 className="truncate text-sm font-bold text-text-primary">{account.name}</h3>
                         <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{roleLabel[account.role]}</span>
                         <span className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${statusClass[account.approvalStatus]}`}>{account.approvalStatus}</span>
                       </div>
                       <p className="mt-1 truncate text-xs text-slate-500">{account.roll ? `Roll ${account.roll} · ` : ''}{account.department || account.email || account.phone || account.id}{account.semester ? ` · Sem ${account.semester}` : ''}</p>
                     </div>
-                    <button type="button" onClick={() => void viewAccount(account)} className="shrink-0 rounded-xl bg-[#172554] px-4 py-2 text-xs font-bold text-white hover:bg-blue-950">View details</button>
+                    <button type="button" onClick={() => void viewAccount(account)} className="shrink-0 rounded-xl bg-text-primary px-4 py-2 text-xs font-bold text-white hover:bg-blue-950">View details</button>
                   </article>
                 ))}
-                {!filteredAccounts.length && <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-xs text-slate-500">No accounts match these filters.</div>}
+                {!filteredAccounts.length && <div className="rounded-2xl border border-dashed border-slate-300 bg-surface p-8 text-center text-xs text-slate-500">No accounts match these filters.</div>}
               </div>
             </div>
           )}
@@ -531,14 +532,14 @@ export const AdminManagementScreen: React.FC = () => {
           {section === 'communities' && (
             <div className="space-y-3">
               <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-                <div><h2 className="text-lg font-bold text-[#172554]">Community management</h2><p className="text-xs text-slate-500">Create, edit, archive, and manage members and moderators.</p></div>
-                <button type="button" onClick={() => { setError(''); setCommunityModal(emptyDraft()); }} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#172554] px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-950"><Plus className="h-4 w-4" />Create community</button>
+                <div><h2 className="text-lg font-bold text-text-primary">Community management</h2><p className="text-xs text-slate-500">Create, edit, archive, and manage members and moderators.</p></div>
+                <button type="button" onClick={() => { setError(''); setCommunityModal(emptyDraft()); }} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-text-primary px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-950"><Plus className="h-4 w-4" />Create community</button>
               </div>
               {(payload?.communities || []).map(community => (
-                <article key={community.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center">
+                <article key={community.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-surface p-4 shadow-sm sm:flex-row sm:items-center">
                   {community.image_url ? <img src={community.image_url} alt="" className="h-12 w-12 rounded-xl object-cover" /> : <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-lg">{community.avatar_emoji || '👥'}</div>}
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-sm font-bold text-[#172554]">{community.name}</h3>
+                    <div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-sm font-bold text-text-primary">{community.name}</h3>
                       <span className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${community.deleted_at ? 'border-rose-200 bg-rose-50 text-rose-700' : community.is_active ? 'border-teal-200 bg-teal-50 text-teal-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>{community.deleted_at ? 'Deleted' : community.is_active ? 'Active' : 'Inactive'}</span>
                     </div>
                     <p className="mt-1 truncate text-xs text-slate-500">{community.department} · Semester {community.semester} · {community.member_count} members · {community.visibility}</p>
@@ -561,13 +562,13 @@ export const AdminManagementScreen: React.FC = () => {
                   </div>
                 </article>
               ))}
-              {!payload?.communities.length && <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-xs text-slate-500">No communities have been created.</div>}
+              {!payload?.communities.length && <div className="rounded-2xl border border-dashed border-slate-300 bg-surface p-8 text-center text-xs text-slate-500">No communities have been created.</div>}
             </div>
           )}
 
           {section === 'audit' && (
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-              <div className="border-b border-slate-100 p-4"><h2 className="text-sm font-bold text-[#172554]">Admin audit log</h2><p className="text-xs text-slate-500">Most recent 100 actions. The server retains up to 5,000 records.</p></div>
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-surface">
+              <div className="border-b border-slate-100 p-4"><h2 className="text-sm font-bold text-text-primary">Admin audit log</h2><p className="text-xs text-slate-500">Most recent 100 actions. The server retains up to 5,000 records.</p></div>
               {(payload?.auditLogs || []).length ? (payload?.auditLogs || []).map(log => (
                 <div key={log.id} className="grid gap-1 border-b border-slate-100 p-3 text-xs sm:grid-cols-[1fr_auto]">
                   <div><div className="font-semibold capitalize text-slate-800">{log.action.replaceAll('_', ' ')} · {log.targetName}</div><div className="mt-0.5 text-slate-500">Target {log.targetId} · Admin {log.adminId}{log.details ? ` · ${log.details}` : ''}</div></div>
@@ -581,8 +582,8 @@ export const AdminManagementScreen: React.FC = () => {
 
       {selectedAccount && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3" role="dialog" aria-modal="true" aria-label="Account details">
-          <div className="my-auto w-full max-w-xl rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 p-4"><div><h2 className="font-bold text-[#172554]">Account details</h2><p className="text-xs text-slate-500">{roleLabel[selectedAccount.role]} · {selectedAccount.id}</p></div><button type="button" onClick={() => setSelectedAccount(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-4 w-4" /></button></div>
+          <div className="my-auto w-full max-w-xl rounded-2xl bg-surface shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 p-4"><div><h2 className="font-bold text-text-primary">Account details</h2><p className="text-xs text-slate-500">{roleLabel[selectedAccount.role]} · {selectedAccount.id}</p></div><button type="button" onClick={() => setSelectedAccount(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-4 w-4" /></button></div>
             <div className="max-h-[65vh] space-y-3 overflow-y-auto p-4">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {Object.entries({
@@ -618,8 +619,8 @@ export const AdminManagementScreen: React.FC = () => {
 
       {communityModal && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3" role="dialog" aria-modal="true" aria-label="Edit community">
-          <form onSubmit={saveCommunity} className="my-auto max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white p-4"><div><h2 className="font-bold text-[#172554]">{communityModal.id ? 'Edit community' : 'Create community'}</h2><p className="text-xs text-slate-500">Settings are validated and saved on the server.</p></div><button type="button" onClick={() => setCommunityModal(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-4 w-4" /></button></div>
+          <form onSubmit={saveCommunity} className="my-auto max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl">
+            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-surface p-4"><div><h2 className="font-bold text-text-primary">{communityModal.id ? 'Edit community' : 'Create community'}</h2><p className="text-xs text-slate-500">Settings are validated and saved on the server.</p></div><button type="button" onClick={() => setCommunityModal(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-4 w-4" /></button></div>
             <div className="grid gap-3 p-4 sm:grid-cols-2">
               <label className="space-y-1 text-xs font-semibold text-slate-700 sm:col-span-2">Name<input required maxLength={120} value={communityModal.name} onChange={event => setCommunityModal({ ...communityModal, name: event.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal" /></label>
               <label className="space-y-1 text-xs font-semibold text-slate-700 sm:col-span-2">Description<textarea maxLength={2000} rows={3} value={communityModal.description} onChange={event => setCommunityModal({ ...communityModal, description: event.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal" /></label>
@@ -631,16 +632,16 @@ export const AdminManagementScreen: React.FC = () => {
               <label className="space-y-1 text-xs font-semibold text-slate-700">Visibility<select value={communityModal.visibility} onChange={event => setCommunityModal({ ...communityModal, visibility: event.target.value as CommunityDraft['visibility'] })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal"><option value="public">Public</option><option value="private">Private</option></select></label>
               <label className="space-y-1 text-xs font-semibold text-slate-700 sm:col-span-2">Image URL or upload<input value={communityModal.image_url.startsWith('data:') ? 'Image uploaded' : communityModal.image_url} onChange={event => setCommunityModal({ ...communityModal, image_url: event.target.value })} placeholder="https://..." className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal" /><span className="flex items-center gap-2 pt-1"><ImagePlus className="h-4 w-4" /><input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadCommunityImage} className="text-[11px] font-normal" />Max 350 KB</span></label>
             </div>
-            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 p-4 sm:flex-row sm:justify-end"><button type="button" onClick={() => setCommunityModal(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold">Cancel</button><button type="submit" disabled={saving} className="rounded-xl bg-[#172554] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{saving ? 'Saving...' : communityModal.id ? 'Save changes' : 'Create community'}</button></div>
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 p-4 sm:flex-row sm:justify-end"><button type="button" onClick={() => setCommunityModal(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold">Cancel</button><button type="submit" disabled={saving} className="rounded-xl bg-text-primary px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{saving ? 'Saving...' : communityModal.id ? 'Save changes' : 'Create community'}</button></div>
           </form>
         </div>
       )}
 
       {membersCommunity && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3" role="dialog" aria-modal="true" aria-label="Community members">
-          <div className="my-auto max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white p-4"><div><h2 className="font-bold text-[#172554]">Members · {membersCommunity.name}</h2><p className="text-xs text-slate-500">{activeCommunityMembers.length} membership records</p></div><button type="button" onClick={() => setMembersCommunity(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-4 w-4" /></button></div>
-            <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row"><select value={memberToAdd} onChange={event => setMemberToAdd(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs"><option value="">Select an account to add</option>{addableAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · {roleLabel[account.role]}</option>)}</select><button type="button" onClick={() => void addMember()} disabled={!memberToAdd || saving} className="rounded-xl bg-[#172554] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Add member</button></div>
+          <div className="my-auto max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl">
+            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-surface p-4"><div><h2 className="font-bold text-text-primary">Members · {membersCommunity.name}</h2><p className="text-xs text-slate-500">{activeCommunityMembers.length} membership records</p></div><button type="button" onClick={() => setMembersCommunity(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-4 w-4" /></button></div>
+            <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row"><select value={memberToAdd} onChange={event => setMemberToAdd(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs"><option value="">Select an account to add</option>{addableAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · {roleLabel[account.role]}</option>)}</select><button type="button" onClick={() => void addMember()} disabled={!memberToAdd || saving} className="rounded-xl bg-text-primary px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Add member</button></div>
             <div className="divide-y divide-slate-100">
               {activeCommunityMembers.map(membership => (
                 <div key={membership.id} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center">

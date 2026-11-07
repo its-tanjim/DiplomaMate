@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/apiClient';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   BookOpen,
@@ -91,7 +92,7 @@ export const BookListScreen: React.FC = () => {
           semester: String(selectedSemester),
           sortBy
         });
-        const res = await fetch(`/api/catalog/subjects?${params.toString()}`);
+        const res = await apiFetch(`/api/catalog/subjects?${params.toString()}`);
         const data = await res.json();
         if (!cancelled && res.ok && Array.isArray(data.records)) {
           setRecords(data.records);
@@ -176,10 +177,10 @@ export const BookListScreen: React.FC = () => {
   return (
     <div className="space-y-4 pb-6">
       {/* Header Banner */}
-      <div className="bg-gradient-to-br from-indigo-950 via-indigo-900 to-slate-900 rounded-2xl p-4 sm:p-5 text-white shadow-md relative overflow-hidden">
+      <div className="bg-gradient-to-br from-blue-950 via-blue-900 to-slate-900 rounded-2xl p-4 sm:p-5 text-white shadow-md relative overflow-hidden">
         <div className="relative z-10 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 text-[10px] font-bold uppercase tracking-wider">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-blue-500/20 border border-blue-400/30 text-blue-200 text-[10px] font-bold uppercase tracking-wider">
               <BookOpen className="w-3 h-3" />
               BTEB Central Subject Catalog • বইয়ের তালিকা
             </span>
@@ -196,17 +197,17 @@ export const BookListScreen: React.FC = () => {
           <h1 className="text-lg sm:text-xl font-extrabold tracking-tight">
             Diploma Book List & Subject Directory
           </h1>
-          <p className="text-xs text-indigo-200/90 leading-relaxed">
+          <p className="text-xs text-blue-200/90 leading-relaxed">
             Select your Technology/Department, Regulation (2016 or 2022), and Semester (1–8) to view official BTEB subject codes, names, marks, and verification status.
           </p>
         </div>
       </div>
 
       {/* 3 Required Selectors Card */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs space-y-3.5">
+      <div className="bg-surface rounded-2xl p-4 border border-slate-200/80 shadow-xs space-y-3.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
-            <Filter className="w-4 h-4 text-indigo-600" />
+            <Filter className="w-4 h-4 text-blue-600" />
             <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
               Select Curriculum Filters (বিভাগ, প্রবিধান ও পর্ব)
             </h2>
@@ -215,7 +216,7 @@ export const BookListScreen: React.FC = () => {
             <button
               type="button"
               onClick={handleApplyMyProfile}
-              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+              className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
             >
               <Sparkles className="w-3 h-3" />
               My Cohort
@@ -248,7 +249,7 @@ export const BookListScreen: React.FC = () => {
             id="booklist-technology-select"
             value={selectedTechnologyKey}
             onChange={(e) => setSelectedTechnologyKey(e.target.value)}
-            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-colors"
+            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-surface transition-colors"
           >
             <option value="">-- Select Technology / Department (19 Technologies) --</option>
             {TECHNOLOGIES_DIRECTORY.map((tech) => (
@@ -275,7 +276,7 @@ export const BookListScreen: React.FC = () => {
                     onClick={() => setSelectedRegulation(reg)}
                     className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                       active
-                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
                         : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
@@ -300,7 +301,7 @@ export const BookListScreen: React.FC = () => {
               onChange={(e) =>
                 setSelectedSemester(e.target.value ? (Number(e.target.value) as SemesterNumber) : '')
               }
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white transition-colors"
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-surface transition-colors"
             >
               <option value="">-- Select Semester (1 to 8) --</option>
               {([1, 2, 3, 4, 5, 6, 7, 8] as SemesterNumber[]).map((sem) => (
@@ -324,7 +325,7 @@ export const BookListScreen: React.FC = () => {
                   onClick={() => setSelectedSemester(sem)}
                   className={`py-1.5 rounded-lg text-xs font-bold transition-all border ${
                     active
-                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                      ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
                       : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                   }`}
                 >
@@ -338,8 +339,8 @@ export const BookListScreen: React.FC = () => {
 
       {/* State 1: Waiting for all 3 selectors */}
       {!allThreeSelected && (
-        <div className="bg-white rounded-2xl p-6 border border-slate-200/80 text-center space-y-2">
-          <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+        <div className="bg-surface rounded-2xl p-6 border border-slate-200/80 text-center space-y-2">
+          <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
             <Layers className="w-5 h-5" />
           </div>
           <h3 className="text-sm font-bold text-slate-800">
@@ -355,7 +356,7 @@ export const BookListScreen: React.FC = () => {
       {allThreeSelected && (
         <div className="space-y-3">
           {/* Active Selection Summary & Search/Sort Bar */}
-          <div className="bg-white rounded-2xl p-3.5 border border-slate-200/80 shadow-xs space-y-3">
+          <div className="bg-surface rounded-2xl p-3.5 border border-slate-200/80 shadow-xs space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
               <div>
                 <h3 className="text-xs sm:text-sm font-extrabold text-slate-900">
@@ -363,12 +364,12 @@ export const BookListScreen: React.FC = () => {
                 </h3>
                 <p className="text-[11px] text-slate-500 font-medium">
                   Regulation {selectedRegulation} • Semester {selectedSemester} •{' '}
-                  <span className="font-bold text-indigo-600">{records.length} Subject{records.length === 1 ? '' : 's'}</span>
+                  <span className="font-bold text-blue-600">{records.length} Subject{records.length === 1 ? '' : 's'}</span>
                 </p>
               </div>
               {records.length > 0 && (
                 <div className="flex items-center gap-1.5 text-[10px] font-bold">
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="px-2 py-0.5 rounded-md bg-green-50 text-green-700 border border-green-200">
                     {verifiedCount} Verified
                   </span>
                   {provisionalCount > 0 && (
@@ -390,7 +391,7 @@ export const BookListScreen: React.FC = () => {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search by subject code (e.g. 66661) or subject name..."
-                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-600 focus:bg-white"
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-surface"
                   />
                 </div>
 
@@ -402,7 +403,7 @@ export const BookListScreen: React.FC = () => {
                       aria-label="Sort subjects"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
-                      className="w-full pl-8 pr-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
+                      className="w-full pl-8 pr-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-600"
                     >
                       <option value="code">Sort: Code (Asc)</option>
                       <option value="name">Sort: Name (A–Z)</option>
@@ -415,7 +416,7 @@ export const BookListScreen: React.FC = () => {
                     aria-label="Filter by verification status"
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value as any)}
-                    className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
+                    className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-600"
                   >
                     <option value="ALL">All Status</option>
                     <option value="verified">Verified</option>
@@ -428,14 +429,14 @@ export const BookListScreen: React.FC = () => {
 
           {/* Loading State */}
           {loading && (
-            <div className="bg-white rounded-2xl p-6 border border-slate-200/80 text-center text-xs text-slate-500 font-semibold">
+            <div className="bg-surface rounded-2xl p-6 border border-slate-200/80 text-center text-xs text-slate-500 font-semibold">
               Loading subject book list...
             </div>
           )}
 
           {/* Empty State when no data exists for this (Technology, Regulation, Semester) */}
           {!loading && records.length === 0 && (
-            <div className="bg-white rounded-2xl p-6 border border-slate-200/80 text-center space-y-2.5 shadow-xs">
+            <div className="bg-surface rounded-2xl p-6 border border-slate-200/80 text-center space-y-2.5 shadow-xs">
               <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto">
                 <AlertCircle className="w-6 h-6" />
               </div>
@@ -454,7 +455,7 @@ export const BookListScreen: React.FC = () => {
 
           {/* Empty Search Filter Result */}
           {!loading && records.length > 0 && displayedSubjects.length === 0 && (
-            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 text-center space-y-2">
+            <div className="bg-surface rounded-2xl p-5 border border-slate-200/80 text-center space-y-2">
               <p className="text-xs font-bold text-slate-700">
                 No subjects match your search "{searchQuery}".
               </p>
@@ -464,7 +465,7 @@ export const BookListScreen: React.FC = () => {
                   setSearchQuery('');
                   setStatusFilter('ALL');
                 }}
-                className="text-xs font-bold text-indigo-600 hover:underline"
+                className="text-xs font-bold text-blue-600 hover:underline"
               >
                 Reset search filter
               </button>
@@ -479,7 +480,7 @@ export const BookListScreen: React.FC = () => {
                 return (
                   <div
                     key={subj.id}
-                    className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200/80 shadow-xs hover:border-indigo-200 transition-all"
+                    className="bg-surface rounded-2xl p-3.5 sm:p-4 border border-slate-200/80 shadow-xs hover:border-blue-200 transition-all"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1 space-y-1">
@@ -487,7 +488,7 @@ export const BookListScreen: React.FC = () => {
                           <span className="text-[10px] font-bold text-slate-400">
                             #{idx + 1}
                           </span>
-                          <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-xs font-extrabold">
+                          <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-mono text-xs font-extrabold">
                             Code: {subj.subject_code}
                           </span>
                           {subj.subject_type && (
@@ -556,12 +557,12 @@ export const BookListScreen: React.FC = () => {
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${
                             isVerified
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              ? 'bg-green-50 text-green-700 border-green-200'
                               : 'bg-amber-50 text-amber-700 border-amber-200'
                           }`}
                         >
                           {isVerified ? (
-                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            <ShieldCheck className="w-3.5 h-3.5 text-green-600" />
                           ) : (
                             <Clock className="w-3.5 h-3.5 text-amber-600" />
                           )}
@@ -573,7 +574,7 @@ export const BookListScreen: React.FC = () => {
                             href={subj.source_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 hover:underline"
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 hover:underline"
                           >
                             <span>BTEB Source</span>
                             <ExternalLink className="w-2.5 h-2.5" />
@@ -589,7 +590,7 @@ export const BookListScreen: React.FC = () => {
 
           {/* Transparency Footer Banner */}
           <div className="p-3.5 rounded-xl bg-slate-100 border border-slate-200/80 text-[11px] text-slate-600 flex items-start gap-2.5">
-            <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
             <div className="space-y-0.5">
               <p className="font-bold text-slate-800">
                 Data Verification & Published Department Datasets Notice

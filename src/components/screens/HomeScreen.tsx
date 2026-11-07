@@ -80,7 +80,7 @@ export const HomeScreen: React.FC = () => {
   return (
     <div className="space-y-5 pb-6">
       {/* Student Profile Hero Card */}
-      <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-[#172554] rounded-2xl p-4 sm:p-5 text-white shadow-md shadow-blue-900/10 relative overflow-hidden">
+      <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-text-primary rounded-2xl p-4 sm:p-5 text-white shadow-md shadow-blue-900/10 relative overflow-hidden">
         {/* Soft decorative accent */}
         <div className="absolute -right-8 -bottom-8 w-40 h-40 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
         
@@ -119,7 +119,7 @@ export const HomeScreen: React.FC = () => {
           <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 border-t sm:border-t-0 border-blue-600/50 pt-2 sm:pt-0">
             <button
               onClick={() => setActiveScreen('profile')}
-              className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg border border-white/20 transition-all flex items-center gap-1 cursor-pointer"
+              className="text-xs bg-surface/10 hover:bg-surface/20 text-white px-3 py-1.5 rounded-lg border border-white/20 transition-all flex items-center gap-1 cursor-pointer"
             >
               <span>View Profile</span>
               <ChevronRight className="w-3.5 h-3.5" />
@@ -133,11 +133,11 @@ export const HomeScreen: React.FC = () => {
         <div className="bg-teal-50 border border-teal-200/90 rounded-2xl p-3.5 sm:p-4">
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-[#0D9488] text-white flex items-center justify-center shadow-xs">
+              <div className="w-7 h-7 rounded-lg bg-brand-teal text-white flex items-center justify-center shadow-xs">
                 <ShieldCheck className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-xs sm:text-sm font-bold text-[#172554]">
+                <h3 className="text-xs sm:text-sm font-bold text-text-primary">
                   Class Captain Control Center
                 </h3>
                 <p className="text-[11px] text-teal-700">
@@ -147,7 +147,7 @@ export const HomeScreen: React.FC = () => {
             </div>
             <button
               onClick={() => openNotesSection('notices')}
-              className="bg-[#0D9488] hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="bg-brand-teal hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Megaphone className="w-3.5 h-3.5" />
               <span>Publish Group Notice</span>
@@ -157,14 +157,14 @@ export const HomeScreen: React.FC = () => {
           <div className="grid grid-cols-2 gap-2 pt-1">
             <button
               onClick={() => setActiveScreen('routine')}
-              className="text-left p-2 rounded-lg bg-white border border-teal-200/60 hover:border-teal-400 transition-colors cursor-pointer"
+              className="text-left p-2 rounded-lg bg-surface border border-teal-200/60 hover:border-teal-400 transition-colors cursor-pointer"
             >
               <span className="text-xs font-semibold text-slate-800 block">Edit Class Routine</span>
               <span className="text-[10px] text-slate-500">Update periods & substitute teachers</span>
             </button>
             <button
               onClick={() => openNotesSection('assignments')}
-              className="text-left p-2 rounded-lg bg-white border border-teal-200/60 hover:border-teal-400 transition-colors cursor-pointer"
+              className="text-left p-2 rounded-lg bg-surface border border-teal-200/60 hover:border-teal-400 transition-colors cursor-pointer"
             >
               <span className="text-xs font-semibold text-slate-800 block">Add Class Assignment</span>
               <span className="text-[10px] text-slate-500">Post new job sheets & submission dates</span>
@@ -175,9 +175,9 @@ export const HomeScreen: React.FC = () => {
 
       {/* Up Next Class Alert Banner */}
       {nextClass && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+        <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
           <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <div className="flex items-center gap-1.5 font-medium text-[#2563EB]">
+            <div className="flex items-center gap-1.5 font-medium text-brand-blue">
               <Clock className="w-3.5 h-3.5" />
               <span>Today's Next Class · {nextClass.startTime} - {nextClass.endTime}</span>
             </div>
@@ -186,7 +186,7 @@ export const HomeScreen: React.FC = () => {
 
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="font-bold text-sm sm:text-base text-[#172554]">
+              <h3 className="font-bold text-sm sm:text-base text-text-primary">
                 {nextClass.subjectName}
               </h3>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 mt-1">
@@ -202,7 +202,7 @@ export const HomeScreen: React.FC = () => {
             </div>
             <button
               onClick={() => setActiveScreen('routine')}
-              className="shrink-0 p-2 rounded-lg bg-blue-50 text-[#2563EB] hover:bg-blue-100 transition-colors"
+              className="shrink-0 p-2 rounded-lg bg-blue-50 text-brand-blue hover:bg-blue-100 transition-colors"
               title="Full Routine"
             >
               <ChevronRight className="w-4 h-4" />
@@ -215,22 +215,22 @@ export const HomeScreen: React.FC = () => {
       {announcements.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-xs font-bold text-[#172554] uppercase tracking-wider">
+            <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider">
               Class & BTEB Notice Board
             </h2>
             <button
               onClick={() => openNotesSection('notices')}
-              className="text-[11px] font-bold text-[#2563EB] hover:underline flex items-center gap-0.5 cursor-pointer"
+              className="text-[11px] font-bold text-brand-blue hover:underline flex items-center gap-0.5 cursor-pointer"
             >
               <span>All BTEB & Campus Notices</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2.5 shadow-xs">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-3.5 space-y-2.5 shadow-xs">
             {announcements.slice(0, 2).map((ann) => (
               <div key={ann.id} className="border-b border-slate-100 last:border-0 pb-2.5 last:pb-0">
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-xs font-bold text-[#172554]">{ann.title}</span>
+                  <span className="text-xs font-bold text-text-primary">{ann.title}</span>
                   <span className="text-[10px] text-slate-400 font-medium shrink-0">{ann.postedAt}</span>
                 </div>
                 <p className="text-xs text-slate-600 leading-relaxed">
@@ -248,7 +248,7 @@ export const HomeScreen: React.FC = () => {
       {/* Core Screens Cards Section */}
       <div className="space-y-3">
         <div className="flex items-center justify-between px-1">
-          <h2 className="text-sm font-bold text-[#172554] tracking-tight">
+          <h2 className="text-sm font-bold text-text-primary tracking-tight">
             Academic & Career Modules
           </h2>
           <span className="text-xs text-slate-500">Semester {userProfile.semester}</span>
@@ -258,23 +258,23 @@ export const HomeScreen: React.FC = () => {
           {/* Card 1: Class Routine */}
           <button
             onClick={() => setActiveScreen('routine')}
-            className="group bg-white rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-[#2563EB] hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-blue hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center group-hover:bg-brand-blue group-hover:text-white transition-colors">
                 <CalendarDays className="w-5 h-5" />
               </div>
-              <span className="text-xs font-semibold text-[#2563EB] group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+              <span className="text-xs font-semibold text-brand-blue group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                 View <ChevronRight className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
-              <h3 className="font-bold text-base text-[#172554]">Class Routine</h3>
+              <h3 className="font-bold text-base text-text-primary">Class Routine</h3>
               <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                 Periods, timings, labs & teacher assignments
               </p>
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-600">
-                <span className="font-semibold text-[#2563EB]">6 Days/Week</span>
+                <span className="font-semibold text-brand-blue">6 Days/Week</span>
                 <span className="text-slate-300">·</span>
                 <span>{todayClasses.length} classes today</span>
               </div>
@@ -284,25 +284,25 @@ export const HomeScreen: React.FC = () => {
           {/* Card 2: BTEB & Campus Notices */}
           <button
             onClick={() => openNotesSection('notices')}
-            className="group bg-white rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-[#2563EB] hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-blue hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center group-hover:bg-brand-blue group-hover:text-white transition-colors">
                 <Megaphone className="w-5 h-5" />
               </div>
-              <span className="text-xs font-semibold text-[#2563EB] group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+              <span className="text-xs font-semibold text-brand-blue group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                 Notices <ChevronRight className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
-              <h3 className="font-bold text-base text-[#172554]">Notices (নোটিশ বোর্ড)</h3>
+              <h3 className="font-bold text-base text-text-primary">Notices (নোটিশ বোর্ড)</h3>
               <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                 Official BTEB Notices + Teacher & Class Captain Notices
               </p>
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-600">
-                <span className="font-semibold text-[#2563EB]">Live BTEB Sync</span>
+                <span className="font-semibold text-brand-blue">Live BTEB Sync</span>
                 <span className="text-slate-300">·</span>
-                <span className="text-[#0D9488] font-semibold">College & Cohort</span>
+                <span className="text-brand-teal font-semibold">College & Cohort</span>
               </div>
             </div>
           </button>
@@ -310,23 +310,23 @@ export const HomeScreen: React.FC = () => {
           {/* Card 3: Diploma Job Circulars */}
           <button
             onClick={() => openNotesSection('jobs')}
-            className="group bg-white rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-[#0D9488] hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-teal hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="w-10 h-10 rounded-xl bg-teal-50 text-[#0D9488] flex items-center justify-center group-hover:bg-[#0D9488] group-hover:text-white transition-colors">
+              <div className="w-10 h-10 rounded-xl bg-teal-50 text-brand-teal flex items-center justify-center group-hover:bg-brand-teal group-hover:text-white transition-colors">
                 <Briefcase className="w-5 h-5" />
               </div>
-              <span className="text-xs font-semibold text-[#0D9488] group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+              <span className="text-xs font-semibold text-brand-teal group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                 Browse Jobs <ChevronRight className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
-              <h3 className="font-bold text-base text-[#172554]">Job Circulars (চাকরির বিজ্ঞপ্তি)</h3>
+              <h3 className="font-bold text-base text-text-primary">Job Circulars (চাকরির বিজ্ঞপ্তি)</h3>
               <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                 Sub-Assistant Engineer (SAE) & Diploma Engineering Jobs
               </p>
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-600">
-                <span className="font-semibold text-[#0D9488]">{jobs.length} Circulars</span>
+                <span className="font-semibold text-brand-teal">{jobs.length} Circulars</span>
                 <span className="text-slate-300">·</span>
                 <span>Govt & Private</span>
               </div>
@@ -336,25 +336,25 @@ export const HomeScreen: React.FC = () => {
           {/* Card 4: Assignments & Lecture Notes */}
           <button
             onClick={() => openNotesSection('assignments')}
-            className="group bg-white rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-[#0D9488] hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-teal hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="w-10 h-10 rounded-xl bg-teal-50 text-[#0D9488] flex items-center justify-center group-hover:bg-[#0D9488] group-hover:text-white transition-colors">
+              <div className="w-10 h-10 rounded-xl bg-teal-50 text-brand-teal flex items-center justify-center group-hover:bg-brand-teal group-hover:text-white transition-colors">
                 <FileText className="w-5 h-5" />
               </div>
-              <span className="text-xs font-semibold text-[#0D9488] group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+              <span className="text-xs font-semibold text-brand-teal group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                 Open <ChevronRight className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
-              <h3 className="font-bold text-base text-[#172554]">Notes & Assignments</h3>
+              <h3 className="font-bold text-base text-text-primary">Notes & Assignments</h3>
               <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                 Lecture PDFs, lab assignments & study hand-outs
               </p>
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-600">
                 <span className="font-semibold text-amber-600">{pendingAssignments.length} Assignments Due</span>
                 <span className="text-slate-300">·</span>
-                <span className="text-[#0D9488] font-semibold">Subject Notes</span>
+                <span className="text-brand-teal font-semibold">Subject Notes</span>
               </div>
             </div>
           </button>
@@ -362,18 +362,18 @@ export const HomeScreen: React.FC = () => {
           {/* Card: Academic Community */}
           <button
             onClick={() => setActiveScreen('community')}
-            className="group bg-white rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-[#2563EB] hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-blue hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center group-hover:bg-brand-blue group-hover:text-white transition-colors">
                 <Users className="w-5 h-5" />
               </div>
-              <span className="text-xs font-semibold text-[#2563EB] group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+              <span className="text-xs font-semibold text-brand-blue group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                 Join / Chat <ChevronRight className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
-              <h3 className="font-bold text-base text-[#172554]">Academic Community</h3>
+              <h3 className="font-bold text-base text-text-primary">Academic Community</h3>
               <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                 Study groups, lecture PDFs, lab videos & announcements
               </p>
@@ -388,23 +388,23 @@ export const HomeScreen: React.FC = () => {
           {/* Card 3: Reminders */}
           <button
             onClick={() => setActiveScreen('reminders')}
-            className="group bg-white rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-[#2563EB] hover:shadow-md transition-all relative overflow-hidden"
+            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-blue hover:shadow-md transition-all relative overflow-hidden"
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
                 <Bell className="w-5 h-5" />
               </div>
-              <span className="text-xs font-semibold text-indigo-600 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+              <span className="text-xs font-semibold text-blue-600 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                 Manage <ChevronRight className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
-              <h3 className="font-bold text-base text-[#172554]">Reminders</h3>
+              <h3 className="font-bold text-base text-text-primary">Reminders</h3>
               <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                 Midterms, class tests & BTEB form fill-up alerts
               </p>
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-600">
-                <span className="font-semibold text-indigo-600">{activeReminders.length} Active Reminders</span>
+                <span className="font-semibold text-blue-600">{activeReminders.length} Active Reminders</span>
                 <span className="text-slate-300">·</span>
                 <span>Next: Tomorrow 8:45 AM</span>
               </div>
@@ -414,7 +414,7 @@ export const HomeScreen: React.FC = () => {
           {/* Card 4: My Semester */}
           <button
             onClick={() => setActiveScreen('semester')}
-            className="group bg-white rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-[#2563EB] hover:shadow-md transition-all relative overflow-hidden"
+            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-blue hover:shadow-md transition-all relative overflow-hidden"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center group-hover:bg-sky-600 group-hover:text-white transition-colors">
@@ -425,7 +425,7 @@ export const HomeScreen: React.FC = () => {
               </span>
             </div>
             <div className="mt-3">
-              <h3 className="font-bold text-base text-[#172554]">My Semester</h3>
+              <h3 className="font-bold text-base text-text-primary">My Semester</h3>
               <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                 Curriculum, subjects, credits & BTEB CGPA calculator
               </p>
@@ -440,23 +440,23 @@ export const HomeScreen: React.FC = () => {
           {/* Card 5: BTEB Exam Results & Group Analytics */}
           <button
             onClick={() => setActiveScreen('bteb_results')}
-            className="group bg-white rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-[#2563EB] hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-blue hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center group-hover:bg-brand-blue group-hover:text-white transition-colors">
                 <BookOpen className="w-5 h-5" />
               </div>
-              <span className="text-xs font-semibold text-[#2563EB] group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+              <span className="text-xs font-semibold text-brand-blue group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                 Search <ChevronRight className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
-              <h3 className="font-bold text-base text-[#172554]">BTEB Exam Results</h3>
+              <h3 className="font-bold text-base text-text-primary">BTEB Exam Results</h3>
               <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                 My Result (1st–8th Sem), Group Results & GPA Analysis
               </p>
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-600">
-                <span className="font-semibold text-[#2563EB]">Individual & Group</span>
+                <span className="font-semibold text-brand-blue">Individual & Group</span>
                 <span className="text-slate-300">·</span>
                 <span>Roll & Range Lookup</span>
               </div>
@@ -466,34 +466,34 @@ export const HomeScreen: React.FC = () => {
           {/* Card 6: Teachers' Contacts */}
           <button
             onClick={() => setActiveScreen('teachers')}
-            className="group bg-white rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-[#0D9488] hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-teal hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="w-10 h-10 rounded-xl bg-teal-50 text-[#0D9488] flex items-center justify-center group-hover:bg-[#0D9488] group-hover:text-white transition-colors">
+              <div className="w-10 h-10 rounded-xl bg-teal-50 text-brand-teal flex items-center justify-center group-hover:bg-brand-teal group-hover:text-white transition-colors">
                 <Contact2 className="w-5 h-5" />
               </div>
               <div className="flex items-center gap-1.5">
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                   isTeacherContactUnlocked 
-                    ? 'bg-teal-50 text-[#0D9488] border border-teal-200' 
+                    ? 'bg-teal-50 text-brand-teal border border-teal-200'
                     : 'bg-amber-50 text-amber-700 border border-amber-200'
                 }`}>
                   {isTeacherContactAccessLocked
                     ? isTeacherContactUnlocked ? 'Lifetime access' : 'Access restricted'
                     : 'Free access'}
                 </span>
-                <span className="text-xs font-semibold text-[#0D9488] group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                <span className="text-xs font-semibold text-brand-teal group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                   Directory <ChevronRight className="w-3.5 h-3.5" />
                 </span>
               </div>
             </div>
             <div className="mt-3">
-              <h3 className="font-bold text-base text-[#172554]">Teachers' Contacts</h3>
+              <h3 className="font-bold text-base text-text-primary">Teachers' Contacts</h3>
               <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                 Department instructors, phone numbers & consulting hours
               </p>
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-600">
-                <span className="font-semibold text-[#0D9488]">{teachers.length} Faculty Contacts</span>
+                <span className="font-semibold text-brand-teal">{teachers.length} Faculty Contacts</span>
                 <span className="text-slate-300">·</span>
                 <span>{isTeacherContactUnlocked ? 'Direct Call & SMS' : 'Admin-managed access'}</span>
               </div>
@@ -503,23 +503,23 @@ export const HomeScreen: React.FC = () => {
           {/* Card 7: Book List & Curriculum Catalog */}
           <button
             onClick={() => setActiveScreen('book_list')}
-            className="group bg-white rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-indigo-600 hover:shadow-md transition-all relative overflow-hidden cursor-pointer sm:col-span-2"
+            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-blue-600 hover:shadow-md transition-all relative overflow-hidden cursor-pointer sm:col-span-2"
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
                 <BookOpen className="w-5 h-5" />
               </div>
-              <span className="text-xs font-semibold text-indigo-600 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+              <span className="text-xs font-semibold text-blue-600 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                 Open Book List <ChevronRight className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
-              <h3 className="font-bold text-base text-[#172554]">Book List & Central Subject Catalog (বইয়ের তালিকা)</h3>
+              <h3 className="font-bold text-base text-text-primary">Book List & Central Subject Catalog (বইয়ের তালিকা)</h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 Browse BTEB subject codes, names, marks & verification status across all 19 Technologies, Regulations 2016 & 2022, and Semesters 1–8
               </p>
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-600">
-                <span className="font-semibold text-indigo-600">19 Technologies</span>
+                <span className="font-semibold text-blue-600">19 Technologies</span>
                 <span className="text-slate-300">·</span>
                 <span>Regulation 2016 & 2022</span>
                 <span className="text-slate-300">·</span>
@@ -533,13 +533,13 @@ export const HomeScreen: React.FC = () => {
       {/* Class Captain Modal: Post Notice */}
       {showNoticeModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-teal-50 text-[#0D9488] flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-teal-50 text-brand-teal flex items-center justify-center">
                   <Megaphone className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold text-[#172554] text-base">Broadcast Class Notice</h3>
+                <h3 className="font-bold text-text-primary text-base">Broadcast Class Notice</h3>
               </div>
               <button 
                 onClick={() => setShowNoticeModal(false)}
@@ -551,31 +551,31 @@ export const HomeScreen: React.FC = () => {
 
             <form onSubmit={handlePostNotice} className="space-y-3.5 mt-3">
               <div>
-                <label className="block text-xs font-semibold text-[#172554] mb-1">Notice Title</label>
+                <label className="block text-xs font-semibold text-text-primary mb-1">Notice Title</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Class Test Schedule Update or Lab Requirement"
                   value={noticeTitle}
                   onChange={(e) => setNoticeTitle(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-[#172554] focus:outline-none focus:ring-2 focus:ring-[#0D9488]"
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-teal"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#172554] mb-1">Announcement Message</label>
+                <label className="block text-xs font-semibold text-text-primary mb-1">Announcement Message</label>
                 <textarea
                   required
                   rows={3}
                   placeholder="Enter detailed notice for Section A1 classmates..."
                   value={noticeContent}
                   onChange={(e) => setNoticeContent(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-[#172554] focus:outline-none focus:ring-2 focus:ring-[#0D9488]"
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-teal"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#172554] mb-1">Priority</label>
+                <label className="block text-xs font-semibold text-text-primary mb-1">Priority</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -612,7 +612,7 @@ export const HomeScreen: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 px-3 rounded-xl bg-[#0D9488] text-white text-xs font-semibold hover:bg-teal-700 transition-colors shadow-xs cursor-pointer"
+                  className="flex-1 py-2 px-3 rounded-xl bg-brand-teal text-white text-xs font-semibold hover:bg-teal-700 transition-colors shadow-xs cursor-pointer"
                 >
                   Post to Notice Board
                 </button>

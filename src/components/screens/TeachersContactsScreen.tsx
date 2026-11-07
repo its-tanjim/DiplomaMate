@@ -223,13 +223,13 @@ export const TeachersContactsScreen: React.FC = () => {
     return (
       <div className="space-y-4 pb-12">
         {/* Header */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+        <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-teal-50 text-[#0D9488] flex items-center justify-center font-bold">
+            <div className="w-8 h-8 rounded-lg bg-teal-50 text-brand-teal flex items-center justify-center font-bold">
               <Contact2 className="w-4 h-4" />
             </div>
             <div>
-              <h1 className="text-base sm:text-lg font-bold text-[#172554]">
+              <h1 className="text-base sm:text-lg font-bold text-text-primary">
                 Teachers' Contacts Directory
               </h1>
               <p className="text-xs text-slate-500">
@@ -241,23 +241,23 @@ export const TeachersContactsScreen: React.FC = () => {
 
         {/* Premium Paywall Card */}
         <div className="bg-gradient-to-b from-white to-blue-50/40 rounded-2xl border border-blue-200/80 p-6 shadow-sm text-center relative overflow-hidden">
-          <div className="absolute top-0 right-0 bg-[#2563EB] text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-bl-xl shadow-xs">
+          <div className="absolute top-0 right-0 bg-brand-blue text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-bl-xl shadow-xs">
             One-Time Access
           </div>
 
-          <div className="w-14 h-14 rounded-2xl bg-blue-100/80 text-[#2563EB] mx-auto flex items-center justify-center mb-3 shadow-inner">
+          <div className="w-14 h-14 rounded-2xl bg-blue-100/80 text-brand-blue mx-auto flex items-center justify-center mb-3 shadow-inner">
             <Lock className="w-7 h-7" />
           </div>
 
-          <h2 className="text-xl font-extrabold text-[#172554]">
+          <h2 className="text-xl font-extrabold text-text-primary">
             Unlock Teachers' Contacts
           </h2>
           <p className="text-xs text-slate-600 mt-1 max-w-sm mx-auto">
             Get instant, verified dial access to your college instructors, guide teachers, and heads of departments.
           </p>
 
-          <div className="my-5 p-4 rounded-xl bg-white border border-blue-100 shadow-xs max-w-xs mx-auto">
-            <div className="text-3xl font-black text-[#2563EB] flex items-center justify-center gap-1">
+          <div className="my-5 p-4 rounded-xl bg-surface border border-blue-100 shadow-xs max-w-xs mx-auto">
+            <div className="text-3xl font-black text-brand-blue flex items-center justify-center gap-1">
               <span className="text-lg font-bold text-slate-500">৳</span>10
               <span className="text-xs font-normal text-slate-400">/ lifetime</span>
             </div>
@@ -268,7 +268,7 @@ export const TeachersContactsScreen: React.FC = () => {
 
           <button
             onClick={() => setShowPaymentModal(true)}
-            className="w-full max-w-xs py-3 px-4 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 mx-auto cursor-pointer transition-all"
+            className="w-full max-w-xs py-3 px-4 rounded-xl bg-brand-blue hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 mx-auto cursor-pointer transition-all"
           >
             <CreditCard className="w-4 h-4" />
             <span>Pay BDT 10 via bKash / Nagad</span>
@@ -278,9 +278,9 @@ export const TeachersContactsScreen: React.FC = () => {
         {/* Payment Modal */}
         {showPaymentModal && (
           <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="bg-surface rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h3 className="font-bold text-sm text-[#172554]">Complete BDT 10 Payment</h3>
+                <h3 className="font-bold text-sm text-text-primary">Complete BDT 10 Payment</h3>
                 <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
               </div>
 
@@ -307,14 +307,14 @@ export const TeachersContactsScreen: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#172554] mb-1">Transaction ID (TrxID)</label>
+                  <label className="block text-[11px] font-semibold text-text-primary mb-1">Transaction ID (TrxID)</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. TRX99214A"
                     value={transactionId}
                     onChange={(e) => setTransactionId(e.target.value)}
-                    className="w-full px-3 py-2 text-xs uppercase font-mono bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-3 py-2 text-xs uppercase font-mono bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                   {paymentError && <p className="text-[11px] text-rose-500 mt-1">{paymentError}</p>}
                 </div>
@@ -330,7 +330,7 @@ export const TeachersContactsScreen: React.FC = () => {
                   <button
                     type="submit"
                     disabled={isProcessingPayment}
-                    className="flex-1 py-2 text-xs font-bold rounded-lg bg-[#2563EB] text-white hover:bg-blue-700 disabled:opacity-50"
+                    className="flex-1 py-2 text-xs font-bold rounded-lg bg-brand-blue text-white hover:bg-blue-700 disabled:opacity-50"
                   >
                     {isProcessingPayment ? 'Verifying...' : 'Confirm & Unlock'}
                   </button>
@@ -347,17 +347,17 @@ export const TeachersContactsScreen: React.FC = () => {
   return (
     <div className="space-y-4 pb-12">
       {/* Top Header Card with Access & Role Permissions Banner */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-teal-50 text-[#0D9488] flex items-center justify-center font-bold">
+              <div className="w-8 h-8 rounded-lg bg-teal-50 text-brand-teal flex items-center justify-center font-bold">
                 <Contact2 className="w-4 h-4" />
               </div>
-              <h1 className="text-base sm:text-lg font-bold text-[#172554]">
+              <h1 className="text-base sm:text-lg font-bold text-text-primary">
                 Teachers' Contacts
               </h1>
-              <span className="bg-teal-50 text-[#0D9488] border border-teal-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+              <span className="bg-teal-50 text-brand-teal border border-teal-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3" />
                 <span>{isTeacherContactAccessLocked ? 'Lifetime access' : 'Free access'}</span>
               </span>
@@ -386,7 +386,7 @@ export const TeachersContactsScreen: React.FC = () => {
                 });
                 setShowAddModal(true);
               }}
-              className="bg-[#0D9488] hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
+              className="bg-brand-teal hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Teacher (CR Scope)</span>
@@ -414,7 +414,7 @@ export const TeachersContactsScreen: React.FC = () => {
             placeholder="Search by teacher name, subject, department, or college..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl text-[#172554] placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0D9488]"
+            className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl text-text-primary placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-teal"
           />
         </div>
       </div>
@@ -422,16 +422,16 @@ export const TeachersContactsScreen: React.FC = () => {
       {/* Teachers Directory List */}
       <div className="space-y-3">
         <div className="flex items-center justify-between px-1">
-          <h2 className="text-sm font-bold text-[#172554]">
+          <h2 className="text-sm font-bold text-text-primary">
             Faculty Directory ({filteredTeachers.length})
           </h2>
           <span className="text-xs text-slate-500">Tap to call or message</span>
         </div>
 
         {filteredTeachers.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
             <Contact2 className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <h3 className="text-sm font-bold text-[#172554]">
+            <h3 className="text-sm font-bold text-text-primary">
               {teachers.length === 0 ? 'No teacher contacts yet' : 'No teachers found'}
             </h3>
             <p className="text-xs text-slate-500 mt-1">
@@ -447,16 +447,16 @@ export const TeachersContactsScreen: React.FC = () => {
             return (
               <div
                 key={tch.id}
-                className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-slate-300 transition-all"
+                className="bg-surface rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-slate-300 transition-all"
               >
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-[#172554] text-sm shrink-0">
+                    <div className="w-11 h-11 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-text-primary text-sm shrink-0">
                       {tch.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <h3 className="font-bold text-sm sm:text-base text-[#172554]">
+                        <h3 className="font-bold text-sm sm:text-base text-text-primary">
                           {tch.name}
                         </h3>
                         {canTeacherManage && (
@@ -465,7 +465,7 @@ export const TeachersContactsScreen: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <div className="text-xs font-semibold text-[#0D9488] mt-0.5">
+                      <div className="text-xs font-semibold text-brand-teal mt-0.5">
                         {tch.designation}
                       </div>
                       <div className="text-xs text-slate-600 mt-0.5">
@@ -484,14 +484,14 @@ export const TeachersContactsScreen: React.FC = () => {
                   <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0 flex-wrap">
                     <a
                       href={`tel:${cleanPhone}`}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-green-50 hover:bg-green-100 text-green-700 border border-green-200/80 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <Phone className="w-3.5 h-3.5" />
                       <span>Call</span>
                     </a>
                     <a
                       href={`sms:${cleanPhone}`}
-                      className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#2563EB] border border-blue-200/80 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue border border-blue-200/80 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                       title="Send SMS"
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
@@ -550,14 +550,14 @@ export const TeachersContactsScreen: React.FC = () => {
       {/* Class Captain Add Teacher Modal */}
       {showAddModal && isCaptain && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-teal-50 text-[#0D9488] flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-teal-50 text-brand-teal flex items-center justify-center">
                   <Contact2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-[#172554] text-base">Add Teacher Contact</h3>
+                  <h3 className="font-bold text-text-primary text-base">Add Teacher Contact</h3>
                   <p className="text-[10px] text-slate-500">Scoped to your Class Captain authority</p>
                 </div>
               </div>
@@ -577,7 +577,7 @@ export const TeachersContactsScreen: React.FC = () => {
 
             <form onSubmit={handleAddSubmit} className="space-y-3 mt-3">
               <div>
-                <label className="block text-xs font-semibold text-[#172554] mb-1">
+                <label className="block text-xs font-semibold text-text-primary mb-1">
                   Teacher's Full Name <span className="text-rose-500">*</span>
                 </label>
                 <input
@@ -586,7 +586,7 @@ export const TeachersContactsScreen: React.FC = () => {
                   placeholder="e.g. Engr. Md. Rafiqul Islam"
                   value={newTeacher.name}
                   onChange={(e) => setNewTeacher({ ...newTeacher, name: e.target.value })}
-                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
@@ -608,11 +608,11 @@ export const TeachersContactsScreen: React.FC = () => {
 
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">Designation</label>
+                  <label className="block text-xs font-semibold text-text-primary mb-1">Designation</label>
                   <select
                     value={newTeacher.designation}
                     onChange={(e) => setNewTeacher({ ...newTeacher, designation: e.target.value })}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   >
                     <option value="Chief Instructor & Dept Head">Chief Instructor & Dept Head</option>
                     <option value="Senior Instructor">Senior Instructor</option>
@@ -623,22 +623,22 @@ export const TeachersContactsScreen: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">Regulation</label>
+                  <label className="block text-xs font-semibold text-text-primary mb-1">Regulation</label>
                   <select
                     value={newTeacher.regulation}
                     onChange={(e) => setNewTeacher({ ...newTeacher, regulation: e.target.value as CatalogRegulation })}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   >
                     <option value="2022">Probidhan 2022</option>
                     <option value="2016">Probidhan 2016</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">Semester</label>
+                  <label className="block text-xs font-semibold text-text-primary mb-1">Semester</label>
                   <select
                     value={newTeacher.semester}
                     onChange={(e) => setNewTeacher({ ...newTeacher, semester: Number(e.target.value) as SemesterNumber })}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   >
                     {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
                       <option key={s} value={s}>Sem {s}</option>
@@ -667,7 +667,7 @@ export const TeachersContactsScreen: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">
+                  <label className="block text-xs font-semibold text-text-primary mb-1">
                     Phone Number <span className="text-rose-500">*</span>
                   </label>
                   <input
@@ -676,40 +676,40 @@ export const TeachersContactsScreen: React.FC = () => {
                     placeholder="01712-000000"
                     value={newTeacher.phone}
                     onChange={(e) => setNewTeacher({ ...newTeacher, phone: e.target.value })}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">Office Email</label>
+                  <label className="block text-xs font-semibold text-text-primary mb-1">Office Email</label>
                   <input
                     type="email"
                     placeholder="teacher@dpi.gov.bd"
                     value={newTeacher.email}
                     onChange={(e) => setNewTeacher({ ...newTeacher, email: e.target.value })}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">Office / Lab Room</label>
+                  <label className="block text-xs font-semibold text-text-primary mb-1">Office / Lab Room</label>
                   <input
                     type="text"
                     placeholder="Room 304, Bldg 2"
                     value={newTeacher.room}
                     onChange={(e) => setNewTeacher({ ...newTeacher, room: e.target.value })}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">Consulting Hours</label>
+                  <label className="block text-xs font-semibold text-text-primary mb-1">Consulting Hours</label>
                   <input
                     type="text"
                     placeholder="Sun & Tue: 10am-12pm"
                     value={newTeacher.consultingHours}
                     onChange={(e) => setNewTeacher({ ...newTeacher, consultingHours: e.target.value })}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
               </div>
@@ -724,7 +724,7 @@ export const TeachersContactsScreen: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-xl bg-[#0D9488] text-white text-xs font-semibold hover:bg-teal-700 shadow-xs cursor-pointer"
+                  className="flex-1 py-2 rounded-xl bg-brand-teal text-white text-xs font-semibold hover:bg-teal-700 shadow-xs cursor-pointer"
                 >
                   Save Contact
                 </button>
@@ -737,10 +737,10 @@ export const TeachersContactsScreen: React.FC = () => {
       {/* Archive / Removal Confirmation Modal */}
       {contactToArchive && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+          <div className="bg-surface rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
             <div className="flex items-center gap-2 pb-3 border-b border-slate-100 text-rose-600">
               <AlertTriangle className="w-5 h-5 shrink-0" />
-              <h3 className="font-bold text-[#172554] text-sm">Archive Teacher Contact?</h3>
+              <h3 className="font-bold text-text-primary text-sm">Archive Teacher Contact?</h3>
             </div>
 
             <div className="mt-3 space-y-2 text-xs text-slate-600">
@@ -753,13 +753,13 @@ export const TeachersContactsScreen: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#172554] mb-1">
+                <label className="block text-[11px] font-semibold text-text-primary mb-1">
                   Reason for Removal <span className="text-rose-500">*</span>
                 </label>
                 <select
                   value={archiveReason}
                   onChange={(e) => setArchiveReason(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 >
                   <option value="Faculty reassignment / transfer">Faculty reassignment / transfer</option>
                   <option value="Retired / Left institution">Retired / Left institution</option>
@@ -777,7 +777,7 @@ export const TeachersContactsScreen: React.FC = () => {
                     placeholder="Specify the reason..."
                     value={customArchiveReason}
                     onChange={(e) => setCustomArchiveReason(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
               )}

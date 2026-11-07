@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/apiClient';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -331,7 +332,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
         params.set('pageSize', '25');
         if (forceRefresh) params.set('refresh', 'true');
 
-        const res = await fetch(`/api/notices/bteb?${params.toString()}`);
+        const res = await apiFetch(`/api/notices/bteb?${params.toString()}`);
         const data = await res.json();
         if (res.ok && data.success) {
           const incoming: BtebOfficialNotice[] = Array.isArray(data.notices) ? data.notices : [];
@@ -382,7 +383,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
       params.set('shift', userProfile.shift);
       params.set('section', userProfile.section);
 
-      const res = await fetch(`/api/notices/campus?${params.toString()}`, {
+      const res = await apiFetch(`/api/notices/campus?${params.toString()}`, {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         }
@@ -412,7 +413,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
         params.set('page', String(pageToLoad));
         params.set('pageSize', '15');
 
-        const res = await fetch(`/api/jobs?${params.toString()}`);
+        const res = await apiFetch(`/api/jobs?${params.toString()}`);
         const data = await res.json();
         if (res.ok && data.success) {
           const incoming: JobCircular[] = Array.isArray(data.jobs) ? data.jobs : [];
@@ -465,7 +466,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
   const handleTriggerJobSync = async () => {
     setIsSyncingJobs(true);
     try {
-      const res = await fetch('/api/jobs/sync', { method: 'POST' });
+      const res = await apiFetch('/api/jobs/sync', { method: 'POST' });
       const data = await res.json();
       if (data.message) {
         showToast(data.message);
@@ -489,7 +490,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
         : '/api/notices/campus';
       const method = editingCampusNotice ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -535,7 +536,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
   const handleDeleteCampusNotice = async (noticeId: string) => {
     const token = authToken || localStorage.getItem('diplomamate_auth_token');
     try {
-      const res = await fetch(`/api/notices/campus/${noticeId}`, {
+      const res = await apiFetch(`/api/notices/campus/${noticeId}`, {
         method: 'DELETE',
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -559,7 +560,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
     if (!reportingCampusNotice || !reportReason.trim()) return;
     const token = authToken || localStorage.getItem('diplomamate_auth_token');
     try {
-      const res = await fetch(`/api/notices/campus/${reportingCampusNotice.id}/report`, {
+      const res = await apiFetch(`/api/notices/campus/${reportingCampusNotice.id}/report`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -588,7 +589,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
     try {
       const parsed = JSON.parse(batchJobsJsonText);
       const jobsPayload = Array.isArray(parsed) ? parsed : parsed.jobs || [parsed];
-      const res = await fetch('/api/admin/jobs/import', {
+      const res = await apiFetch('/api/admin/jobs/import', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -901,7 +902,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
     try {
       const token = authToken || localStorage.getItem('diplomamate_auth_token');
-      const res = await fetch(`/api/assignments/${asg.id}/submissions`, {
+      const res = await apiFetch(`/api/assignments/${asg.id}/submissions`, {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         }
@@ -1103,16 +1104,16 @@ export const NotesAssignmentsScreen: React.FC = () => {
   return (
     <div className="space-y-4 pb-12">
       {/* Top Header Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#2563EB] flex items-center justify-center font-bold">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center font-bold">
                 {mainTab === 'notices' && <Megaphone className="w-4 h-4" />}
                 {mainTab === 'jobs' && <Briefcase className="w-4 h-4" />}
                 {(mainTab === 'assignments' || mainTab === 'notes') && <BookOpen className="w-4 h-4" />}
               </div>
-              <h1 className="text-base sm:text-lg font-bold text-[#172554]">
+              <h1 className="text-base sm:text-lg font-bold text-text-primary">
                 {mainTab === 'notices' && 'Notices & Official Announcements (নোটিশ বোর্ড)'}
                 {mainTab === 'jobs' && 'Diploma Engineering Job Circulars (চাকরির বিজ্ঞপ্তি)'}
                 {mainTab === 'assignments' && (isTeacher ? 'Faculty Assignments & Submissions' : 'Assignments & Homework')}
@@ -1156,7 +1157,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       });
                       setShowPublishNoticeModal(true);
                     }}
-                    className="bg-[#0D9488] hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                    className="bg-brand-teal hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                   >
                     <Megaphone className="w-3.5 h-3.5" />
                     <span>Publish Notice (নোটিশ প্রকাশ)</span>
@@ -1168,7 +1169,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     {(isAdmin || isVerifiedTeacher) && (
                       <button
                         onClick={() => setShowBatchImportJobsModal(true)}
-                        className="bg-slate-100 hover:bg-slate-200 text-[#172554] text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-slate-200 cursor-pointer"
+                        className="bg-slate-100 hover:bg-slate-200 text-text-primary text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-slate-200 cursor-pointer"
                       >
                         <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" />
                         <span>Batch Import</span>
@@ -1180,7 +1181,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         setFileError(null);
                         setShowAddJobModal(true);
                       }}
-                      className="bg-[#172554] hover:bg-blue-950 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                      className="bg-text-primary hover:bg-blue-950 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Post Job Circular</span>
@@ -1203,7 +1204,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       if (mainTab === 'assignments') setShowAddAssignmentModal(true);
                       else setShowAddNoteModal(true);
                     }}
-                    className="bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                    className="bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>{mainTab === 'assignments' ? 'Post Assignment' : 'Upload Note / Lab'}</span>
@@ -1218,7 +1219,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             ) : (
               <button
                 onClick={() => setActiveScreen('captain_verification')}
-                className="bg-teal-50 hover:bg-teal-100 text-[#0D9488] border border-teal-200 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                className="bg-teal-50 hover:bg-teal-100 text-brand-teal border border-teal-200 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
                 title="Only verified Class Captains or Faculty may publish"
               >
                 <Lock className="w-3.5 h-3.5" />
@@ -1234,7 +1235,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             onClick={() => setMainTab('notices')}
             className={`py-2 px-2.5 text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
               mainTab === 'notices'
-                ? 'bg-[#2563EB] text-white shadow-xs'
+                ? 'bg-brand-blue text-white shadow-xs'
                 : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
             }`}
           >
@@ -1246,7 +1247,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             onClick={() => setMainTab('jobs')}
             className={`py-2 px-2.5 text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
               mainTab === 'jobs'
-                ? 'bg-[#172554] text-white shadow-xs'
+                ? 'bg-text-primary text-white shadow-xs'
                 : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
             }`}
           >
@@ -1258,7 +1259,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             onClick={() => setMainTab('assignments')}
             className={`py-2 px-2.5 text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
               mainTab === 'assignments'
-                ? 'bg-[#2563EB] text-white shadow-xs'
+                ? 'bg-brand-blue text-white shadow-xs'
                 : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
             }`}
           >
@@ -1270,7 +1271,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             onClick={() => setMainTab('notes')}
             className={`py-2 px-2.5 text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
               mainTab === 'notes'
-                ? 'bg-[#0D9488] text-white shadow-xs'
+                ? 'bg-brand-teal text-white shadow-xs'
                 : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
             }`}
           >
@@ -1291,7 +1292,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     e.target.value === 'ALL' ? 'ALL' : Number(e.target.value)
                   )
                 }
-                className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-semibold text-[#172554]"
+                className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-semibold text-text-primary"
               >
                 <option value="ALL">All Semesters</option>
                 {(userProfile.semestersTaught || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => (
@@ -1304,7 +1305,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               <select
                 value={teacherSectionFilter}
                 onChange={e => setTeacherSectionFilter(e.target.value as any)}
-                className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-semibold text-[#172554]"
+                className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-semibold text-text-primary"
               >
                 <option value="ALL">All Sections</option>
                 {(['A1', 'A2', 'B1', 'B2'] as Section[]).map(sec => (
@@ -1333,7 +1334,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {mainTab === 'notices' && (
         <div className="space-y-4">
           {/* 4 Sub-Tab Filters: All Notices | BTEB Notices | College Notices | My Group Notices */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
             <div className="flex flex-wrap gap-1.5">
               {[
                 { id: 'all', label: 'All Notices (সব নোটিশ)', count: btebTotalFiltered + campusNotices.length },
@@ -1354,14 +1355,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   onClick={() => setNoticeSubTab(tab.id as any)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                     noticeSubTab === tab.id
-                      ? 'bg-[#172554] text-white shadow-xs'
+                      ? 'bg-text-primary text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
                   <span>{tab.label}</span>
                   <span
                     className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                      noticeSubTab === tab.id ? 'bg-white/20 text-white' : 'bg-white text-slate-700'
+                      noticeSubTab === tab.id ? 'bg-surface/20 text-white' : 'bg-surface text-slate-700'
                     }`}
                   >
                     {tab.count}
@@ -1379,7 +1380,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   placeholder="নোটিশ খুঁজুন (Search by title, exam, or keyword)..."
                   value={noticeSearch}
                   onChange={e => setNoticeSearch(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554] focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                 />
               </div>
 
@@ -1389,7 +1390,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     <select
                       value={btebCategoryFilter}
                       onChange={e => setBtebCategoryFilter(e.target.value)}
-                      className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554] font-medium"
+                      className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary font-medium"
                     >
                       <option value="all">All BTEB Curriculums / Categories</option>
                       {BTEB_CATEGORIES.map(cat => (
@@ -1406,7 +1407,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       value={btebDateFrom}
                       onChange={e => setBtebDateFrom(e.target.value)}
                       title="From Date"
-                      className="w-full px-2 py-1.5 text-[11px] bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                      className="w-full px-2 py-1.5 text-[11px] bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                     />
                     {(noticeSearch || btebCategoryFilter !== 'all' || btebDateFrom || btebDateTo) && (
                       <button
@@ -1431,7 +1432,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             {(noticeSubTab === 'all' || noticeSubTab === 'bteb') && (
               <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px] text-slate-600">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                  <span className="inline-flex items-center gap-1 font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-md">
                     <CheckCircle2 className="w-3 h-3" />
                     <span>Official BTEB Sync Active ({btebTotalCached} notices · {btebPagesFetched} pages)</span>
                   </span>
@@ -1446,7 +1447,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     type="button"
                     disabled={isSyncingBteb}
                     onClick={() => fetchBtebNotices(1, false, true)}
-                    className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#2563EB] font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                    className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3 h-3 ${isSyncingBteb ? 'animate-spin' : ''}`} />
                     <span>{isSyncingBteb ? 'Syncing BTEB...' : 'Sync Now (হালনাগাদ)'}</span>
@@ -1480,8 +1481,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
             <div className="space-y-2.5">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-[#0D9488]" />
-                  <h2 className="text-xs sm:text-sm font-bold text-[#172554]">
+                  <ShieldCheck className="w-4 h-4 text-brand-teal" />
+                  <h2 className="text-xs sm:text-sm font-bold text-text-primary">
                     {noticeSubTab === 'college'
                       ? 'College & Department Faculty Notices (কলেজ ও বিভাগীয় নোটিশ)'
                       : noticeSubTab === 'my_group'
@@ -1495,14 +1496,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
               </div>
 
               {isLoadingCampusNotices ? (
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <div className="bg-surface rounded-2xl border border-slate-200 p-6 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
                   <RefreshCw className="w-4 h-4 animate-spin text-teal-600" />
                   <span>Loading campus & class notices...</span>
                 </div>
               ) : campusNotices.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-xs">
+                <div className="bg-surface rounded-2xl border border-slate-200 p-6 text-center shadow-xs">
                   <Megaphone className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
-                  <h3 className="text-xs sm:text-sm font-bold text-[#172554]">
+                  <h3 className="text-xs sm:text-sm font-bold text-text-primary">
                     No Teacher or Class Captain notices found for this filter
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
@@ -1518,7 +1519,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   return (
                     <div
                       key={cNotice.id}
-                      className={`bg-white rounded-2xl border p-4 shadow-xs transition-all space-y-2.5 ${
+                      className={`bg-surface rounded-2xl border p-4 shadow-xs transition-all space-y-2.5 ${
                         cNotice.priority === 'Important'
                           ? 'border-teal-300/90 bg-gradient-to-br from-white to-teal-50/20'
                           : 'border-slate-200/90'
@@ -1531,8 +1532,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             <span
                               className={`px-2 py-0.5 rounded-md text-[10px] font-bold border flex items-center gap-1 ${
                                 isCrNotice
-                                  ? 'bg-teal-50 text-[#0D9488] border-teal-200'
-                                  : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                  ? 'bg-teal-50 text-brand-teal border-teal-200'
+                                  : 'bg-blue-50 text-blue-700 border-blue-200'
                               }`}
                             >
                               {isCrNotice ? (
@@ -1563,7 +1564,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             </span>
                           </div>
 
-                          <h3 className="font-bold text-sm sm:text-base text-[#172554]">
+                          <h3 className="font-bold text-sm sm:text-base text-text-primary">
                             {cNotice.title}
                           </h3>
                         </div>
@@ -1580,14 +1581,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       {cNotice.attachmentName && (
                         <div className="flex items-center justify-between p-2 rounded-xl bg-teal-50/70 border border-teal-200/70 text-xs">
                           <div className="flex items-center gap-1.5 text-teal-900 font-medium truncate">
-                            <FileText className="w-3.5 h-3.5 text-[#0D9488] shrink-0" />
+                            <FileText className="w-3.5 h-3.5 text-brand-teal shrink-0" />
                             <span className="truncate">{cNotice.attachmentName}</span>
                           </div>
                           <a
                             href={cNotice.attachmentUrl || `/api/notices/campus/${cNotice.id}/attachment`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-2.5 py-1 rounded-lg bg-white text-[#0D9488] font-bold text-[11px] border border-teal-200 flex items-center gap-1 shrink-0"
+                            className="px-2.5 py-1 rounded-lg bg-surface text-brand-teal font-bold text-[11px] border border-teal-200 flex items-center gap-1 shrink-0"
                           >
                             <Download className="w-3 h-3" />
                             <span>Open Attachment</span>
@@ -1639,7 +1640,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                                   });
                                   setShowPublishNoticeModal(true);
                                 }}
-                                className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#2563EB] font-semibold flex items-center gap-1 cursor-pointer"
+                                className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue font-semibold flex items-center gap-1 cursor-pointer"
                               >
                                 <Edit3 className="w-3 h-3" />
                                 <span>Edit</span>
@@ -1681,27 +1682,27 @@ export const NotesAssignmentsScreen: React.FC = () => {
             <div className="space-y-2.5">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <Award className="w-4 h-4 text-[#2563EB]" />
-                  <h2 className="text-xs sm:text-sm font-bold text-[#172554]">
+                  <Award className="w-4 h-4 text-brand-blue" />
+                  <h2 className="text-xs sm:text-sm font-bold text-text-primary">
                     Official BTEB Board Notices (বাংলাদেশ কারিগরি শিক্ষা বোর্ড নোটিশ)
                   </h2>
                 </div>
-                <span className="text-[11px] font-semibold text-[#2563EB]">
+                <span className="text-[11px] font-semibold text-brand-blue">
                   Showing {btebNotices.length} of {btebTotalFiltered} notices
                 </span>
               </div>
 
               {isLoadingBteb && btebNotices.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 flex flex-col items-center justify-center gap-2">
-                  <RefreshCw className="w-6 h-6 animate-spin text-[#2563EB]" />
-                  <span className="font-semibold text-[#172554]">
+                <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 flex flex-col items-center justify-center gap-2">
+                  <RefreshCw className="w-6 h-6 animate-spin text-brand-blue" />
+                  <span className="font-semibold text-text-primary">
                     Synchronizing official notices from bteb.gov.bd...
                   </span>
                 </div>
               ) : btebNotices.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
+                <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
                   <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                  <h3 className="text-sm font-bold text-[#172554]">
+                  <h3 className="text-sm font-bold text-text-primary">
                     No BTEB notices match your current search filter
                   </h3>
                   <p className="text-xs text-slate-500 mt-1">
@@ -1713,18 +1714,18 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   {btebNotices.map(item => (
                     <div
                       key={item.id}
-                      className="bg-white rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-xs hover:border-blue-300 transition-all space-y-2.5"
+                      className="bg-surface rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-xs hover:border-blue-300 transition-all space-y-2.5"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-[#2563EB] border border-blue-200">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-brand-blue border border-blue-200">
                             Bangladesh Technical Education Board (BTEB)
                           </span>
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700">
                             {item.category}
                           </span>
                           {item.isNew && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-0.5">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-50 text-green-700 border border-green-200 flex items-center gap-0.5">
                               <Sparkles className="w-2.5 h-2.5" />
                               <span>NEW (নতুন)</span>
                             </span>
@@ -1739,7 +1740,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
                       <h3
                         onClick={() => setSelectedBtebNotice(item)}
-                        className="font-bold text-sm sm:text-base text-[#172554] hover:text-[#2563EB] cursor-pointer leading-snug"
+                        className="font-bold text-sm sm:text-base text-text-primary hover:text-brand-blue cursor-pointer leading-snug"
                       >
                         {item.title}
                       </h3>
@@ -1764,7 +1765,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                               href={item.pdfUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-[#0D9488] border border-teal-200 font-semibold flex items-center gap-1"
+                              className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-brand-teal border border-teal-200 font-semibold flex items-center gap-1"
                             >
                               <Download className="w-3.5 h-3.5" />
                               <span>PDF ডাউনলোড</span>
@@ -1775,7 +1776,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             href={item.noticeUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-2.5 py-1 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white font-semibold flex items-center gap-1 shadow-xs"
+                            className="px-2.5 py-1 rounded-lg bg-brand-blue hover:bg-blue-700 text-white font-semibold flex items-center gap-1 shadow-xs"
                           >
                             <span>মূল নোটিশ (BTEB)</span>
                             <ExternalLink className="w-3 h-3" />
@@ -1791,7 +1792,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         type="button"
                         disabled={isLoadingBteb}
                         onClick={() => fetchBtebNotices(btebPage + 1, true, false)}
-                        className="px-5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-[#2563EB] border border-blue-200 text-xs font-bold shadow-xs transition-all cursor-pointer inline-flex items-center gap-2"
+                        className="px-5 py-2.5 rounded-xl bg-surface hover:bg-slate-50 text-brand-blue border border-blue-200 text-xs font-bold shadow-xs transition-all cursor-pointer inline-flex items-center gap-2"
                       >
                         {isLoadingBteb ? (
                           <>
@@ -1820,10 +1821,10 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {mainTab === 'jobs' && (
         <div className="space-y-4">
           {/* Job Source & Careerjet Integration Transparency Bar */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-blue-50 text-[#2563EB] border border-blue-200">
+                <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-blue-50 text-brand-blue border border-blue-200">
                   Diploma in Engineering Career Portal
                 </span>
                 {jobSyncInfo && (
@@ -1838,7 +1839,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   type="button"
                   disabled={isSyncingJobs}
                   onClick={handleTriggerJobSync}
-                  className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#2563EB] text-xs font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3 h-3 ${isSyncingJobs ? 'animate-spin' : ''}`} />
                   <span>{isSyncingJobs ? 'Refreshing...' : 'Refresh Jobs'}</span>
@@ -1864,7 +1865,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   placeholder="Search by job title, company, or skill..."
                   value={jobSearch}
                   onChange={e => setJobSearch(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 />
               </div>
 
@@ -1872,7 +1873,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 <select
                   value={jobDeptFilter}
                   onChange={e => setJobDeptFilter(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   <option value="all">All Technologies / Depts</option>
                   {availableJobFilters.departments.map(dept => (
@@ -1887,7 +1888,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 <select
                   value={jobLocationFilter}
                   onChange={e => setJobLocationFilter(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   <option value="all">All Locations</option>
                   {availableJobFilters.locations.map(loc => (
@@ -1902,7 +1903,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 <select
                   value={jobTypeFilter}
                   onChange={e => setJobTypeFilter(e.target.value)}
-                  className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   <option value="all">All Job Types</option>
                   <option value="Full-Time">Full-Time</option>
@@ -1914,7 +1915,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 <select
                   value={jobStatusFilter}
                   onChange={e => setJobStatusFilter(e.target.value)}
-                  className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   <option value="all">All Status</option>
                   <option value="Open">Open</option>
@@ -1935,7 +1936,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   type="button"
                   onClick={() => setJobSort('newest')}
                   className={`px-2 py-0.5 rounded font-semibold cursor-pointer ${
-                    jobSort === 'newest' ? 'bg-blue-50 text-[#2563EB]' : 'text-slate-500'
+                    jobSort === 'newest' ? 'bg-blue-50 text-brand-blue' : 'text-slate-500'
                   }`}
                 >
                   Newest
@@ -1944,7 +1945,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   type="button"
                   onClick={() => setJobSort('deadline')}
                   className={`px-2 py-0.5 rounded font-semibold cursor-pointer ${
-                    jobSort === 'deadline' ? 'bg-blue-50 text-[#2563EB]' : 'text-slate-500'
+                    jobSort === 'deadline' ? 'bg-blue-50 text-brand-blue' : 'text-slate-500'
                   }`}
                 >
                   Deadline
@@ -1954,14 +1955,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
           </div>
 
           {isLoadingJobs && serverJobs.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-              <RefreshCw className="w-5 h-5 animate-spin text-[#2563EB]" />
+            <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+              <RefreshCw className="w-5 h-5 animate-spin text-brand-blue" />
               <span>Loading Diploma Engineering job circulars...</span>
             </div>
           ) : serverJobs.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
+            <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
               <Briefcase className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <h3 className="text-sm font-bold text-[#172554]">No matching job circulars found</h3>
+              <h3 className="text-sm font-bold text-text-primary">No matching job circulars found</h3>
               <p className="text-xs text-slate-500 mt-1">
                 Try clearing your filters or check back later for new Diploma Engineer postings.
               </p>
@@ -1974,17 +1975,17 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     ? 'bg-rose-50 text-rose-700 border-rose-200'
                     : job.status === 'Closing Soon'
                       ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                      : 'bg-green-50 text-green-700 border-green-200';
 
                 return (
                   <div
                     key={job.id}
-                    className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-slate-300 transition-all space-y-3"
+                    className="bg-surface rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-slate-300 transition-all space-y-3"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-[#2563EB] border border-blue-200">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-brand-blue border border-blue-200">
                             {job.type}
                           </span>
                           {job.status && (
@@ -1998,7 +1999,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         </div>
                         <h3
                           onClick={() => setSelectedJob(job)}
-                          className="font-bold text-sm sm:text-base text-[#172554] hover:text-[#2563EB] cursor-pointer mt-1"
+                          className="font-bold text-sm sm:text-base text-text-primary hover:text-brand-blue cursor-pointer mt-1"
                         >
                           {job.title}
                         </h3>
@@ -2016,7 +2017,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       </div>
 
                       <div className="text-right shrink-0">
-                        <span className="text-xs font-bold text-[#0D9488] bg-teal-50 px-2.5 py-1 rounded-lg border border-teal-200 block">
+                        <span className="text-xs font-bold text-brand-teal bg-teal-50 px-2.5 py-1 rounded-lg border border-teal-200 block">
                           {job.stipendOrSalary}
                         </span>
                       </div>
@@ -2038,7 +2039,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       </div>
                       <div className="sm:col-span-2">
                         <span className="font-semibold text-slate-700">Technologies / Departments: </span>
-                        <span className="text-[#2563EB] font-medium">
+                        <span className="text-brand-blue font-medium">
                           {job.targetDepartments.join(', ')}
                         </span>
                       </div>
@@ -2082,7 +2083,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             href={job.applyUrl || job.sourceUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-3 py-1 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 shadow-xs cursor-pointer"
+                            className="px-3 py-1 rounded-lg bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 shadow-xs cursor-pointer"
                             title="Opens the employer or Careerjet official application page in your browser"
                           >
                             <span>Apply on Original Site</span>
@@ -2101,7 +2102,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     type="button"
                     disabled={isLoadingJobs}
                     onClick={() => fetchJobsList(jobsPage + 1, true)}
-                    className="px-5 py-2 rounded-xl bg-white hover:bg-slate-50 text-[#172554] border border-slate-200 text-xs font-bold shadow-xs cursor-pointer"
+                    className="px-5 py-2 rounded-xl bg-surface hover:bg-slate-50 text-text-primary border border-slate-200 text-xs font-bold shadow-xs cursor-pointer"
                   >
                     {isLoadingJobs ? 'Loading...' : 'Load More Job Circulars'}
                   </button>
@@ -2118,9 +2119,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {mainTab === 'assignments' && (
         <div className="space-y-3">
           {filteredAssignments.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
+            <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
               <FileCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <h3 className="text-sm font-bold text-[#172554]">No assignments yet</h3>
+              <h3 className="text-sm font-bold text-text-primary">No assignments yet</h3>
               <p className="text-xs text-slate-500 mt-1">
                 {isTeacher
                   ? 'Click "Post Assignment" above to publish a new assignment for your class.'
@@ -2135,7 +2136,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               return (
                 <div
                   key={asg.id}
-                  className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-slate-300 transition-all space-y-3"
+                  className="bg-surface rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-slate-300 transition-all space-y-3"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -2146,15 +2147,15 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/60">
                           Sem {asg.semester} · {asg.shift} · Sec {asg.section}
                         </span>
-                        <h3 className="font-bold text-sm text-[#172554]">{asg.title}</h3>
+                        <h3 className="font-bold text-sm text-text-primary">{asg.title}</h3>
                       </div>
-                      <div className="text-xs font-semibold text-[#2563EB] mt-0.5">
+                      <div className="text-xs font-semibold text-brand-blue mt-0.5">
                         {asg.subjectName} · <span className="text-slate-500 font-normal">By {asg.assignedBy}</span>
                       </div>
                     </div>
 
                     {isTeacher ? (
-                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1 shrink-0">
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1 shrink-0">
                         <Users className="w-3 h-3" />
                         <span>
                           {summary
@@ -2166,7 +2167,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold flex items-center gap-1 shrink-0 ${
                           isSubmitted
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            ? 'bg-green-50 text-green-700 border border-green-200'
                             : 'bg-amber-50 text-amber-700 border border-amber-200'
                         }`}
                       >
@@ -2183,7 +2184,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   {(asg.marks || asg.submissionMethod || (asg.pageNumbers && asg.pageNumbers.length > 0)) && (
                     <div className="flex flex-wrap items-center gap-2 text-[11px]">
                       {asg.marks && (
-                        <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-800 border border-indigo-200 font-semibold">
+                        <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 font-semibold">
                           Marks: {asg.marks}
                         </span>
                       )}
@@ -2207,7 +2208,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
                   {asg.questions && asg.questions.length > 0 && (
                     <div className="p-2.5 bg-blue-50/40 rounded-xl border border-blue-100/80 space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#172554] block">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-text-primary block">
                         Extracted Questions ({asg.questions.length})
                       </span>
                       <ol className="list-decimal list-inside text-xs text-slate-700 space-y-0.5">
@@ -2221,14 +2222,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   )}
 
                   {asg.attachmentName && (
-                    <div className="flex items-center justify-between p-2 bg-blue-50/60 rounded-xl border border-blue-100 text-xs text-[#2563EB]">
+                    <div className="flex items-center justify-between p-2 bg-blue-50/60 rounded-xl border border-blue-100 text-xs text-brand-blue">
                       <div className="flex items-center gap-1.5 truncate">
                         <FileText className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate font-medium">{asg.attachmentName}</span>
                       </div>
                       <button
                         onClick={() => handleDownloadFile(asg.attachmentName!, asg.attachmentUrl)}
-                        className="px-2 py-1 text-[11px] font-bold bg-white text-[#2563EB] rounded hover:bg-blue-100 border border-blue-200 flex items-center gap-1 cursor-pointer"
+                        className="px-2 py-1 text-[11px] font-bold bg-surface text-brand-blue rounded hover:bg-blue-100 border border-blue-200 flex items-center gap-1 cursor-pointer"
                       >
                         <Download className="w-3 h-3" />
                         <span>Download</span>
@@ -2239,16 +2240,16 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   {isTeacher && (
                     <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="grid grid-cols-3 gap-2 flex-1 text-center sm:text-left">
-                        <div className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200/80">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+                        <div className="px-2.5 py-1.5 rounded-lg bg-surface border border-slate-200/80">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-green-700 block">
                             Total Submitted
                           </span>
-                          <span className="text-sm font-bold text-emerald-700 font-mono">
+                          <span className="text-sm font-bold text-green-700 font-mono">
                             {summary ? summary.totalSubmitted : 0}
                           </span>
                         </div>
 
-                        <div className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200/80">
+                        <div className="px-2.5 py-1.5 rounded-lg bg-surface border border-slate-200/80">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 block">
                             Not Submitted
                           </span>
@@ -2259,11 +2260,11 @@ export const NotesAssignmentsScreen: React.FC = () => {
                           </span>
                         </div>
 
-                        <div className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200/80">
+                        <div className="px-2.5 py-1.5 rounded-lg bg-surface border border-slate-200/80">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
                             Class Roster
                           </span>
-                          <span className="text-sm font-bold text-[#172554] font-mono">
+                          <span className="text-sm font-bold text-text-primary font-mono">
                             {summary && summary.eligibleRosterCount !== null
                               ? summary.eligibleRosterCount
                               : '—'}
@@ -2274,7 +2275,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleOpenTeacherSubmissions(asg)}
-                        className="px-3.5 py-2 rounded-xl bg-[#172554] hover:bg-blue-950 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer shrink-0"
+                        className="px-3.5 py-2 rounded-xl bg-text-primary hover:bg-blue-950 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer shrink-0"
                       >
                         <Eye className="w-3.5 h-3.5 text-teal-300" />
                         <span>View Submissions</span>
@@ -2298,14 +2299,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             setSubmissionText('');
                             setStudentSubmissionFile(null);
                           }}
-                          className="px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer shadow-xs"
+                          className="px-3 py-1.5 rounded-lg bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer shadow-xs"
                         >
                           <Upload className="w-3 h-3" />
                           <span>Submit Work</span>
                         </button>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <span className="text-emerald-700 font-semibold text-xs flex items-center gap-1">
+                          <span className="text-green-700 font-semibold text-xs flex items-center gap-1">
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>Submitted {asg.submittedAt ? `(${asg.submittedAt})` : ''}</span>
                           </span>
@@ -2337,7 +2338,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {mainTab === 'notes' && (
         <div className="space-y-3">
           {/* Search bar across Note Title, Subject, Chapter, and Extracted Document Text */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-3 shadow-xs flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="bg-surface rounded-2xl border border-slate-200/90 p-3 shadow-xs flex flex-col sm:flex-row sm:items-center gap-2">
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -2345,7 +2346,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 value={noteSearchQuery}
                 onChange={e => setNoteSearchQuery(e.target.value)}
                 placeholder="Search lecture notes, subject code, headings, or extracted PDF/Image text..."
-                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 text-[#172554] focus:outline-none focus:border-[#0D9488]"
+                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 text-text-primary focus:outline-none focus:border-brand-teal"
               />
             </div>
             {noteSearchQuery && (
@@ -2360,9 +2361,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
           </div>
 
           {filteredNotes.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
+            <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
               <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <h3 className="text-sm font-bold text-[#172554]">
+              <h3 className="text-sm font-bold text-text-primary">
                 {noteSearchQuery ? 'No matching study materials found' : 'No notes uploaded yet'}
               </h3>
               <p className="text-xs text-slate-500 mt-1">
@@ -2377,7 +2378,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             filteredNotes.map(note => (
               <div
                 key={note.id}
-                className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-slate-300 transition-all space-y-3"
+                className="bg-surface rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-slate-300 transition-all space-y-3"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -2400,8 +2401,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <h3 className="font-bold text-sm text-[#172554] mt-1">{note.title}</h3>
-                    <div className="text-xs font-semibold text-[#0D9488] mt-0.5">{note.subjectName}</div>
+                    <h3 className="font-bold text-sm text-text-primary mt-1">{note.title}</h3>
+                    <div className="text-xs font-semibold text-brand-teal mt-0.5">{note.subjectName}</div>
                   </div>
 
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
@@ -2430,14 +2431,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 {note.extractedText && (
                   <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-2.5 text-xs space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#0D9488] flex items-center gap-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-brand-teal flex items-center gap-1">
                         <Sparkles className="w-3 h-3" />
                         <span>Searchable Extracted Text</span>
                       </span>
                       <button
                         type="button"
                         onClick={() => setExpandedNoteId(expandedNoteId === note.id ? null : note.id)}
-                        className="text-[11px] font-semibold text-[#2563EB] hover:underline cursor-pointer"
+                        className="text-[11px] font-semibold text-brand-blue hover:underline cursor-pointer"
                       >
                         {expandedNoteId === note.id ? 'Collapse Text' : 'Expand Full Text'}
                       </button>
@@ -2472,7 +2473,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                           note.mediaUrl
                         )
                       }
-                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-teal-50 hover:bg-teal-100 text-[#0D9488] border border-teal-200 flex items-center gap-1 cursor-pointer"
+                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-teal-50 hover:bg-teal-100 text-brand-teal border border-teal-200 flex items-center gap-1 cursor-pointer"
                     >
                       <Download className="w-3 h-3" />
                       <span>Save</span>
@@ -2492,18 +2493,18 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {/* 1. OFFICIAL BTEB NOTICE DETAILS MODAL */}
       {selectedBtebNotice && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3.5">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3.5">
             <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
                 <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-[#2563EB] border border-blue-200">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-brand-blue border border-blue-200">
                     {selectedBtebNotice.sourceLabel}
                   </span>
                   <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700">
                     {selectedBtebNotice.category}
                   </span>
                 </div>
-                <h3 className="font-bold text-sm sm:text-base text-[#172554] leading-snug">
+                <h3 className="font-bold text-sm sm:text-base text-text-primary leading-snug">
                   {selectedBtebNotice.title}
                 </h3>
               </div>
@@ -2518,7 +2519,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">প্রকাশের তারিখ (Publication Date):</span>
-                <span className="font-bold text-[#172554]">
+                <span className="font-bold text-text-primary">
                   {selectedBtebNotice.publishedDateBn} ({selectedBtebNotice.publishedDateDisplay})
                 </span>
               </div>
@@ -2528,7 +2529,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">শিক্ষাক্রম / বিভাগ (Category):</span>
-                <span className="font-semibold text-[#2563EB]">{selectedBtebNotice.category}</span>
+                <span className="font-semibold text-brand-blue">{selectedBtebNotice.category}</span>
               </div>
               <div className="pt-1 border-t border-slate-200/80 text-[11px] text-slate-500">
                 Original Source URL:{' '}
@@ -2536,7 +2537,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   href={selectedBtebNotice.noticeUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[#2563EB] underline break-all"
+                  className="text-brand-blue underline break-all"
                 >
                   {selectedBtebNotice.noticeUrl}
                 </a>
@@ -2555,7 +2556,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   href={selectedBtebNotice.pdfUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-[#0D9488] text-white hover:bg-teal-700 flex items-center gap-1.5 shadow-xs"
+                  className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-brand-teal text-white hover:bg-teal-700 flex items-center gap-1.5 shadow-xs"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Open Official PDF (পিডিএফ দেখুন)</span>
@@ -2565,7 +2566,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 href={selectedBtebNotice.noticeUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-[#2563EB] text-white hover:bg-blue-700 flex items-center gap-1.5 shadow-xs"
+                className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-brand-blue text-white hover:bg-blue-700 flex items-center gap-1.5 shadow-xs"
               >
                 <span>Open on bteb.gov.bd</span>
                 <ExternalLink className="w-3.5 h-3.5" />
@@ -2578,15 +2579,15 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {/* 2. CAMPUS NOTICE DETAILS MODAL */}
       {selectedCampusNotice && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-3.5">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-3.5">
             <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-[#0D9488] border border-teal-200">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-brand-teal border border-teal-200">
                   {selectedCampusNotice.publisherRole === 'class_captain'
                     ? 'Class Captain (CR) Notice — Non-Board'
                     : 'College / Faculty Notice — Non-Board'}
                 </span>
-                <h3 className="font-bold text-base text-[#172554] mt-1">{selectedCampusNotice.title}</h3>
+                <h3 className="font-bold text-base text-text-primary mt-1">{selectedCampusNotice.title}</h3>
               </div>
               <button
                 onClick={() => setSelectedCampusNotice(null)}
@@ -2603,7 +2604,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200 text-xs space-y-1.5">
               <div>
                 <span className="text-slate-500">Published By: </span>
-                <strong className="text-[#172554]">{selectedCampusNotice.publisherName}</strong> (
+                <strong className="text-text-primary">{selectedCampusNotice.publisherName}</strong> (
                 {selectedCampusNotice.publisherDesignation || selectedCampusNotice.publisherRole})
               </div>
               <div>
@@ -2612,7 +2613,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               </div>
               <div>
                 <span className="text-slate-500">Target Scope: </span>
-                <span className="font-semibold text-[#2563EB]">
+                <span className="font-semibold text-brand-blue">
                   {selectedCampusNotice.department}
                   {selectedCampusNotice.semester ? ` · Semester ${selectedCampusNotice.semester}` : ''}
                   {selectedCampusNotice.shift ? ` · ${selectedCampusNotice.shift} Shift` : ''}
@@ -2637,7 +2638,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   href={selectedCampusNotice.attachmentUrl || `/api/notices/campus/${selectedCampusNotice.id}/attachment`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-[#0D9488] text-white hover:bg-teal-700 flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-brand-teal text-white hover:bg-teal-700 flex items-center gap-1.5"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Open Attachment ({selectedCampusNotice.attachmentName})</span>
@@ -2651,10 +2652,10 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {/* 3. PUBLISH / EDIT TEACHER OR CR CAMPUS NOTICE MODAL */}
       {showPublishNoticeModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-3 max-h-[90vh] overflow-y-auto">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-3 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <div>
-                <h3 className="font-bold text-sm sm:text-base text-[#172554]">
+                <h3 className="font-bold text-sm sm:text-base text-text-primary">
                   {editingCampusNotice ? 'Edit Campus / Group Notice' : 'Publish Teacher / Class Captain Notice'}
                 </h3>
                 <p className="text-[11px] text-slate-500">
@@ -2673,8 +2674,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
             <form onSubmit={handlePublishOrUpdateCampusNotice} className="space-y-3 text-xs">
               {(isVerifiedTeacher || isAdmin) && (
-                <div className="p-3 rounded-xl bg-indigo-50/50 border border-indigo-200/70 space-y-2.5">
-                  <label className="block font-bold text-[#172554]">Target Notice Scope</label>
+                <div className="p-3 rounded-xl bg-blue-50/50 border border-blue-200/70 space-y-2.5">
+                  <label className="block font-bold text-text-primary">Target Notice Scope</label>
                   <div className="grid grid-cols-3 gap-2">
                     {[
                       { id: 'college', label: 'Whole College' },
@@ -2687,8 +2688,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         onClick={() => setNoticeForm(prev => ({ ...prev, targetScope: sc.id as CampusNoticeScope }))}
                         className={`py-1.5 px-2 rounded-lg font-semibold border text-center cursor-pointer ${
                           noticeForm.targetScope === sc.id
-                            ? 'bg-[#2563EB] text-white border-[#2563EB]'
-                            : 'bg-white text-slate-700 border-slate-200'
+                            ? 'bg-brand-blue text-white border-brand-blue'
+                            : 'bg-surface text-slate-700 border-slate-200'
                         }`}
                       >
                         {sc.label}
@@ -2705,7 +2706,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                           onChange={e =>
                             setNoticeForm(prev => ({ ...prev, semester: Number(e.target.value) as SemesterNumber }))
                           }
-                          className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-[#172554]"
+                          className="w-full px-2 py-1.5 bg-surface border border-slate-200 rounded-lg font-bold text-text-primary"
                         >
                           {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
                             <option key={s} value={s}>
@@ -2719,7 +2720,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         <select
                           value={noticeForm.shift}
                           onChange={e => setNoticeForm(prev => ({ ...prev, shift: e.target.value as any }))}
-                          className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-[#172554]"
+                          className="w-full px-2 py-1.5 bg-surface border border-slate-200 rounded-lg font-bold text-text-primary"
                         >
                           <option value="Both">Both Shifts</option>
                           <option value="Morning">Morning</option>
@@ -2731,7 +2732,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         <select
                           value={noticeForm.section}
                           onChange={e => setNoticeForm(prev => ({ ...prev, section: e.target.value as any }))}
-                          className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-[#172554]"
+                          className="w-full px-2 py-1.5 bg-surface border border-slate-200 rounded-lg font-bold text-text-primary"
                         >
                           <option value="All">All Sections</option>
                           <option value="A1">Section A1</option>
@@ -2746,63 +2747,63 @@ export const NotesAssignmentsScreen: React.FC = () => {
               )}
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Notice Title (নোটিশের শিরোনাম) *</label>
+                <label className="block font-semibold text-text-primary mb-1">Notice Title (নোটিশের শিরোনাম) *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Lab Viva Schedule or Class Test Room Change"
                   value={noticeForm.title}
                   onChange={e => setNoticeForm(prev => ({ ...prev, title: e.target.value }))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Detailed Notice Description *</label>
+                <label className="block font-semibold text-text-primary mb-1">Detailed Notice Description *</label>
                 <textarea
                   rows={3}
                   required
                   placeholder="Write clear instructions for students..."
                   value={noticeForm.description}
                   onChange={e => setNoticeForm(prev => ({ ...prev, description: e.target.value }))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Priority</label>
+                  <label className="block font-semibold text-text-primary mb-1">Priority</label>
                   <select
                     value={noticeForm.priority}
                     onChange={e =>
                       setNoticeForm(prev => ({ ...prev, priority: e.target.value as 'Important' | 'Normal' }))
                     }
-                    className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   >
                     <option value="Important">Urgent / Important</option>
                     <option value="Normal">Regular Notice</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Expiry Date (Optional)</label>
+                  <label className="block font-semibold text-text-primary mb-1">Expiry Date (Optional)</label>
                   <input
                     type="date"
                     value={noticeForm.expiryDate}
                     onChange={e => setNoticeForm(prev => ({ ...prev, expiryDate: e.target.value }))}
-                    className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="block font-semibold text-[#172554]">
+                <label className="block font-semibold text-text-primary">
                   Optional Attachment (PDF / Image — Auto-Scans Notice Title & Body)
                 </label>
                 <input
                   type="file"
                   accept=".pdf,image/*"
                   onChange={e => handleFileUpload(e, 15, false, 'notice')}
-                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-[#0D9488]"
+                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-brand-teal"
                 />
                 {fileError && <p className="text-red-600 text-[11px]">{fileError}</p>}
                 {isScanningDoc && (
@@ -2820,7 +2821,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       type="button"
                       disabled={isScanningDoc}
                       onClick={() => runDocumentScanForAttachedFile('notice', attachedFile)}
-                      className="px-2 py-0.5 rounded bg-white text-[#0D9488] border border-teal-200 font-bold cursor-pointer"
+                      className="px-2 py-0.5 rounded bg-surface text-brand-teal border border-teal-200 font-bold cursor-pointer"
                     >
                       Re-Scan
                     </button>
@@ -2843,7 +2844,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-xl bg-[#0D9488] hover:bg-teal-700 text-white font-semibold shadow-xs cursor-pointer"
+                  className="flex-1 py-2 rounded-xl bg-brand-teal hover:bg-teal-700 text-white font-semibold shadow-xs cursor-pointer"
                 >
                   {editingCampusNotice ? 'Save Changes' : 'Publish Notice'}
                 </button>
@@ -2856,26 +2857,26 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {/* 4. REPORT CAMPUS NOTICE MODAL */}
       {reportingCampusNotice && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="font-bold text-sm text-[#172554]">Report Notice for Review</h3>
+              <h3 className="font-bold text-sm text-text-primary">Report Notice for Review</h3>
               <button onClick={() => setReportingCampusNotice(null)} className="text-slate-400 p-1">
                 ✕
               </button>
             </div>
             <p className="text-xs text-slate-600">
-              Reporting: <strong className="text-[#172554]">{reportingCampusNotice.title}</strong>
+              Reporting: <strong className="text-text-primary">{reportingCampusNotice.title}</strong>
             </p>
             <form onSubmit={handleReportCampusNotice} className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Reason for Report *</label>
+                <label className="block font-semibold text-text-primary mb-1">Reason for Report *</label>
                 <textarea
                   rows={3}
                   required
                   placeholder="Describe why this notice is inaccurate or inappropriate..."
                   value={reportReason}
                   onChange={e => setReportReason(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
               <div className="flex gap-2">
@@ -2901,11 +2902,11 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {/* 5. JOB DETAILS & HONEST EXTERNAL APPLICATION MODAL */}
       {selectedJob && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3.5 my-8 max-h-[90vh] overflow-y-auto">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3.5 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between border-b border-slate-100 pb-3">
               <div>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] font-bold text-[#2563EB] bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  <span className="text-[10px] font-bold text-brand-blue bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
                     {selectedJob.type}
                   </span>
                   {selectedJob.status && (
@@ -2915,14 +2916,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                           ? 'bg-rose-50 text-rose-700 border-rose-200'
                           : selectedJob.status === 'Closing Soon'
                             ? 'bg-amber-50 text-amber-700 border-amber-200'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-green-50 text-green-700 border-green-200'
                       }`}
                     >
                       {selectedJob.status}
                     </span>
                   )}
                 </div>
-                <h3 className="font-bold text-base text-[#172554] mt-1">{selectedJob.title}</h3>
+                <h3 className="font-bold text-base text-text-primary mt-1">{selectedJob.title}</h3>
                 <p className="text-xs font-semibold text-slate-600">
                   {selectedJob.company} · {selectedJob.location}
                 </p>
@@ -2939,7 +2940,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               <div className="grid grid-cols-2 gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <div>
                   <span className="text-slate-500 block text-[11px]">Salary / Stipend</span>
-                  <span className="text-[#0D9488] font-bold">{selectedJob.stipendOrSalary}</span>
+                  <span className="text-brand-teal font-bold">{selectedJob.stipendOrSalary}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">Application Deadline</span>
@@ -2947,25 +2948,25 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">Educational Qualification</span>
-                  <span className="font-semibold text-[#172554]">
+                  <span className="font-semibold text-text-primary">
                     {selectedJob.educationalQualifications || 'Diploma in Engineering (BTEB)'}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">Experience Required</span>
-                  <span className="font-semibold text-[#172554]">
+                  <span className="font-semibold text-text-primary">
                     {selectedJob.experienceRequirements || 'Freshers / 0–2 Years'}
                   </span>
                 </div>
               </div>
 
               <div>
-                <span className="font-bold text-[#172554] block mb-1">Relevant Technologies / Departments:</span>
+                <span className="font-bold text-text-primary block mb-1">Relevant Technologies / Departments:</span>
                 <div className="flex flex-wrap gap-1.5">
                   {selectedJob.targetDepartments.map(dept => (
                     <span
                       key={dept}
-                      className="px-2 py-0.5 rounded-md bg-blue-50 text-[#2563EB] text-[11px] font-semibold border border-blue-100"
+                      className="px-2 py-0.5 rounded-md bg-blue-50 text-brand-blue text-[11px] font-semibold border border-blue-100"
                     >
                       {dept}
                     </span>
@@ -2975,7 +2976,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
               {selectedJob.description && (
                 <div>
-                  <span className="font-bold text-[#172554] block mb-1">Job Description:</span>
+                  <span className="font-bold text-text-primary block mb-1">Job Description:</span>
                   <p className="leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-200">
                     {selectedJob.description}
                   </p>
@@ -2983,7 +2984,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               )}
 
               <div>
-                <span className="font-bold text-[#172554] block mb-1">Technical Requirements:</span>
+                <span className="font-bold text-text-primary block mb-1">Technical Requirements:</span>
                 <p className="leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-200">
                   {selectedJob.requirements}
                 </p>
@@ -2991,14 +2992,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
               {/* Honest Application Disclosure */}
               <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-[11px] text-slate-700 space-y-1">
-                <div className="font-bold text-[#172554] flex items-center gap-1.5">
-                  <ExternalLink className="w-3.5 h-3.5 text-[#2563EB]" />
+                <div className="font-bold text-text-primary flex items-center gap-1.5">
+                  <ExternalLink className="w-3.5 h-3.5 text-brand-blue" />
                   <span>External Employer Application Process</span>
                 </div>
                 <p>
                   DiplomaMate does not collect CVs, NIDs, or submit applications on your behalf. Clicking{' '}
                   <strong>"Apply Now on Original Site"</strong> opens the verified employer or Careerjet listing page (
-                  <span className="font-mono text-[10px] text-[#2563EB]">
+                  <span className="font-mono text-[10px] text-brand-blue">
                     {selectedJob.applyUrl || selectedJob.sourceUrl}
                   </span>
                   ) where you can complete your official application directly.
@@ -3023,7 +3024,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   href={selectedJob.applyUrl || selectedJob.sourceUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-[#2563EB] text-white hover:bg-blue-700 flex items-center gap-1.5 shadow-xs"
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-brand-blue text-white hover:bg-blue-700 flex items-center gap-1.5 shadow-xs"
                 >
                   <span>Apply Now on Original Site</span>
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -3037,10 +3038,10 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {/* 6. ADMIN / PLACEMENT CELL BATCH JOB IMPORT MODAL */}
       {showBatchImportJobsModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-3">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div>
-                <h3 className="font-bold text-sm text-[#172554]">
+                <h3 className="font-bold text-sm text-text-primary">
                   Admin / Placement Cell Batch Job Import
                 </h3>
                 <p className="text-[11px] text-slate-500">
@@ -3054,7 +3055,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
             <form onSubmit={handleBatchImportJobs} className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">
+                <label className="block font-semibold text-text-primary mb-1">
                   Paste JSON Array of Job Circulars *
                 </label>
                 <textarea
@@ -3063,7 +3064,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   placeholder={`[\n  {\n    "title": "Sub-Assistant Engineer (Electrical)",\n    "company": "Walton Hi-Tech PLC",\n    "location": "Gazipur",\n    "type": "Full-Time",\n    "deadline": "2026-12-15",\n    "stipendOrSalary": "BDT 22,000",\n    "requirements": "Diploma in Electrical Technology",\n    "applyUrl": "https://waltonbd.com/career"\n  }\n]`}
                   value={batchJobsJsonText}
                   onChange={e => setBatchJobsJsonText(e.target.value)}
-                  className="w-full px-3 py-2 font-mono text-[11px] bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 font-mono text-[11px] bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
               <div className="flex gap-2">
@@ -3076,7 +3077,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-xl bg-[#172554] text-white font-semibold"
+                  className="flex-1 py-2 rounded-xl bg-text-primary text-white font-semibold"
                 >
                   Import & Deduplicate Jobs
                 </button>
@@ -3089,11 +3090,11 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {/* PREVIEW NOTE MODAL */}
       {selectedNote && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <div>
-                <h3 className="font-bold text-sm text-[#172554]">{selectedNote.title}</h3>
-                <p className="text-xs text-[#0D9488]">
+                <h3 className="font-bold text-sm text-text-primary">{selectedNote.title}</h3>
+                <p className="text-xs text-brand-teal">
                   {selectedNote.subjectName} · {selectedNote.chapter}
                 </p>
               </div>
@@ -3126,10 +3127,10 @@ export const NotesAssignmentsScreen: React.FC = () => {
               )}
               {selectedNote.extractedText && (
                 <div className="pt-2 border-t border-slate-200/80">
-                  <span className="font-semibold block mb-1 text-[#0D9488]">
+                  <span className="font-semibold block mb-1 text-brand-teal">
                     Extracted Document Content {selectedNote.pageCount ? `(${selectedNote.pageCount} pages)` : ''}:
                   </span>
-                  <div className="max-h-48 overflow-y-auto p-2.5 rounded-lg bg-white border border-slate-200 font-mono text-[11px] whitespace-pre-line text-slate-700">
+                  <div className="max-h-48 overflow-y-auto p-2.5 rounded-lg bg-surface border border-slate-200 font-mono text-[11px] whitespace-pre-line text-slate-700">
                     {selectedNote.extractedText}
                   </div>
                 </div>
@@ -3162,7 +3163,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     selectedNote.mediaUrl
                   )
                 }
-                className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-[#0D9488] text-white hover:bg-teal-700 flex items-center gap-1.5"
+                className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-brand-teal text-white hover:bg-teal-700 flex items-center gap-1.5"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Save Offline</span>
@@ -3175,10 +3176,10 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {/* STUDENT SUBMIT ASSIGNMENT MODAL */}
       {submittingAssignment && !isTeacher && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div>
-                <h3 className="font-bold text-sm text-[#172554]">
+                <h3 className="font-bold text-sm text-text-primary">
                   Submit Assignment: {submittingAssignment.title}
                 </h3>
                 <p className="text-xs text-slate-500">Subject: {submittingAssignment.subjectName}</p>
@@ -3194,7 +3195,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
             <form onSubmit={handleAssignmentSubmit} className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">
+                <label className="block font-semibold text-text-primary mb-1">
                   Submission Notes / Google Drive or GitHub Link *
                 </label>
                 <textarea
@@ -3203,19 +3204,19 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   placeholder="Paste your submission link or solution notes here..."
                   value={submissionText}
                   onChange={e => setSubmissionText(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">
+                <label className="block font-semibold text-text-primary mb-1">
                   Attach Solution File (PDF, Image, DOCX, or ZIP - Optional)
                 </label>
                 <input
                   type="file"
                   accept=".pdf,image/*,.docx,.zip"
                   onChange={e => handleFileUpload(e, 20, true)}
-                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-[#2563EB]"
+                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-brand-blue"
                 />
                 {studentSubmissionFile && (
                   <p className="text-teal-700 text-[11px] mt-1 font-semibold">
@@ -3235,7 +3236,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmittingWork}
-                  className="flex-1 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-semibold disabled:opacity-50"
+                  className="flex-1 py-2 rounded-xl bg-brand-blue hover:bg-blue-700 text-white font-semibold disabled:opacity-50"
                 >
                   {isSubmittingWork ? 'Submitting...' : 'Confirm Submission'}
                 </button>
@@ -3248,7 +3249,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {/* TEACHER SUBMISSIONS INSPECTOR MODAL */}
       {inspectingAssignment && isTeacher && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-surface rounded-2xl max-w-2xl w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
               <div>
                 <div className="flex items-center gap-2">
@@ -3260,7 +3261,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     {inspectingAssignment.section}
                   </span>
                 </div>
-                <h3 className="font-bold text-sm sm:text-base text-[#172554] mt-1">
+                <h3 className="font-bold text-sm sm:text-base text-text-primary mt-1">
                   {inspectingAssignment.title} — Student Submissions
                 </h3>
                 <p className="text-xs text-slate-500">
@@ -3288,11 +3289,11 @@ export const NotesAssignmentsScreen: React.FC = () => {
             ) : (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+                  <div className="p-3 rounded-xl bg-green-50 border border-green-200">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-green-700 block">
                       Total Submitted
                     </span>
-                    <span className="text-lg font-bold text-emerald-800 font-mono">
+                    <span className="text-lg font-bold text-green-800 font-mono">
                       {submissionsDetail.totalSubmitted}
                     </span>
                   </div>
@@ -3323,7 +3324,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
                       Total Uploads
                     </span>
-                    <span className="text-lg font-bold text-[#172554] font-mono">
+                    <span className="text-lg font-bold text-text-primary font-mono">
                       {submissionsDetail.totalAttempts}
                     </span>
                   </div>
@@ -3335,7 +3336,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     onClick={() => setInspectorTab('submitted')}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       inspectorTab === 'submitted'
-                        ? 'bg-white text-emerald-700 shadow-xs'
+                        ? 'bg-surface text-green-700 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -3346,7 +3347,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     onClick={() => setInspectorTab('not_submitted')}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       inspectorTab === 'not_submitted'
-                        ? 'bg-white text-amber-700 shadow-xs'
+                        ? 'bg-surface text-amber-700 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -3368,7 +3369,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
-                              <span className="font-bold text-[#172554]">{sub.studentName}</span>
+                              <span className="font-bold text-text-primary">{sub.studentName}</span>
                               <span className="text-slate-500 font-mono ml-2">
                                 Class Roll #{sub.classRoll} · Board Roll {sub.boardRoll}
                               </span>
@@ -3379,13 +3380,13 @@ export const NotesAssignmentsScreen: React.FC = () => {
                                   Attempt #{sub.attemptCount}
                                 </span>
                               )}
-                              <span className="text-[11px] text-emerald-700 font-semibold">
+                              <span className="text-[11px] text-green-700 font-semibold">
                                 {sub.submittedAt}
                               </span>
                             </div>
                           </div>
 
-                          <p className="text-slate-700 bg-white p-2 rounded-lg border border-slate-200/80">
+                          <p className="text-slate-700 bg-surface p-2 rounded-lg border border-slate-200/80">
                             {sub.submissionNote}
                           </p>
 
@@ -3399,7 +3400,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                                 onClick={() =>
                                   handleDownloadFile(sub.attachmentName!, sub.attachmentUrl)
                                 }
-                                className="px-2.5 py-1 rounded bg-white text-blue-700 font-bold text-[11px] border border-blue-200 flex items-center gap-1 cursor-pointer"
+                                className="px-2.5 py-1 rounded bg-surface text-blue-700 font-bold text-[11px] border border-blue-200 flex items-center gap-1 cursor-pointer"
                               >
                                 <Download className="w-3 h-3" />
                                 <span>Download</span>
@@ -3411,7 +3412,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     </div>
                   )
                 ) : submissionsDetail.notSubmittedStudents.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-emerald-700 font-semibold border border-emerald-200 bg-emerald-50/50 rounded-xl">
+                  <div className="p-6 text-center text-xs text-green-700 font-semibold border border-green-200 bg-green-50/50 rounded-xl">
                     All eligible students in this class roster have submitted their work!
                   </div>
                 ) : (
@@ -3432,7 +3433,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             <td className="py-2 px-3 font-mono font-bold text-slate-700">
                               {st.classRoll}
                             </td>
-                            <td className="py-2 px-3 font-semibold text-[#172554]">{st.studentName}</td>
+                            <td className="py-2 px-3 font-semibold text-text-primary">{st.studentName}</td>
                             <td className="py-2 px-3 font-mono text-blue-700">{st.boardRoll}</td>
                             <td className="py-2 px-3 font-mono text-slate-500">{st.regNumber}</td>
                             <td className="py-2 px-3 text-right">
@@ -3465,9 +3466,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {/* POST ASSIGNMENT MODAL */}
       {showAddAssignmentModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-3 max-h-[90vh] overflow-y-auto">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-3 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="font-bold text-sm text-[#172554]">
+              <h3 className="font-bold text-sm text-text-primary">
                 Post New Assignment ({isTeacher ? 'Verified Faculty' : 'Class Captain'})
               </h3>
               <button onClick={() => setShowAddAssignmentModal(false)} className="text-slate-400 p-1">
@@ -3478,7 +3479,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             <form onSubmit={handleCreateAssignment} className="space-y-3 text-xs">
               {isTeacher && (
                 <div className="p-3 rounded-xl bg-blue-50/50 border border-blue-200/70 space-y-2.5">
-                  <span className="font-bold text-[#172554] block">
+                  <span className="font-bold text-text-primary block">
                     Target Class Cohort (Authorized Scope)
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -3499,7 +3500,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       <select
                         value={targetSemester}
                         onChange={e => setTargetSemester(Number(e.target.value) as SemesterNumber)}
-                        className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-[#172554]"
+                        className="w-full px-2 py-1.5 bg-surface border border-slate-200 rounded-lg font-bold text-text-primary"
                       >
                         {(userProfile.semestersTaught || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => (
                           <option key={s} value={s}>
@@ -3513,7 +3514,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       <select
                         value={targetShift}
                         onChange={e => setTargetShift(e.target.value as Shift)}
-                        className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-[#172554]"
+                        className="w-full px-2 py-1.5 bg-surface border border-slate-200 rounded-lg font-bold text-text-primary"
                       >
                         <option value="Morning">Morning</option>
                         <option value="Day">Day</option>
@@ -3524,7 +3525,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       <select
                         value={targetSection}
                         onChange={e => setTargetSection(e.target.value as Section)}
-                        className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-[#172554]"
+                        className="w-full px-2 py-1.5 bg-surface border border-slate-200 rounded-lg font-bold text-text-primary"
                       >
                         {(['A1', 'A2', 'B1', 'B2'] as Section[]).map(sec => (
                           <option key={sec} value={sec}>
@@ -3538,14 +3539,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
               )}
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Assignment Title *</label>
+                <label className="block font-semibold text-text-primary mb-1">Assignment Title *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Lab Report 3: SQL Triggers & Normalization"
                   value={newAsgData.title}
                   onChange={e => setNewAsgData({ ...newAsgData, title: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
@@ -3577,52 +3578,52 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Due Date *</label>
+                  <label className="block font-semibold text-text-primary mb-1">Due Date *</label>
                   <input
                     type="date"
                     required
                     value={newAsgData.dueDate}
                     onChange={e => setNewAsgData({ ...newAsgData, dueDate: e.target.value })}
-                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Assigned By Teacher</label>
+                  <label className="block font-semibold text-text-primary mb-1">Assigned By Teacher</label>
                   <input
                     type="text"
                     value={isTeacher ? userProfile.name : newAsgData.assignedBy}
                     readOnly={isTeacher}
                     onChange={e => setNewAsgData({ ...newAsgData, assignedBy: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Total Marks (Optional)</label>
+                  <label className="block font-semibold text-text-primary mb-1">Total Marks (Optional)</label>
                   <input
                     type="text"
                     placeholder="e.g. 20 Marks"
                     value={newAsgData.marks}
                     onChange={e => setNewAsgData({ ...newAsgData, marks: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Submission Method (Optional)</label>
+                  <label className="block font-semibold text-text-primary mb-1">Submission Method (Optional)</label>
                   <input
                     type="text"
                     placeholder="e.g. Lab File / Online PDF Upload"
                     value={newAsgData.submissionMethod}
                     onChange={e => setNewAsgData({ ...newAsgData, submissionMethod: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">
+                <label className="block font-semibold text-text-primary mb-1">
                   Description & Instructions *
                 </label>
                 <textarea
@@ -3631,12 +3632,12 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   placeholder="Explain instructions and format requirements..."
                   value={newAsgData.description}
                   onChange={e => setNewAsgData({ ...newAsgData, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">
+                <label className="block font-semibold text-text-primary mb-1">
                   Extracted / Numbered Questions (One per line — Editable)
                 </label>
                 <textarea
@@ -3644,14 +3645,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   placeholder="Upload an assignment sheet below to auto-extract questions, or type questions (one per line)..."
                   value={newAsgData.questionsText}
                   onChange={e => setNewAsgData({ ...newAsgData, questionsText: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554] font-mono text-[11px]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary font-mono text-[11px]"
                 />
               </div>
 
               <div className="p-3 rounded-xl bg-blue-50/50 border border-blue-200/80 space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="font-bold text-[#172554] flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-[#2563EB]" />
+                  <label className="font-bold text-text-primary flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-brand-blue" />
                     <span>Upload Assignment Sheet (Auto-Scans Image or PDF)</span>
                   </label>
                   <div className="flex items-center gap-1 text-[10px] text-slate-600">
@@ -3662,7 +3663,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       placeholder="From"
                       value={pdfPageStart}
                       onChange={e => setPdfPageStart(e.target.value)}
-                      className="w-12 px-1.5 py-0.5 bg-white border border-slate-200 rounded text-center"
+                      className="w-12 px-1.5 py-0.5 bg-surface border border-slate-200 rounded text-center"
                     />
                     <span>-</span>
                     <input
@@ -3671,7 +3672,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       placeholder="To"
                       value={pdfPageEnd}
                       onChange={e => setPdfPageEnd(e.target.value)}
-                      className="w-12 px-1.5 py-0.5 bg-white border border-slate-200 rounded text-center"
+                      className="w-12 px-1.5 py-0.5 bg-surface border border-slate-200 rounded text-center"
                     />
                   </div>
                 </div>
@@ -3680,19 +3681,19 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   type="file"
                   accept=".pdf,image/*,.docx,.zip"
                   onChange={e => handleFileUpload(e, 25, false, 'assignment')}
-                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-100 file:text-[#2563EB]"
+                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-100 file:text-brand-blue"
                 />
                 {fileError && <p className="text-red-600 text-[11px]">{fileError}</p>}
 
                 {isScanningDoc && (
-                  <div className="p-2 rounded-lg bg-white border border-blue-200 text-xs text-blue-800 flex items-center gap-2">
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#2563EB] shrink-0" />
+                  <div className="p-2 rounded-lg bg-surface border border-blue-200 text-xs text-blue-800 flex items-center gap-2">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-brand-blue shrink-0" />
                     <span>{scanStageText || 'Scanning assignment sheet...'}</span>
                   </div>
                 )}
 
                 {attachedFile && (
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-teal-200 text-[11px]">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-surface border border-teal-200 text-[11px]">
                     <span className="text-teal-800 font-semibold truncate">
                       Original Preserved: {attachedFile.name} ({attachedFile.size})
                     </span>
@@ -3700,7 +3701,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       type="button"
                       disabled={isScanningDoc}
                       onClick={() => runDocumentScanForAttachedFile('assignment', attachedFile)}
-                      className="px-2 py-0.5 rounded bg-blue-50 text-[#2563EB] border border-blue-200 font-bold cursor-pointer"
+                      className="px-2 py-0.5 rounded bg-blue-50 text-brand-blue border border-blue-200 font-bold cursor-pointer"
                     >
                       Retry Scan
                     </button>
@@ -3708,9 +3709,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 )}
 
                 {activeScanResult && activeScanResult.feature === 'assignment' && (
-                  <div className="p-2.5 rounded-lg bg-white border border-slate-200 space-y-1 text-[11px]">
+                  <div className="p-2.5 rounded-lg bg-surface border border-slate-200 space-y-1 text-[11px]">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-[#172554]">
+                      <span className="font-bold text-text-primary">
                         Extraction Confidence: {activeScanResult.confidence}
                       </span>
                       <span className="font-mono text-slate-500">
@@ -3747,7 +3748,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-xl bg-[#2563EB] text-white font-semibold shadow-xs"
+                  className="flex-1 py-2 rounded-xl bg-brand-blue text-white font-semibold shadow-xs"
                 >
                   Publish Assignment
                 </button>
@@ -3760,9 +3761,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {/* UPLOAD NOTE MODAL */}
       {showAddNoteModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-3 max-h-[90vh] overflow-y-auto">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-3 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="font-bold text-sm text-[#172554]">
+              <h3 className="font-bold text-sm text-text-primary">
                 Upload Lecture Note or Lab Sheet ({isTeacher ? 'Verified Faculty' : 'Class Captain'})
               </h3>
               <button onClick={() => setShowAddNoteModal(false)} className="text-slate-400 p-1">
@@ -3773,7 +3774,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             <form onSubmit={handleCreateNote} className="space-y-3 text-xs">
               {isTeacher && (
                 <div className="p-3 rounded-xl bg-teal-50/50 border border-teal-200/70 space-y-2.5">
-                  <span className="font-bold text-[#172554] block">
+                  <span className="font-bold text-text-primary block">
                     Target Class Cohort (Authorized Scope)
                   </span>
                   <div className="grid grid-cols-3 gap-2">
@@ -3782,7 +3783,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       <select
                         value={targetSemester}
                         onChange={e => setTargetSemester(Number(e.target.value) as SemesterNumber)}
-                        className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-[#172554]"
+                        className="w-full px-2 py-1.5 bg-surface border border-slate-200 rounded-lg font-bold text-text-primary"
                       >
                         {(userProfile.semestersTaught || [1, 2, 3, 4, 5, 6, 7, 8]).map(s => (
                           <option key={s} value={s}>
@@ -3796,7 +3797,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       <select
                         value={targetShift}
                         onChange={e => setTargetShift(e.target.value as Shift)}
-                        className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-[#172554]"
+                        className="w-full px-2 py-1.5 bg-surface border border-slate-200 rounded-lg font-bold text-text-primary"
                       >
                         <option value="Morning">Morning</option>
                         <option value="Day">Day</option>
@@ -3807,7 +3808,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       <select
                         value={targetSection}
                         onChange={e => setTargetSection(e.target.value as Section)}
-                        className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-[#172554]"
+                        className="w-full px-2 py-1.5 bg-surface border border-slate-200 rounded-lg font-bold text-text-primary"
                       >
                         {(['A1', 'A2', 'B1', 'B2'] as Section[]).map(sec => (
                           <option key={sec} value={sec}>
@@ -3821,14 +3822,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
               )}
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Resource Title *</label>
+                <label className="block font-semibold text-text-primary mb-1">Resource Title *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Chapter 4: Microprocessor Pin Diagrams & Architecture"
                   value={newNoteData.title}
                   onChange={e => setNewNoteData({ ...newNoteData, title: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
@@ -3859,31 +3860,31 @@ export const NotesAssignmentsScreen: React.FC = () => {
               />
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Chapter / Unit</label>
+                <label className="block font-semibold text-text-primary mb-1">Chapter / Unit</label>
                 <input
                   type="text"
                   required
                   placeholder="Chapter 4"
                   value={newNoteData.chapter}
                   onChange={e => setNewNoteData({ ...newNoteData, chapter: e.target.value })}
-                  className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Summary / Key Topics *</label>
+                <label className="block font-semibold text-text-primary mb-1">Summary / Key Topics *</label>
                 <textarea
                   rows={2}
                   required
                   placeholder="Brief summary of what this note or lab sheet covers..."
                   value={newNoteData.summary}
                   onChange={e => setNewNoteData({ ...newNoteData, summary: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">
+                <label className="block font-semibold text-text-primary mb-1">
                   Extracted Section Headings (Pipe "|" separated — Editable)
                 </label>
                 <input
@@ -3891,12 +3892,12 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   placeholder="e.g. 1. Architecture | 2. Pin Diagram | 3. Addressing Modes"
                   value={newNoteData.headingsText}
                   onChange={e => setNewNoteData({ ...newNoteData, headingsText: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">
+                <label className="block font-semibold text-text-primary mb-1">
                   Extracted Searchable Text (Auto-populated from PDF / Image / Video Keyframes)
                 </label>
                 <textarea
@@ -3904,14 +3905,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   placeholder="Upload a PDF, image, or lecture video below to extract searchable study text..."
                   value={newNoteData.extractedText}
                   onChange={e => setNewNoteData({ ...newNoteData, extractedText: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554] font-mono text-[11px]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary font-mono text-[11px]"
                 />
               </div>
 
               <div className="p-3 rounded-xl bg-teal-50/50 border border-teal-200/80 space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="font-bold text-[#172554] flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-[#0D9488]" />
+                  <label className="font-bold text-text-primary flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-brand-teal" />
                     <span>File (PDF, Image, Slides, or Video — Auto-Extracts Text) *</span>
                   </label>
                   <div className="flex items-center gap-1 text-[10px] text-slate-600">
@@ -3922,7 +3923,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       placeholder="From"
                       value={pdfPageStart}
                       onChange={e => setPdfPageStart(e.target.value)}
-                      className="w-12 px-1.5 py-0.5 bg-white border border-slate-200 rounded text-center"
+                      className="w-12 px-1.5 py-0.5 bg-surface border border-slate-200 rounded text-center"
                     />
                     <span>-</span>
                     <input
@@ -3931,7 +3932,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       placeholder="To"
                       value={pdfPageEnd}
                       onChange={e => setPdfPageEnd(e.target.value)}
-                      className="w-12 px-1.5 py-0.5 bg-white border border-slate-200 rounded text-center"
+                      className="w-12 px-1.5 py-0.5 bg-surface border border-slate-200 rounded text-center"
                     />
                   </div>
                 </div>
@@ -3940,19 +3941,19 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   type="file"
                   accept=".pdf,image/*,.docx,.pptx,video/*"
                   onChange={e => handleFileUpload(e, 50, false, 'note')}
-                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-teal-100 file:text-[#0D9488]"
+                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-teal-100 file:text-brand-teal"
                 />
                 {fileError && <p className="text-red-600 text-[11px]">{fileError}</p>}
 
                 {isScanningDoc && (
-                  <div className="p-2 rounded-lg bg-white border border-teal-200 text-xs text-teal-800 flex items-center gap-2">
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#0D9488] shrink-0" />
+                  <div className="p-2 rounded-lg bg-surface border border-teal-200 text-xs text-teal-800 flex items-center gap-2">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-brand-teal shrink-0" />
                     <span>{scanStageText || 'Processing study material...'}</span>
                   </div>
                 )}
 
                 {attachedFile && (
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-teal-200 text-[11px]">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-surface border border-teal-200 text-[11px]">
                     <span className="text-teal-800 font-semibold truncate">
                       Original Preserved: {attachedFile.name} ({attachedFile.size})
                     </span>
@@ -3960,7 +3961,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       type="button"
                       disabled={isScanningDoc}
                       onClick={() => runDocumentScanForAttachedFile('note', attachedFile)}
-                      className="px-2 py-0.5 rounded bg-teal-50 text-[#0D9488] border border-teal-200 font-bold cursor-pointer"
+                      className="px-2 py-0.5 rounded bg-teal-50 text-brand-teal border border-teal-200 font-bold cursor-pointer"
                     >
                       Retry Scan
                     </button>
@@ -3968,9 +3969,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 )}
 
                 {activeScanResult && activeScanResult.feature === 'note' && (
-                  <div className="p-2.5 rounded-lg bg-white border border-slate-200 space-y-1 text-[11px]">
+                  <div className="p-2.5 rounded-lg bg-surface border border-slate-200 space-y-1 text-[11px]">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-[#172554]">
+                      <span className="font-bold text-text-primary">
                         Extraction Confidence: {activeScanResult.confidence}
                       </span>
                       <span className="font-mono text-slate-500">
@@ -4007,7 +4008,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-xl bg-[#0D9488] text-white font-semibold shadow-xs"
+                  className="flex-1 py-2 rounded-xl bg-brand-teal text-white font-semibold shadow-xs"
                 >
                   Upload Resource
                 </button>
@@ -4020,9 +4021,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
       {/* POST JOB CIRCULAR MODAL */}
       {showAddJobModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3 my-8 max-h-[90vh] overflow-y-auto">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="font-bold text-sm text-[#172554]">Post Diploma Job Circular / Internship</h3>
+              <h3 className="font-bold text-sm text-text-primary">Post Diploma Job Circular / Internship</h3>
               <button onClick={() => setShowAddJobModal(false)} className="text-slate-400 p-1">
                 ✕
               </button>
@@ -4030,49 +4031,49 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
             <form onSubmit={handleCreateJob} className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Job / Internship Title *</label>
+                <label className="block font-semibold text-text-primary mb-1">Job / Internship Title *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Sub-Assistant Engineer (Network & Fiber Operations)"
                   value={newJobData.title}
                   onChange={e => setNewJobData({ ...newJobData, title: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Company / Employer *</label>
+                  <label className="block font-semibold text-text-primary mb-1">Company / Employer *</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Summit Communications Ltd."
                     value={newJobData.company}
                     onChange={e => setNewJobData({ ...newJobData, company: e.target.value })}
-                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Job Location *</label>
+                  <label className="block font-semibold text-text-primary mb-1">Job Location *</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Tejgaon, Dhaka"
                     value={newJobData.location}
                     onChange={e => setNewJobData({ ...newJobData, location: e.target.value })}
-                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Employment Type</label>
+                  <label className="block font-semibold text-text-primary mb-1">Employment Type</label>
                   <select
                     value={newJobData.type}
                     onChange={e => setNewJobData({ ...newJobData, type: e.target.value as any })}
-                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   >
                     <option value="Full-Time">Full-Time</option>
                     <option value="Internship">Internship</option>
@@ -4082,54 +4083,54 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Salary / Stipend</label>
+                  <label className="block font-semibold text-text-primary mb-1">Salary / Stipend</label>
                   <input
                     type="text"
                     placeholder="e.g. BDT 22,000 / mo"
                     value={newJobData.stipendOrSalary}
                     onChange={e => setNewJobData({ ...newJobData, stipendOrSalary: e.target.value })}
-                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Deadline *</label>
+                  <label className="block font-semibold text-text-primary mb-1">Deadline *</label>
                   <input
                     type="date"
                     required
                     value={newJobData.deadline}
                     onChange={e => setNewJobData({ ...newJobData, deadline: e.target.value })}
-                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Educational Qualification</label>
+                  <label className="block font-semibold text-text-primary mb-1">Educational Qualification</label>
                   <input
                     type="text"
                     value={newJobData.educationalQualifications}
                     onChange={e =>
                       setNewJobData({ ...newJobData, educationalQualifications: e.target.value })
                     }
-                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Experience Requirement</label>
+                  <label className="block font-semibold text-text-primary mb-1">Experience Requirement</label>
                   <input
                     type="text"
                     value={newJobData.experienceRequirements}
                     onChange={e =>
                       setNewJobData({ ...newJobData, experienceRequirements: e.target.value })
                     }
-                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">
+                <label className="block font-semibold text-text-primary mb-1">
                   Job Description & Technical Requirements *
                 </label>
                 <textarea
@@ -4144,12 +4145,12 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       description: e.target.value
                     })
                   }
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">
+                <label className="block font-semibold text-text-primary mb-1">
                   Original External Application URL (https://...) *
                 </label>
                 <input
@@ -4158,19 +4159,19 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   placeholder="https://company.com/careers/apply"
                   value={newJobData.applyUrl}
                   onChange={e => setNewJobData({ ...newJobData, applyUrl: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
               <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
-                <label className="block font-semibold text-[#172554]">
+                <label className="block font-semibold text-text-primary">
                   Optional Job Circular PDF / Image (Auto-Scans Title, Employer, Salary & Deadline)
                 </label>
                 <input
                   type="file"
                   accept=".pdf,image/*"
                   onChange={e => handleFileUpload(e, 15, false, 'job')}
-                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-[#2563EB]"
+                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-brand-blue"
                 />
                 {isScanningDoc && (
                   <p className="text-[11px] text-blue-700 flex items-center gap-1">
@@ -4195,7 +4196,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-xl bg-[#172554] text-white font-semibold shadow-xs"
+                  className="flex-1 py-2 rounded-xl bg-text-primary text-white font-semibold shadow-xs"
                 >
                   Publish Job Circular
                 </button>

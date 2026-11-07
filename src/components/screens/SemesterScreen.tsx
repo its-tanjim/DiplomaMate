@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/apiClient';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -93,7 +94,7 @@ export const SemesterScreen: React.FC = () => {
     if (!tokenToUse) return;
 
     try {
-      const res = await fetch('/api/my-semester-results', {
+      const res = await apiFetch('/api/my-semester-results', {
         headers: { Authorization: `Bearer ${tokenToUse}` }
       });
       const data = await res.json();
@@ -135,7 +136,7 @@ export const SemesterScreen: React.FC = () => {
           semester: String(selectedSemester),
           activeOnly: 'true'
         });
-        const res = await fetch(`/api/catalog/subjects?${params.toString()}`);
+        const res = await apiFetch(`/api/catalog/subjects?${params.toString()}`);
         const data = await res.json();
         if (!cancelled) {
           if (res.ok && data.success && Array.isArray(data.records)) {
@@ -310,7 +311,7 @@ export const SemesterScreen: React.FC = () => {
     try {
       const tokenToUse = authToken || localStorage.getItem('diplomamate_auth_token');
       if (tokenToUse) {
-        const res = await fetch('/api/my-semester-results', {
+        const res = await apiFetch('/api/my-semester-results', {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -374,7 +375,7 @@ export const SemesterScreen: React.FC = () => {
     const tokenToUse = authToken || localStorage.getItem('diplomamate_auth_token');
     if (tokenToUse) {
       try {
-        const res = await fetch(`/api/my-semester-results/${encodeURIComponent(record.id)}`, {
+        const res = await apiFetch(`/api/my-semester-results/${encodeURIComponent(record.id)}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${tokenToUse}` }
         });
@@ -462,7 +463,7 @@ export const SemesterScreen: React.FC = () => {
   return (
     <div className="space-y-4 pb-10">
       {/* Top Header Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <button
@@ -473,10 +474,10 @@ export const SemesterScreen: React.FC = () => {
             </button>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-lg font-bold text-[#172554]">
+                <h1 className="text-lg font-bold text-text-primary">
                   My Semester & BTEB GPA/CGPA Calculator
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
                   {accountType === 'teacher'
                     ? 'Faculty Educational Mode'
                     : isVerifiedCaptain
@@ -494,7 +495,7 @@ export const SemesterScreen: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveScreen('book_list')}
-              className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#2563EB] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <BookOpen className="w-3.5 h-3.5" />
               <span>Book List (বইয়ের তালিকা)</span>
@@ -502,7 +503,7 @@ export const SemesterScreen: React.FC = () => {
             {totalCatalogCredits > 0 && (
               <div className="text-right pl-2 border-l border-slate-200">
                 <span className="text-[10px] text-slate-400 block font-medium">Verified Credits</span>
-                <span className="font-bold font-mono text-sm text-[#2563EB]">{totalCatalogCredits} Cr</span>
+                <span className="font-bold font-mono text-sm text-brand-blue">{totalCatalogCredits} Cr</span>
               </div>
             )}
           </div>
@@ -537,7 +538,7 @@ export const SemesterScreen: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-[#172554] mb-1.5 flex items-center gap-1">
+            <label className="block text-xs font-semibold text-text-primary mb-1.5 flex items-center gap-1">
               <Layers className="w-3.5 h-3.5 text-blue-600" />
               <span>2. Catalog Regulation (প্রবিধান)</span>
             </label>
@@ -549,7 +550,7 @@ export const SemesterScreen: React.FC = () => {
                   onClick={() => setSelectedRegulation(reg)}
                   className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     selectedRegulation === reg
-                      ? 'bg-[#2563EB] text-white shadow-xs'
+                      ? 'bg-brand-blue text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -560,14 +561,14 @@ export const SemesterScreen: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-[#172554] mb-1.5 flex items-center gap-1">
+            <label className="block text-xs font-semibold text-text-primary mb-1.5 flex items-center gap-1">
               <Calendar className="w-3.5 h-3.5 text-teal-600" />
               <span>3. Semester (পর্ব ১–৮)</span>
             </label>
             <select
               value={selectedSemester}
               onChange={(e) => setSelectedSemester(Number(e.target.value) as SemesterNumber)}
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554] font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {([1, 2, 3, 4, 5, 6, 7, 8] as SemesterNumber[]).map((sem) => (
                 <option key={sem} value={sem}>
@@ -583,15 +584,15 @@ export const SemesterScreen: React.FC = () => {
       {/* SECTION 1: SUBJECT-WISE MARKS & SEMESTER GPA CALCULATOR               */}
       {/* ===================================================================== */}
       {isLoadingCatalog ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
+        <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
           Loading subjects from Central Subject Catalog...
         </div>
       ) : catalogSubjects.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs space-y-2">
+        <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs space-y-2">
           <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200/80 text-amber-600 flex items-center justify-center mx-auto">
             <AlertTriangle className="w-6 h-6" />
           </div>
-          <h3 className="text-sm font-bold text-[#172554]">
+          <h3 className="text-sm font-bold text-text-primary">
             Book list is not available for this selection yet.
           </h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto">
@@ -601,9 +602,9 @@ export const SemesterScreen: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="bg-surface rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           {/* Calculator Top Summary Banner */}
-          <div className="bg-gradient-to-br from-indigo-950 via-blue-950 to-slate-900 p-4 sm:p-5 text-white">
+          <div className="bg-gradient-to-br from-blue-950 via-blue-950 to-slate-900 p-4 sm:p-5 text-white">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -617,7 +618,7 @@ export const SemesterScreen: React.FC = () => {
                       Estimate (See Data Notes Below)
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 text-[11px] font-bold border border-emerald-400/30">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-green-500/20 text-green-300 text-[11px] font-bold border border-green-400/30">
                       <CheckCircle2 className="w-3 h-3" />
                       Verified Catalog Credits & Marks
                     </span>
@@ -638,7 +639,7 @@ export const SemesterScreen: React.FC = () => {
 
               {/* Live GPA Readout Card */}
               <div className="flex items-center gap-3 self-start sm:self-auto">
-                <div className="bg-white/10 backdrop-blur-xs border border-white/15 rounded-2xl px-4 py-2.5 text-center min-w-[135px]">
+                <div className="bg-surface/10 backdrop-blur-xs border border-white/15 rounded-2xl px-4 py-2.5 text-center min-w-[135px]">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-teal-300 block">
                     {gpaSummary.isEstimate ? 'Estimated SGPA' : 'Semester GPA'}
                   </span>
@@ -681,7 +682,7 @@ export const SemesterScreen: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleFillDemoMarks}
-                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                  className="px-3 py-1.5 rounded-xl bg-surface/10 hover:bg-surface/20 border border-white/15 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-teal-300" />
                   <span>Fill Sample Marks</span>
@@ -763,18 +764,18 @@ export const SemesterScreen: React.FC = () => {
                           isFailed
                             ? 'bg-rose-50/50'
                             : isEvaluated
-                            ? 'bg-emerald-50/20'
+                            ? 'bg-green-50/20'
                             : 'hover:bg-slate-50/80'
                         }`}
                       >
                         {/* Subject Code & Name */}
                         <td className="py-3 px-2 align-middle">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-mono font-bold text-[11px] px-2 py-0.5 rounded bg-blue-50 text-[#2563EB] border border-blue-200">
+                            <span className="font-mono font-bold text-[11px] px-2 py-0.5 rounded bg-blue-50 text-brand-blue border border-blue-200">
                               {entry.subjectCode}
                             </span>
                             {entry.verificationStatus === 'verified' ? (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-50 text-green-700">
                                 Verified
                               </span>
                             ) : (
@@ -808,7 +809,7 @@ export const SemesterScreen: React.FC = () => {
                                 placeholder="Cr?"
                                 value={entry.effectiveCredits ?? ''}
                                 onChange={(e) => handleCreditsChange(entry.subjectCode, e.target.value)}
-                                className="w-16 px-2 py-1 text-center font-mono font-bold rounded-lg border border-amber-300 bg-amber-50/60 text-amber-950 focus:outline-none focus:border-indigo-600"
+                                className="w-16 px-2 py-1 text-center font-mono font-bold rounded-lg border border-amber-300 bg-amber-50/60 text-amber-950 focus:outline-none focus:border-blue-600"
                                 title="Catalog credits missing — enter provisional credits"
                               />
                               <span className="block text-[9px] text-amber-700 font-semibold mt-0.5">
@@ -833,7 +834,7 @@ export const SemesterScreen: React.FC = () => {
                                 placeholder="e.g. 150"
                                 value={entry.effectiveFullMarks ?? ''}
                                 onChange={(e) => handleFullMarksChange(entry.subjectCode, e.target.value)}
-                                className="w-20 px-2 py-1 text-center font-mono font-bold rounded-lg border border-amber-300 bg-amber-50/60 text-amber-950 focus:outline-none focus:border-indigo-600"
+                                className="w-20 px-2 py-1 text-center font-mono font-bold rounded-lg border border-amber-300 bg-amber-50/60 text-amber-950 focus:outline-none focus:border-blue-600"
                                 title="Catalog full marks not specified — enter full marks"
                               />
                               <span className="block text-[9px] text-amber-700 font-semibold mt-0.5">
@@ -861,7 +862,7 @@ export const SemesterScreen: React.FC = () => {
                               entry.error
                                 ? 'border-rose-400 bg-rose-50 text-rose-900 focus:ring-rose-400'
                                 : entry.obtainedMarks !== null
-                                ? 'border-indigo-300 bg-white text-indigo-950 focus:ring-indigo-500'
+                                ? 'border-blue-300 bg-surface text-blue-950 focus:ring-blue-500'
                                 : 'border-slate-200 bg-slate-50 text-slate-800 focus:ring-blue-500'
                             }`}
                           />
@@ -880,7 +881,7 @@ export const SemesterScreen: React.FC = () => {
                                 entry.letterGrade === 'F'
                                   ? 'bg-rose-600 text-white'
                                   : entry.letterGrade.startsWith('A')
-                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  ? 'bg-green-100 text-green-800 border border-green-300'
                                   : entry.letterGrade.startsWith('B')
                                   ? 'bg-blue-100 text-blue-800 border border-blue-300'
                                   : 'bg-amber-100 text-amber-800 border border-amber-300'
@@ -896,7 +897,7 @@ export const SemesterScreen: React.FC = () => {
                         {/* Grade Point */}
                         <td className="py-3 px-2 text-right align-middle font-mono font-extrabold text-sm">
                           {entry.gradePoint !== null ? (
-                            <span className={entry.gradePoint === 0 ? 'text-rose-600' : 'text-[#172554]'}>
+                            <span className={entry.gradePoint === 0 ? 'text-rose-600' : 'text-text-primary'}>
                               {entry.gradePoint.toFixed(2)}
                             </span>
                           ) : (
@@ -916,15 +917,15 @@ export const SemesterScreen: React.FC = () => {
       {/* ===================================================================== */}
       {/* SECTION 2: MULTI-SEMESTER RESULTS & PROVISIONAL WEIGHTED CGPA         */}
       {/* ===================================================================== */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-4">
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="flex items-start gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center shrink-0">
               <BarChart3 className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm sm:text-base font-bold text-[#172554]">
+                <h2 className="text-sm sm:text-base font-bold text-text-primary">
                   Overall Diploma CGPA Calculator (Semesters 1 – 8)
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
@@ -946,7 +947,7 @@ export const SemesterScreen: React.FC = () => {
                 onClick={() => setCgpaWeightRegulation(reg)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   cgpaWeightRegulation === reg
-                    ? 'bg-indigo-950 text-white shadow-xs'
+                    ? 'bg-blue-950 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -982,9 +983,9 @@ export const SemesterScreen: React.FC = () => {
                 key={item.semester}
                 className={`rounded-2xl p-3 border transition-all flex flex-col justify-between ${
                   isCurrentSem
-                    ? 'bg-indigo-50/60 border-indigo-300 ring-1 ring-indigo-200'
+                    ? 'bg-blue-50/60 border-blue-300 ring-1 ring-blue-200'
                     : item.gpa !== null
-                    ? 'bg-emerald-50/30 border-emerald-200'
+                    ? 'bg-green-50/30 border-green-200'
                     : 'bg-slate-50 border-slate-200'
                 }`}
               >
@@ -993,11 +994,11 @@ export const SemesterScreen: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setSelectedSemester(item.semester)}
-                      className="text-xs font-extrabold text-[#172554] hover:text-blue-600 underline cursor-pointer"
+                      className="text-xs font-extrabold text-text-primary hover:text-blue-600 underline cursor-pointer"
                     >
                       Sem {item.semester}
                     </button>
-                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-indigo-900">
+                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-surface border border-slate-200 text-blue-900">
                       {item.weightPercent}%
                     </span>
                   </div>
@@ -1021,7 +1022,7 @@ export const SemesterScreen: React.FC = () => {
                         [item.semester]: e.target.value
                       }))
                     }
-                    className="w-full px-2 py-1.5 mt-1 rounded-xl border border-slate-200 bg-white font-mono font-bold text-sm text-center text-slate-900 focus:outline-none focus:border-indigo-600"
+                    className="w-full px-2 py-1.5 mt-1 rounded-xl border border-slate-200 bg-surface font-mono font-bold text-sm text-center text-slate-900 focus:outline-none focus:border-blue-600"
                   />
                 </div>
 
@@ -1035,7 +1036,7 @@ export const SemesterScreen: React.FC = () => {
                 </div>
 
                 {savedForSem && (
-                  <div className="mt-1 flex items-center justify-between text-[9px] text-emerald-700 font-semibold">
+                  <div className="mt-1 flex items-center justify-between text-[9px] text-green-700 font-semibold">
                     <span>Saved</span>
                     <button
                       type="button"
@@ -1054,7 +1055,7 @@ export const SemesterScreen: React.FC = () => {
 
         {/* CGPA Summary Cards: Weighted CGPA vs Simple Arithmetic Mean */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-          <div className="rounded-2xl bg-indigo-950 text-white p-4 flex items-center justify-between">
+          <div className="rounded-2xl bg-blue-950 text-white p-4 flex items-center justify-between">
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-teal-300 block">
                 {cgpaCalculation.completedSemestersCount === 8
@@ -1065,9 +1066,9 @@ export const SemesterScreen: React.FC = () => {
                 {cgpaCalculation.weightedCgpa !== null
                   ? cgpaCalculation.weightedCgpa.toFixed(2)
                   : '—'}
-                <span className="text-xs font-normal text-indigo-300"> / 4.00</span>
+                <span className="text-xs font-normal text-blue-300"> / 4.00</span>
               </div>
-              <span className="text-[10px] text-indigo-200 block mt-0.5">
+              <span className="text-[10px] text-blue-200 block mt-0.5">
                 Weight Covered: {cgpaCalculation.totalWeightCovered}% of 100%
               </span>
             </div>
@@ -1106,13 +1107,13 @@ export const SemesterScreen: React.FC = () => {
       </div>
 
       {/* Official BTEB Examination Results & Group Lookup Banner */}
-      <div className="bg-white rounded-2xl border border-blue-200/90 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="bg-surface rounded-2xl border border-blue-200/90 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center shrink-0">
             <Award className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-[#172554]">
+            <h2 className="text-sm font-bold text-text-primary">
               Official BTEB Board Examination Results (1st – 8th Semester)
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -1123,15 +1124,15 @@ export const SemesterScreen: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveScreen('bteb_results')}
-          className="px-4 py-2.5 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors shrink-0 cursor-pointer"
+          className="px-4 py-2.5 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors shrink-0 cursor-pointer"
         >
           Open BTEB Results →
         </button>
       </div>
 
       {/* Official BTEB 4.00 Grading Scale Reference Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs text-xs space-y-2.5">
-        <h4 className="font-bold text-[#172554] flex items-center gap-1.5">
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs text-xs space-y-2.5">
+        <h4 className="font-bold text-text-primary flex items-center gap-1.5">
           <Award className="w-4 h-4 text-amber-500" />
           <span>Official BTEB 4.00 Grading Scale Reference</span>
         </h4>
@@ -1142,7 +1143,7 @@ export const SemesterScreen: React.FC = () => {
               className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between"
             >
               <div>
-                <span className="font-extrabold text-[#172554] block">{row.letterGrade}</span>
+                <span className="font-extrabold text-text-primary block">{row.letterGrade}</span>
                 <span className="text-[10px] text-slate-500">{row.rangeLabel}</span>
               </div>
               <span className="font-mono font-bold text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">

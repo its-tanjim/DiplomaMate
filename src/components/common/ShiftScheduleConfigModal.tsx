@@ -197,11 +197,11 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-white w-full max-w-2xl rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
+      <div className="bg-surface w-full max-w-2xl rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
         {/* Header */}
         <div className="flex justify-between items-start pb-3 border-b border-slate-100">
           <div className="flex items-center space-x-2.5">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-700">
               <Sliders size={20} />
             </div>
             <div>
@@ -228,7 +228,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
             onClick={() => handleSwitchShiftTab('Morning')}
             className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center space-x-1.5 transition-all ${
               editingShift === 'Morning'
-                ? 'bg-white text-indigo-950 shadow-xs'
+                ? 'bg-surface text-blue-950 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -240,11 +240,11 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
             onClick={() => handleSwitchShiftTab('Day')}
             className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center space-x-1.5 transition-all ${
               editingShift === 'Day'
-                ? 'bg-white text-indigo-950 shadow-xs'
+                ? 'bg-surface text-blue-950 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Moon size={14} className={editingShift === 'Day' ? 'text-indigo-600' : 'text-slate-400'} />
+            <Moon size={14} className={editingShift === 'Day' ? 'text-blue-600' : 'text-slate-400'} />
             <span>Day Shift (Default 01:30 PM)</span>
           </button>
         </div>
@@ -255,7 +255,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
           <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/80 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Clock size={13} className="text-indigo-600" />
+                <Clock size={13} className="text-blue-600" />
                 {editingShift} Shift Base Parameters
               </span>
               <button
@@ -294,7 +294,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                     max={240}
                     value={draftConfig.defaultDurationMinutes}
                     onChange={e => handleDefaultDurationChange(Number(e.target.value))}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-surface text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-600"
                   />
                 </div>
                 <div className="flex flex-wrap gap-1 mt-1.5">
@@ -305,8 +305,8 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                       onClick={() => handleDefaultDurationChange(mins)}
                       className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors ${
                         draftConfig.defaultDurationMinutes === mins
-                          ? 'bg-indigo-900 text-white border-indigo-900'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                          ? 'bg-blue-900 text-white border-blue-900'
+                          : 'bg-surface text-slate-600 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       {mins}m{mins === 45 ? ' (Def)' : ''}
@@ -323,7 +323,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                 <select
                   value={draftConfig.numberOfPeriods}
                   onChange={e => handlePeriodCountChange(Number(e.target.value))}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-surface text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-600"
                 >
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(cnt => (
                     <option key={cnt} value={cnt}>
@@ -368,12 +368,12 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                   className={`rounded-2xl p-3 border transition-all ${
                     slot.isManuallyEdited
                       ? 'bg-amber-50/40 border-amber-300'
-                      : 'bg-white border-slate-200'
+                      : 'bg-surface border-slate-200'
                   }`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                     <div className="flex items-center space-x-2">
-                      <span className="px-2.5 py-0.5 rounded-lg bg-indigo-950 text-white text-xs font-bold">
+                      <span className="px-2.5 py-0.5 rounded-lg bg-blue-950 text-white text-xs font-bold">
                         Period {slot.periodNumber}
                       </span>
                       <span className="text-xs font-semibold text-slate-700">
@@ -387,7 +387,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                           <Edit3 size={10} /> Manual Override Preserved
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-green-50 text-green-700 border border-green-200">
                           <CheckCircle2 size={10} /> Auto-Calculated
                         </span>
                       )}
@@ -397,7 +397,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                       <button
                         type="button"
                         onClick={() => handleResetSinglePeriod(slot.periodNumber)}
-                        className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 flex items-center gap-1"
+                        className="text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 flex items-center gap-1"
                       >
                         <RotateCcw size={11} />
                         <span>Reset Period {slot.periodNumber}</span>
@@ -436,7 +436,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                               handleBreakChange(slot.periodNumber, Number(e.target.value))
                             }
                             placeholder="0"
-                            className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-600"
+                            className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600"
                           />
                           {[0, 15, 20, 30].map(bm => (
                             <button
@@ -446,7 +446,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                               className={`px-2 py-2 rounded-lg text-[10px] font-bold border ${
                                 (slot.breakAfterMinutes || 0) === bm
                                   ? 'bg-amber-600 text-white border-amber-600'
-                                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                  : 'bg-surface text-slate-600 border-slate-200 hover:bg-slate-50'
                               }`}
                             >
                               {bm}m
@@ -479,7 +479,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="px-5 py-2.5 rounded-xl bg-indigo-950 hover:bg-indigo-900 text-white text-xs font-bold flex items-center space-x-2 shadow-md transition-all"
+            className="px-5 py-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-xs font-bold flex items-center space-x-2 shadow-md transition-all"
           >
             <Save size={15} />
             <span>{isSaving ? 'Saving...' : `Save ${editingShift} Shift Schedule`}</span>

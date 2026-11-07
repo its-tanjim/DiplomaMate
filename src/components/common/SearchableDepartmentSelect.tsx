@@ -110,7 +110,7 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       {label && (
-        <label className="block text-xs font-semibold text-[#172554] mb-1.5 flex items-center justify-between">
+        <label className="block text-xs font-semibold text-text-primary mb-1.5 flex items-center justify-between">
           <span className="flex items-center gap-1.5">
             <Cpu className="w-3.5 h-3.5 text-teal-600" />
             <span>{label}</span>
@@ -125,7 +125,7 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
       {/* Main trigger button */}
       <div
         className={`w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border rounded-xl flex items-center justify-between cursor-pointer transition-all ${
-          error ? 'border-rose-400 bg-rose-50/30' : isOpen ? 'border-teal-500 ring-2 ring-teal-500/20 bg-white' : 'border-slate-200 hover:border-slate-300'
+          error ? 'border-rose-400 bg-rose-50/30' : isOpen ? 'border-teal-500 ring-2 ring-teal-500/20 bg-surface' : 'border-slate-200 hover:border-slate-300'
         } ${disabled ? 'opacity-60 cursor-not-allowed bg-slate-100' : ''}`}
         onClick={() => {
           if (!disabled) {
@@ -141,7 +141,7 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
               <span className="bg-teal-50 text-teal-700 text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-teal-200 shrink-0">
                 {selectedTech.shortCode}
               </span>
-              <span className="font-semibold text-[#172554] truncate">
+              <span className="font-semibold text-text-primary truncate">
                 {selectedTech.name}
               </span>
             </div>
@@ -171,7 +171,7 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
 
       {/* Dropdown Menu */}
       {isOpen && !disabled && (
-        <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute z-50 left-0 right-0 mt-1.5 bg-surface border border-slate-200 rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
           {/* Autocomplete Search input inside dropdown */}
           <div className="p-2 border-b border-slate-100 bg-slate-50">
             <div className="relative">
@@ -186,7 +186,7 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-[#172554] placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface border border-slate-200 rounded-lg text-text-primary placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-teal-500"
               />
             </div>
           </div>
@@ -220,7 +220,7 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
                       isSelected
                         ? 'bg-teal-50/80 text-teal-900 font-semibold'
                         : isHighlighted
-                        ? 'bg-slate-50 text-[#172554]'
+                        ? 'bg-slate-50 text-text-primary'
                         : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
@@ -228,7 +228,7 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
                       <span className="bg-slate-100 text-slate-700 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border border-slate-200 shrink-0">
                         {tech.shortCode}
                       </span>
-                      <span className="font-medium text-xs text-[#172554] truncate">
+                      <span className="font-medium text-xs text-text-primary truncate">
                         {tech.name}
                       </span>
                     </div>

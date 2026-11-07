@@ -68,14 +68,14 @@ export const RemindersScreen: React.FC = () => {
   return (
     <div className="space-y-4 pb-8">
       {/* Top Header Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
                 <Bell className="w-4 h-4" />
               </div>
-              <h1 className="text-lg font-bold text-[#172554]">
+              <h1 className="text-lg font-bold text-text-primary">
                 Academic Reminders
               </h1>
             </div>
@@ -86,7 +86,7 @@ export const RemindersScreen: React.FC = () => {
 
           <button
             onClick={() => setShowAddModal(true)}
-            className="bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
+            className="bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>New Reminder</span>
@@ -121,22 +121,22 @@ export const RemindersScreen: React.FC = () => {
 
       {/* Stats Summary Strip */}
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs flex items-center justify-between">
+        <div className="bg-surface rounded-xl border border-slate-200 p-3 shadow-xs flex items-center justify-between">
           <span className="text-slate-600 font-medium">Pending Tasks</span>
           <span className="font-bold text-amber-600 font-mono text-sm">{activeCount}</span>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs flex items-center justify-between">
+        <div className="bg-surface rounded-xl border border-slate-200 p-3 shadow-xs flex items-center justify-between">
           <span className="text-slate-600 font-medium">Completed</span>
-          <span className="font-bold text-emerald-600 font-mono text-sm">{completedCount}</span>
+          <span className="font-bold text-green-600 font-mono text-sm">{completedCount}</span>
         </div>
       </div>
 
       {/* Reminders List */}
       <div className="space-y-2.5">
         {filteredReminders.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
             <BookmarkCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <h3 className="text-sm font-bold text-[#172554]">No reminders yet</h3>
+            <h3 className="text-sm font-bold text-text-primary">No reminders yet</h3>
             <p className="text-xs text-slate-500 mt-1">Add a new reminder to stay on track with your diploma studies.</p>
           </div>
         ) : (
@@ -145,7 +145,7 @@ export const RemindersScreen: React.FC = () => {
             return (
               <div
                 key={rem.id}
-                className={`bg-white rounded-2xl border transition-all p-3.5 shadow-xs ${
+                className={`bg-surface rounded-2xl border transition-all p-3.5 shadow-xs ${
                   isCompleted 
                     ? 'border-slate-200/60 opacity-60 bg-slate-50/50' 
                     : rem.priority === 'High' 
@@ -157,11 +157,11 @@ export const RemindersScreen: React.FC = () => {
                   {/* Toggle Button */}
                   <button
                     onClick={() => toggleReminder(rem.id)}
-                    className="mt-0.5 text-slate-400 hover:text-emerald-600 transition-colors p-0.5 cursor-pointer"
+                    className="mt-0.5 text-slate-400 hover:text-green-600 transition-colors p-0.5 cursor-pointer"
                     title={isCompleted ? 'Mark Pending' : 'Mark Completed'}
                   >
                     {isCompleted ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                      <CheckCircle2 className="w-5 h-5 text-green-600" />
                     ) : (
                       <Circle className="w-5 h-5 text-slate-300 hover:text-slate-400" />
                     )}
@@ -185,7 +185,7 @@ export const RemindersScreen: React.FC = () => {
                     </div>
 
                     <h3 className={`text-sm font-bold ${
-                      isCompleted ? 'line-through text-slate-400' : 'text-[#172554]'
+                      isCompleted ? 'line-through text-slate-400' : 'text-text-primary'
                     }`}>
                       {rem.title}
                     </h3>
@@ -226,13 +226,13 @@ export const RemindersScreen: React.FC = () => {
       {/* Add Reminder Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
                   <Bell className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold text-[#172554] text-base">Schedule Reminder</h3>
+                <h3 className="font-bold text-text-primary text-base">Schedule Reminder</h3>
               </div>
               <button 
                 onClick={() => setShowAddModal(false)}
@@ -244,7 +244,7 @@ export const RemindersScreen: React.FC = () => {
 
             <form onSubmit={handleAddSubmit} className="space-y-3 mt-3">
               <div>
-                <label className="block text-xs font-semibold text-[#172554] mb-1">
+                <label className="block text-xs font-semibold text-text-primary mb-1">
                   Reminder Title
                 </label>
                 <input
@@ -253,17 +253,17 @@ export const RemindersScreen: React.FC = () => {
                   placeholder="e.g. Microprocessor Midterm Exam"
                   value={newReminder.title}
                   onChange={(e) => setNewReminder({ ...newReminder, title: e.target.value })}
-                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554] focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">Category</label>
+                  <label className="block text-xs font-semibold text-text-primary mb-1">Category</label>
                   <select
                     value={newReminder.category}
                     onChange={(e) => setNewReminder({ ...newReminder, category: e.target.value as any })}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   >
                     <option value="Exam">Exam / Class Test</option>
                     <option value="Assignment">Assignment Submission</option>
@@ -274,11 +274,11 @@ export const RemindersScreen: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">Priority</label>
+                  <label className="block text-xs font-semibold text-text-primary mb-1">Priority</label>
                   <select
                     value={newReminder.priority}
                     onChange={(e) => setNewReminder({ ...newReminder, priority: e.target.value as any })}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   >
                     <option value="High">High (Red Alert)</option>
                     <option value="Medium">Medium</option>
@@ -288,13 +288,13 @@ export const RemindersScreen: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#172554] mb-1">Target Due Date</label>
+                <label className="block text-xs font-semibold text-text-primary mb-1">Target Due Date</label>
                 <input
                   type="date"
                   required
                   value={newReminder.dueDate}
                   onChange={(e) => setNewReminder({ ...newReminder, dueDate: e.target.value })}
-                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554] mb-2"
+                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary mb-2"
                 />
               </div>
 
@@ -308,13 +308,13 @@ export const RemindersScreen: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#172554] mb-1">Additional Notes</label>
+                <label className="block text-xs font-semibold text-text-primary mb-1">Additional Notes</label>
                 <textarea
                   rows={2}
                   placeholder="e.g. Chapter 3 and 4, bring scientific calculator..."
                   value={newReminder.note || ''}
                   onChange={(e) => setNewReminder({ ...newReminder, note: e.target.value })}
-                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
               </div>
 
@@ -328,7 +328,7 @@ export const RemindersScreen: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-xl bg-[#2563EB] text-white text-xs font-semibold hover:bg-blue-700 shadow-xs"
+                  className="flex-1 py-2 rounded-xl bg-brand-blue text-white text-xs font-semibold hover:bg-blue-700 shadow-xs"
                 >
                   Save Reminder
                 </button>

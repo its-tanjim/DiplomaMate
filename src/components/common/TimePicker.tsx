@@ -73,7 +73,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
   return (
     <div className={`space-y-1.5 ${className}`}>
       {label && (
-        <label className="block text-xs font-semibold text-[#172554] flex items-center justify-between">
+        <label className="block text-xs font-semibold text-text-primary flex items-center justify-between">
           <span>{label} {required && <span className="text-rose-500">*</span>}</span>
           <span className="font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded text-[11px] font-bold">
             {hour}:{minute} {meridiem}
@@ -90,7 +90,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
             value={hour}
             disabled={disabled}
             onChange={(e) => updateTime(e.target.value, minute, meridiem)}
-            className="w-full bg-white border border-slate-200/90 rounded-lg py-1 px-1.5 text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer appearance-none text-center"
+            className="w-full bg-surface border border-slate-200/90 rounded-lg py-1 px-1.5 text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer appearance-none text-center"
             title="Select Hour"
           >
             {hoursList.map(h => (
@@ -108,7 +108,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
             value={minute}
             disabled={disabled}
             onChange={(e) => updateTime(hour, e.target.value, meridiem)}
-            className="w-full bg-white border border-slate-200/90 rounded-lg py-1 px-1.5 text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer appearance-none text-center"
+            className="w-full bg-surface border border-slate-200/90 rounded-lg py-1 px-1.5 text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer appearance-none text-center"
             title="Select Minute"
           >
             {minutesList.map(m => (

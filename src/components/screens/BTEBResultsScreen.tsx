@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { apiFetch } from '../../services/apiClient';
+import { nativeService } from '../../services/nativeService';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   ArrowLeft,
@@ -61,6 +63,22 @@ const CURRICULUM_OPTIONS: CurriculumOption[] = [
   { id: 'ssc_vocational', label: 'SSC (Vocational / Dakhil)', badge: 'Vocational' }
 ];
 
+const OFFICIAL_BTEB_RESULTS_URL = 'https://result.bteb.gov.bd/result-search';
+const BTEB_RESULTS_ZONE_URL = 'https://btebresultszone.com/results';
+const RESULT_LOOKUP_TIMEOUT_MS = 15_000;
+
+type ResultLookupTransportFailure = 'timeout' | 'network' | 'request';
+
+class ResultLookupRequestError extends Error {
+  constructor(
+    message: string,
+    readonly failure: ResultLookupTransportFailure
+  ) {
+    super(message);
+    this.name = 'ResultLookupRequestError';
+  }
+}
+
 function normalizeRollInput(raw: string): string {
   const banglaDigits = '০১২৩৪৫৬৭৮৯';
   return String(raw || '')
@@ -81,10 +99,19 @@ export const BTEBResultsScreen: React.FC = () => {
   const [rollInput, setRollInput] = useState<string>(userProfile.boardRoll || '');
   const [selectedCurriculum, setSelectedCurriculum] = useState<BtebCurriculumId>('diploma_in_engineering');
   const [selectedRegulation, setSelectedRegulation] = useState<string>('all');
+  const isResultLookupInProgress = useRef(false);
 
-  // Result retrieval status: 'idle' | 'loading' | 'not_found' | 'error' | 'rate_limited' | 'external_unavailable'
+  // Result retrieval status distinguishes missing local data from transport/service failures.
   const [searchStatus, setSearchStatus] = useState<
-    'idle' | 'loading' | 'not_found' | 'error' | 'rate_limited' | 'external_unavailable'
+    | 'idle'
+    | 'loading'
+    | 'not_found'
+    | 'error'
+    | 'rate_limited'
+    | 'external_unavailable'
+    | 'timeout'
+    | 'network_error'
+    | 'service_unavailable'
   >('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [notFoundRoll, setNotFoundRoll] = useState<string>('');
@@ -123,11 +150,75 @@ export const BTEBResultsScreen: React.FC = () => {
   const regulationsList: BtebRegulation[] = ['2022', '2016', '2010'];
   const examTypesList: BtebExamType[] = ['Regular', 'Irregular', 'Improvement'];
 
+  const openOfficialResultPortal = async () => {
+    try {
+      await nativeService.openExternalUrl(OFFICIAL_BTEB_RESULTS_URL);
+    } catch (error) {
+      console.error('Failed to open official BTEB result portal:', error);
+      showToast('Could not open the official BTEB Result Portal.');
+    }
+  };
+
+  const openBtebResultsZone = async () => {
+    try {
+      await nativeService.openExternalUrl(BTEB_RESULTS_ZONE_URL);
+    } catch (error) {
+      console.error('Failed to open BTEB Results Zone:', error);
+      showToast('Could not open BTEB Results Zone.');
+    }
+  };
+
+  const requestResultLookup = async (url: string): Promise<{ response: Response; data: any }> => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const controller = new AbortController();
+      let timedOut = false;
+      const timeoutId = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, RESULT_LOOKUP_TIMEOUT_MS);
+
+      try {
+        const response = await apiFetch(url, { signal: controller.signal });
+        let data: any = null;
+        try {
+          data = await response.json();
+        } catch (error) {
+          if (controller.signal.aborted) throw error;
+          if (!(error instanceof SyntaxError)) throw error;
+        }
+        return { response, data };
+      } catch (error) {
+        const failure: ResultLookupTransportFailure =
+          timedOut || (error instanceof Error && error.name === 'AbortError')
+            ? 'timeout'
+            : error instanceof TypeError
+              ? 'network'
+              : 'request';
+
+        if (attempt === 0 && (failure === 'timeout' || failure === 'network')) {
+          continue;
+        }
+
+        const message =
+          failure === 'timeout'
+            ? 'The result lookup request timed out.'
+            : failure === 'network'
+              ? 'Could not connect to DiplomaMate’s result service.'
+              : 'The result service returned an unreadable response.';
+        throw new ResultLookupRequestError(message, failure);
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    }
+
+    throw new ResultLookupRequestError('Could not connect to DiplomaMate’s result service.', 'network');
+  };
+
   // Fetch batches
   const fetchBatches = async () => {
     setIsLoadingBatches(true);
     try {
-      const res = await fetch('/api/results/batches');
+      const res = await apiFetch('/api/results/batches');
       const data = await res.json();
       if (data.success) {
         setBatches(data.batches || []);
@@ -180,6 +271,8 @@ export const BTEBResultsScreen: React.FC = () => {
     overrideCurriculum?: BtebCurriculumId,
     overrideRegulation?: string
   ) => {
+    if (isResultLookupInProgress.current) return;
+
     const rawTarget = overrideRoll !== undefined ? overrideRoll : rollInput;
     const targetRoll = normalizeRollInput(rawTarget);
     const effectiveCurriculum = overrideCurriculum || selectedCurriculum;
@@ -199,6 +292,7 @@ export const BTEBResultsScreen: React.FC = () => {
       return;
     }
 
+    isResultLookupInProgress.current = true;
     setSearchStatus('loading');
     setNotFoundRoll('');
 
@@ -209,29 +303,54 @@ export const BTEBResultsScreen: React.FC = () => {
         regulation: effectiveRegulation
       });
 
-      const res = await fetch(`/api/results/lookup?${params.toString()}`);
-      const data = await res.json();
+      const { response: res, data } = await requestResultLookup(`/api/results/lookup?${params.toString()}`);
+
+      if (res.status === 429 || data?.rateLimited) {
+        setSearchStatus('rate_limited');
+        setErrorMessage(data?.error || 'The result lookup service is temporarily limiting requests. Please retry shortly.');
+        return;
+      }
+
+      if (data?.externalUnavailable && data?.found === false) {
+        console.warn(
+          'BTEB result is not present in the imported Gazette records:',
+          data.error || 'Result is not in the imported Gazette records.'
+        );
+        setSearchStatus('not_found');
+        setNotFoundRoll(targetRoll);
+        setErrorMessage('');
+        return;
+      }
+
+      if (data?.timeout) {
+        setSearchStatus('timeout');
+        setErrorMessage(
+          data.error || 'The result lookup timed out after 15 seconds. This does not mean the student has no result; please try again.'
+        );
+        return;
+      }
 
       if (!res.ok) {
+        console.error(`BTEB result API returned HTTP ${res.status}:`, data?.error || 'No error details returned.');
+        if (res.status >= 500) {
+          setSearchStatus('service_unavailable');
+          setErrorMessage(data?.error || 'DiplomaMate’s result service is temporarily unavailable. Please try again later.');
+        } else {
+          setSearchStatus('error');
+          setErrorMessage(data?.error || `The result service returned HTTP ${res.status}. Please check the request and try again.`);
+        }
+        return;
+      }
+
+      if (!data) {
         setSearchStatus('error');
-        setErrorMessage(data.error || 'Server error while retrieving examination results.');
+        setErrorMessage('The result service returned an unreadable response. Please try again later.');
         return;
       }
 
-      if (data.rateLimited) {
-        setSearchStatus('rate_limited');
-        setErrorMessage(
-          data.error || 'The online BTEB results service is rate-limited (HTTP 429). Please retry in a few moments.'
-        );
-        return;
-      }
-
-      if (data.externalUnavailable || data.timeout) {
-        setSearchStatus('external_unavailable');
-        setErrorMessage(
-          data.error ||
-            'The external BTEB result service timed out or is temporarily unavailable. This does not mean the student has no result.'
-        );
+      if (data.externalUnavailable) {
+        setSearchStatus('service_unavailable');
+        setErrorMessage(data.error || 'The result service is temporarily unavailable. This does not mean the student has no result.');
         return;
       }
 
@@ -250,9 +369,21 @@ export const BTEBResultsScreen: React.FC = () => {
       setSearchStatus('idle');
       showToast(`Results loaded for Board Roll ${targetRoll}`);
     } catch (err) {
-      console.error('BTEB Result lookup error:', err);
-      setSearchStatus('external_unavailable');
-      setErrorMessage('Network connection error while contacting BTEB results server. Please check your connection and retry.');
+      const failure = err instanceof ResultLookupRequestError ? err.failure : 'request';
+      const reason = err instanceof Error ? err.message : 'Unknown result lookup error.';
+      console.error('BTEB Result lookup request failed:', reason);
+      if (failure === 'timeout') {
+        setSearchStatus('timeout');
+        setErrorMessage('The result lookup timed out after 15 seconds, including one retry. This does not mean the student has no result; please try again.');
+      } else if (failure === 'network') {
+        setSearchStatus('network_error');
+        setErrorMessage('Could not connect to DiplomaMate’s result service after one retry. Check your internet connection, backend URL, and CORS settings.');
+      } else {
+        setSearchStatus('error');
+        setErrorMessage(reason);
+      }
+    } finally {
+      isResultLookupInProgress.current = false;
     }
   };
 
@@ -266,7 +397,7 @@ export const BTEBResultsScreen: React.FC = () => {
 
     setIsSearchingGroup(true);
     try {
-      const res = await fetch('/api/results/group', {
+      const res = await apiFetch('/api/results/group', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -354,7 +485,7 @@ export const BTEBResultsScreen: React.FC = () => {
     return (
       <div className="space-y-4 pb-16 print-page-container">
         {/* Navigation & Action Bar (Hidden during print) */}
-        <div className="no-print bg-white rounded-2xl border border-slate-200/90 p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div className="no-print bg-surface rounded-2xl border border-slate-200/90 p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -369,7 +500,7 @@ export const BTEBResultsScreen: React.FC = () => {
             <div className="h-5 w-px bg-slate-200 hidden sm:block" />
 
             <span className="text-xs font-semibold text-slate-500 hidden sm:inline">
-              Viewing Official Result for Roll <strong className="font-mono text-[#172554]">{activeStatement.rollNumber}</strong>
+              Viewing Official Result for Roll <strong className="font-mono text-text-primary">{activeStatement.rollNumber}</strong>
             </span>
           </div>
 
@@ -377,7 +508,7 @@ export const BTEBResultsScreen: React.FC = () => {
             <button
               type="button"
               onClick={handlePrintOrSavePdf}
-              className="allow-print px-3.5 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="allow-print px-3.5 py-2 rounded-xl bg-brand-blue hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
               title="Print result sheet or save as PDF"
             >
               <Printer className="w-4 h-4" />
@@ -398,9 +529,9 @@ export const BTEBResultsScreen: React.FC = () => {
         </div>
 
         {/* Official Academic Transcript Card / Statement */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-md overflow-hidden print-card">
+        <div className="bg-surface rounded-3xl border border-slate-200/90 shadow-md overflow-hidden print-card">
           {/* Official BTEB Header Header Strip */}
-          <div className="bg-gradient-to-r from-[#172554] via-blue-950 to-slate-900 text-white p-5 sm:p-6 relative">
+          <div className="bg-gradient-to-r from-text-primary via-blue-950 to-slate-900 text-white p-5 sm:p-6 relative">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -423,12 +554,12 @@ export const BTEBResultsScreen: React.FC = () => {
               {/* Status Emblem */}
               <div className="sm:text-right shrink-0">
                 {isCompleted ? (
-                  <div className="inline-flex flex-col sm:items-end bg-emerald-500/20 border border-emerald-400/40 px-3.5 py-2 rounded-2xl">
-                    <span className="text-[10px] font-extrabold uppercase text-emerald-300 tracking-wider flex items-center gap-1">
+                  <div className="inline-flex flex-col sm:items-end bg-green-500/20 border border-green-400/40 px-3.5 py-2 rounded-2xl">
+                    <span className="text-[10px] font-extrabold uppercase text-green-300 tracking-wider flex items-center gap-1">
                       <Award className="w-3.5 h-3.5" />
                       Diploma Completed
                     </span>
-                    <span className="text-xl font-black font-mono text-emerald-200">
+                    <span className="text-xl font-black font-mono text-green-200">
                       CGPA {activeStatement.overallCgpa?.toFixed(2) || 'PASS'}
                     </span>
                   </div>
@@ -459,20 +590,20 @@ export const BTEBResultsScreen: React.FC = () => {
           {/* Student & Polytechnic Identification Grid */}
           <div className="p-4 sm:p-6 border-b border-slate-100 bg-slate-50/60">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-              <div className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
+              <div className="p-3 bg-surface rounded-xl border border-slate-200/80 shadow-2xs">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                   BTEB Board Roll
                 </span>
-                <span className="text-base sm:text-lg font-black font-mono text-[#172554] tracking-tight tabular-nums block mt-0.5">
+                <span className="text-base sm:text-lg font-black font-mono text-text-primary tracking-tight tabular-nums block mt-0.5">
                   {activeStatement.rollNumber}
                 </span>
               </div>
 
-              <div className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
+              <div className="p-3 bg-surface rounded-xl border border-slate-200/80 shadow-2xs">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                   Curriculum & Reg
                 </span>
-                <span className="font-bold text-[#172554] text-xs sm:text-sm block mt-0.5 truncate" title={activeStatement.curriculumName}>
+                <span className="font-bold text-text-primary text-xs sm:text-sm block mt-0.5 truncate" title={activeStatement.curriculumName}>
                   {activeStatement.curriculumName}
                 </span>
                 <span className="text-[11px] text-slate-500 font-mono">
@@ -480,11 +611,11 @@ export const BTEBResultsScreen: React.FC = () => {
                 </span>
               </div>
 
-              <div className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs col-span-2">
+              <div className="p-3 bg-surface rounded-xl border border-slate-200/80 shadow-2xs col-span-2">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                   Polytechnic Institute
                 </span>
-                <span className="font-bold text-[#172554] text-xs sm:text-sm block mt-0.5">
+                <span className="font-bold text-text-primary text-xs sm:text-sm block mt-0.5">
                   {activeStatement.institute.name}
                 </span>
                 <span className="text-[11px] text-slate-500 font-mono">
@@ -495,7 +626,7 @@ export const BTEBResultsScreen: React.FC = () => {
 
             {(activeStatement.regulationNote || statementSourceNotice) && (
               <div className="mt-3 p-2.5 rounded-xl bg-blue-50/80 border border-blue-200 text-xs text-blue-900 flex items-center gap-2">
-                <Info className="w-4 h-4 text-[#2563EB] shrink-0" />
+                <Info className="w-4 h-4 text-brand-blue shrink-0" />
                 <span>
                   {activeStatement.regulationNote}
                   {activeStatement.regulationNote && statementSourceNotice ? ' · ' : ''}
@@ -508,8 +639,8 @@ export const BTEBResultsScreen: React.FC = () => {
           {/* Multi-Semester Progression Timeline (1st to 8th Semester) */}
           <div className="p-4 sm:p-6 border-b border-slate-100 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-[#172554] flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-[#2563EB]" />
+              <h2 className="text-xs font-bold uppercase tracking-wider text-text-primary flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-brand-blue" />
                 <span>1st through 8th Semester Progression Strip</span>
               </h2>
               <span className="text-[11px] text-slate-500 font-medium">
@@ -533,11 +664,11 @@ export const BTEBResultsScreen: React.FC = () => {
                     onClick={() => setSelectedSemesterTab(selectedSemesterTab === sem ? 'all' : sem)}
                     className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                       isSelected
-                        ? 'ring-2 ring-[#2563EB] shadow-xs'
+                        ? 'ring-2 ring-brand-blue shadow-xs'
                         : ''
                     } ${
                       isPassed
-                        ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950 hover:border-emerald-400'
+                        ? 'bg-green-50/80 border-green-200 text-green-950 hover:border-green-400'
                         : isReferred
                           ? 'bg-amber-50/80 border-amber-200 text-amber-950 hover:border-amber-400'
                           : isWithheld
@@ -549,7 +680,7 @@ export const BTEBResultsScreen: React.FC = () => {
                       {formatOrdinal(sem)}
                     </span>
                     {isPassed ? (
-                      <span className="text-xs font-black font-mono text-emerald-700 block mt-0.5 tabular-nums">
+                      <span className="text-xs font-black font-mono text-green-700 block mt-0.5 tabular-nums">
                         {semRec?.gpa ? semRec.gpa.toFixed(2) : 'PASS'}
                       </span>
                     ) : isReferred ? (
@@ -578,7 +709,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setSelectedSemesterTab('all')}
-                  className="text-[#2563EB] font-bold hover:underline"
+                  className="text-brand-blue font-bold hover:underline"
                 >
                   Show All Semesters
                 </button>
@@ -605,14 +736,14 @@ export const BTEBResultsScreen: React.FC = () => {
                 {activeStatement.currentFailedSubjects.map((sub, idx) => (
                   <div
                     key={`${sub.subCode}_${idx}`}
-                    className="p-3 bg-white rounded-xl border border-amber-200/80 flex items-center justify-between gap-2 text-xs"
+                    className="p-3 bg-surface rounded-xl border border-amber-200/80 flex items-center justify-between gap-2 text-xs"
                   >
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono font-bold text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded text-[11px]">
                           {sub.subCode}
                         </span>
-                        <span className="font-bold text-[#172554]">
+                        <span className="font-bold text-text-primary">
                           {sub.subName || `Subject Code ${sub.subCode}`}
                         </span>
                       </div>
@@ -632,8 +763,8 @@ export const BTEBResultsScreen: React.FC = () => {
 
           {/* Detailed Semester-by-Semester Cards */}
           <div className="p-4 sm:p-6 space-y-4">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#172554] flex items-center gap-1.5">
-              <GraduationCap className="w-4 h-4 text-[#2563EB]" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-text-primary flex items-center gap-1.5">
+              <GraduationCap className="w-4 h-4 text-brand-blue" />
               <span>Official Semester-Wise Examination Results</span>
             </h2>
 
@@ -651,13 +782,13 @@ export const BTEBResultsScreen: React.FC = () => {
                   return (
                     <div
                       key={semItem.semester}
-                      className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs"
+                      className="border border-slate-200 rounded-2xl overflow-hidden bg-surface shadow-xs"
                     >
                       {/* Card Header */}
                       <div
                         className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b ${
                           isPass
-                            ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-950'
+                            ? 'bg-green-50/70 border-green-200/80 text-green-950'
                             : isRef
                               ? 'bg-amber-50/70 border-amber-200/80 text-amber-950'
                               : 'bg-slate-50 border-slate-200 text-slate-900'
@@ -665,33 +796,33 @@ export const BTEBResultsScreen: React.FC = () => {
                       >
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded-md bg-[#172554] text-white text-[11px] font-bold uppercase font-mono">
+                            <span className="px-2 py-0.5 rounded-md bg-text-primary text-white text-[11px] font-bold uppercase font-mono">
                               {formatOrdinal(semItem.semester)} Semester
                             </span>
                             <span className="text-xs font-semibold text-slate-600">
                               {activeStatement.regulation} Probidhan
                             </span>
                           </div>
-                          <h3 className="text-sm font-bold text-[#172554] mt-1">
+                          <h3 className="text-sm font-bold text-text-primary mt-1">
                             {formatOrdinal(semItem.semester)} Semester Examination Result
                           </h3>
                         </div>
 
                         <div className="flex items-center gap-3">
                           {isPass ? (
-                            <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200 shadow-2xs flex items-center gap-2">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <div className="bg-surface px-3.5 py-2 rounded-xl border border-green-200 shadow-2xs flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-green-600" />
                               <div>
-                                <span className="text-[10px] font-bold uppercase text-emerald-700 block">
+                                <span className="text-[10px] font-bold uppercase text-green-700 block">
                                   Semester GPA
                                 </span>
-                                <span className="text-base font-black font-mono text-emerald-800 tabular-nums">
+                                <span className="text-base font-black font-mono text-green-800 tabular-nums">
                                   {semItem.gpa !== null && semItem.gpa !== undefined ? semItem.gpa.toFixed(2) : 'PASS'}
                                 </span>
                               </div>
                             </div>
                           ) : isRef ? (
-                            <div className="bg-white px-3.5 py-2 rounded-xl border border-amber-300 shadow-2xs flex items-center gap-2">
+                            <div className="bg-surface px-3.5 py-2 rounded-xl border border-amber-300 shadow-2xs flex items-center gap-2">
                               <AlertTriangle className="w-4 h-4 text-amber-600" />
                               <div>
                                 <span className="text-[10px] font-bold uppercase text-amber-700 block">
@@ -709,9 +840,9 @@ export const BTEBResultsScreen: React.FC = () => {
                           )}
 
                           {semItem.cgpa && (
-                            <div className="bg-white px-3 py-1.5 rounded-xl border border-blue-200">
-                              <span className="text-[10px] font-bold text-[#2563EB] block">CGPA</span>
-                              <span className="text-sm font-extrabold font-mono text-[#172554]">
+                            <div className="bg-surface px-3 py-1.5 rounded-xl border border-blue-200">
+                              <span className="text-[10px] font-bold text-brand-blue block">CGPA</span>
+                              <span className="text-sm font-extrabold font-mono text-text-primary">
                                 {semItem.cgpa.toFixed(2)}
                               </span>
                             </div>
@@ -722,11 +853,11 @@ export const BTEBResultsScreen: React.FC = () => {
                       {/* Card Content & Breakdown */}
                       <div className="p-4 space-y-3 text-xs">
                         {isPass && semItem.gpa !== null && (
-                          <div className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50/50 border border-emerald-200/60">
-                            <span className="font-semibold text-emerald-950">
+                          <div className="flex items-center justify-between p-2.5 rounded-xl bg-green-50/50 border border-green-200/60">
+                            <span className="font-semibold text-green-950">
                               Status: Clear Pass across all prescribed curriculum subjects
                             </span>
-                            <span className="font-bold text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-200 text-[11px]">
+                            <span className="font-bold text-green-800 bg-surface px-2 py-0.5 rounded border border-green-200 text-[11px]">
                               {getGpaScaleComment(semItem.gpa)}
                             </span>
                           </div>
@@ -748,18 +879,18 @@ export const BTEBResultsScreen: React.FC = () => {
                                     <span
                                       className={`font-mono font-bold px-2 py-0.5 rounded text-xs border ${
                                         fs.passed
-                                          ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                          ? 'bg-green-100 text-green-900 border-green-300'
                                           : 'bg-amber-100 text-amber-900 border-amber-300'
                                       }`}
                                     >
                                       {fs.subCode}
                                     </span>
-                                    <span className="font-semibold text-[#172554]">
+                                    <span className="font-semibold text-text-primary">
                                       {fs.subName || `Subject Code ${fs.subCode}`}
                                     </span>
                                   </div>
                                   {fs.passed ? (
-                                    <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono font-bold text-[10px] self-start sm:self-center">
+                                    <span className="px-2 py-0.5 rounded bg-green-100 text-green-800 border border-green-200 font-mono font-bold text-[10px] self-start sm:self-center">
                                       Cleared in Subsequent Exam ({fs.type === 'T' ? 'Theory' : fs.type === 'P' ? 'Practical' : fs.type})
                                     </span>
                                   ) : (
@@ -813,8 +944,8 @@ export const BTEBResultsScreen: React.FC = () => {
           <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span className="font-bold text-[#172554]">
+                <ShieldCheck className="w-4 h-4 text-green-600" />
+                <span className="font-bold text-text-primary">
                   Data Source: {activeStatement.dataSourceLabel}
                 </span>
               </div>
@@ -833,7 +964,7 @@ export const BTEBResultsScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setViewMode('search')}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+            className="px-4 py-2.5 rounded-xl border border-slate-200 bg-surface hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Search Another Roll</span>
@@ -851,7 +982,7 @@ export const BTEBResultsScreen: React.FC = () => {
             <button
               type="button"
               onClick={handlePrintOrSavePdf}
-              className="allow-print px-4 py-2.5 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="allow-print px-4 py-2.5 rounded-xl bg-brand-blue hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <Printer className="w-4 h-4" />
               <span>Print / Save as PDF</span>
@@ -868,12 +999,12 @@ export const BTEBResultsScreen: React.FC = () => {
   return (
     <div className="space-y-4 pb-12">
       {/* Top Banner Card */}
-      <div className="bg-gradient-to-br from-[#172554] via-blue-950 to-slate-900 rounded-2xl p-4 sm:p-5 text-white shadow-md relative overflow-hidden">
+      <div className="bg-gradient-to-br from-text-primary via-blue-950 to-slate-900 rounded-2xl p-4 sm:p-5 text-white shadow-md relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
           <div className="flex items-start gap-2.5">
             <button
               onClick={() => setActiveScreen('home')}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0 cursor-pointer"
+              className="p-2 rounded-xl bg-surface/10 hover:bg-surface/20 text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0 cursor-pointer"
               title="Back to Home"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -909,7 +1040,7 @@ export const BTEBResultsScreen: React.FC = () => {
             {canAccessAdminImport && (
               <button
                 onClick={() => setActiveScreen('admin_portal')}
-                className="text-[11px] font-semibold bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-xl border border-white/15 transition-colors flex items-center gap-1.5 cursor-pointer"
+                className="text-[11px] font-semibold bg-surface/10 hover:bg-surface/20 text-white px-3 py-1.5 rounded-xl border border-white/15 transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <Database className="w-3.5 h-3.5 text-teal-300" />
                 <span>Admin Result Import</span>
@@ -926,8 +1057,8 @@ export const BTEBResultsScreen: React.FC = () => {
           onClick={() => setActiveTab('individual')}
           className={`min-h-[44px] py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'individual'
-              ? 'bg-white text-[#2563EB] shadow-xs'
-              : 'text-slate-600 hover:text-[#172554]'
+              ? 'bg-surface text-brand-blue shadow-xs'
+              : 'text-slate-600 hover:text-text-primary'
           }`}
         >
           <Search className="w-3.5 h-3.5 shrink-0" />
@@ -939,8 +1070,8 @@ export const BTEBResultsScreen: React.FC = () => {
           onClick={() => setActiveTab('group')}
           className={`min-h-[44px] py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'group'
-              ? 'bg-white text-[#0D9488] shadow-xs'
-              : 'text-slate-600 hover:text-[#172554]'
+              ? 'bg-surface text-brand-teal shadow-xs'
+              : 'text-slate-600 hover:text-text-primary'
           }`}
         >
           <Users className="w-3.5 h-3.5 shrink-0" />
@@ -952,8 +1083,8 @@ export const BTEBResultsScreen: React.FC = () => {
           onClick={() => setActiveTab('batches')}
           className={`min-h-[44px] py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'batches'
-              ? 'bg-white text-[#172554] shadow-xs'
-              : 'text-slate-600 hover:text-[#172554]'
+              ? 'bg-surface text-text-primary shadow-xs'
+              : 'text-slate-600 hover:text-text-primary'
           }`}
         >
           <Database className="w-3.5 h-3.5 shrink-0" />
@@ -965,11 +1096,11 @@ export const BTEBResultsScreen: React.FC = () => {
       {activeTab === 'individual' && (
         <div className="space-y-4">
           {/* Main Search Card */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
+          <div className="bg-surface rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-[#172554] flex items-center gap-2">
-                  <Search className="w-5 h-5 text-[#2563EB]" />
+                <h2 className="text-base font-bold text-text-primary flex items-center gap-2">
+                  <Search className="w-5 h-5 text-brand-blue" />
                   <span>Search BTEB Board Result</span>
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -984,7 +1115,7 @@ export const BTEBResultsScreen: React.FC = () => {
                     setRollInput(userProfile.boardRoll || '');
                     setErrorMessage('');
                   }}
-                  className="text-xs font-semibold text-[#2563EB] hover:underline cursor-pointer"
+                  className="text-xs font-semibold text-brand-blue hover:underline cursor-pointer"
                 >
                   Use My Roll ({userProfile.boardRoll})
                 </button>
@@ -1002,13 +1133,13 @@ export const BTEBResultsScreen: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 {/* Examination / Curriculum Selector */}
                 <div>
-                  <label className="block text-xs font-bold text-[#172554] mb-1.5">
+                  <label className="block text-xs font-bold text-text-primary mb-1.5">
                     Examination / Curriculum *
                   </label>
                   <select
                     value={selectedCurriculum}
                     onChange={(e) => setSelectedCurriculum(e.target.value as BtebCurriculumId)}
-                    className="w-full px-3.5 py-2.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-[#172554] focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                    className="w-full px-3.5 py-2.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                   >
                     {CURRICULUM_OPTIONS.map(c => (
                       <option key={c.id} value={c.id}>
@@ -1020,13 +1151,13 @@ export const BTEBResultsScreen: React.FC = () => {
 
                 {/* Regulation (Probidhan) Selector */}
                 <div>
-                  <label className="block text-xs font-bold text-[#172554] mb-1.5">
+                  <label className="block text-xs font-bold text-text-primary mb-1.5">
                     Regulation (Probidhan)
                   </label>
                   <select
                     value={selectedRegulation}
                     onChange={(e) => setSelectedRegulation(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-[#172554] focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                    className="w-full px-3.5 py-2.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                   >
                     <option value="all">All Regulations (Auto-Detect)</option>
                     <option value="2022">2022 Probidhan (Current Standard)</option>
@@ -1038,7 +1169,7 @@ export const BTEBResultsScreen: React.FC = () => {
 
               {/* Board Roll Input */}
               <div>
-                <label className="block text-xs font-bold text-[#172554] mb-1.5">
+                <label className="block text-xs font-bold text-text-primary mb-1.5">
                   BTEB Board Roll Number *
                 </label>
                 <div className="relative">
@@ -1053,7 +1184,7 @@ export const BTEBResultsScreen: React.FC = () => {
                       setRollInput(e.target.value);
                       if (errorMessage) setErrorMessage('');
                     }}
-                    className="w-full pl-10 pr-4 py-2.5 text-sm font-mono bg-slate-50 border border-slate-200 rounded-xl text-[#172554] focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                    className="w-full pl-10 pr-4 py-2.5 text-sm font-mono bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                   />
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">
@@ -1071,7 +1202,7 @@ export const BTEBResultsScreen: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleViewResult('542880', 'diploma_in_engineering', '2016')}
-                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-blue-400 text-xs font-medium text-slate-700 hover:text-[#2563EB] transition-colors cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg bg-surface border border-slate-200 hover:border-blue-400 text-xs font-medium text-slate-700 hover:text-brand-blue transition-colors cursor-pointer"
                   >
                     <strong className="font-mono">542880</strong> (Barguna Poly · 2016 Reg · CGPA 3.43)
                   </button>
@@ -1079,7 +1210,7 @@ export const BTEBResultsScreen: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleViewResult('750102', 'diploma_in_engineering', '2022')}
-                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-blue-400 text-xs font-medium text-slate-700 hover:text-[#2563EB] transition-colors cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg bg-surface border border-slate-200 hover:border-blue-400 text-xs font-medium text-slate-700 hover:text-brand-blue transition-colors cursor-pointer"
                   >
                     <strong className="font-mono">750102</strong> (Confidence Poly · 2022 Reg · Sem 1-2)
                   </button>
@@ -1087,7 +1218,7 @@ export const BTEBResultsScreen: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleViewResult('750104', 'diploma_in_engineering', '2022')}
-                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-blue-400 text-xs font-medium text-slate-700 hover:text-[#2563EB] transition-colors cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg bg-surface border border-slate-200 hover:border-blue-400 text-xs font-medium text-slate-700 hover:text-brand-blue transition-colors cursor-pointer"
                   >
                     <strong className="font-mono">750104</strong> (Confidence Poly · 2022 Reg · Sem 1-4)
                   </button>
@@ -1095,7 +1226,7 @@ export const BTEBResultsScreen: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleViewResult('542891', 'diploma_in_engineering', '2016')}
-                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-blue-400 text-xs font-medium text-slate-700 hover:text-[#2563EB] transition-colors cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg bg-surface border border-slate-200 hover:border-blue-400 text-xs font-medium text-slate-700 hover:text-brand-blue transition-colors cursor-pointer"
                   >
                     <strong className="font-mono">542891</strong> (Barguna Poly · 2016 Reg · Sem 4-5)
                   </button>
@@ -1114,12 +1245,12 @@ export const BTEBResultsScreen: React.FC = () => {
               <button
                 type="submit"
                 disabled={searchStatus === 'loading'}
-                className="w-full min-h-[46px] py-3 px-4 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white text-sm font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70"
+                className="w-full min-h-[46px] py-3 px-4 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-sm font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70"
               >
                 {searchStatus === 'loading' ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Retrieving Official Results...</span>
+                    <span>Checking Imported Gazette Results...</span>
                   </>
                 ) : (
                   <>
@@ -1133,14 +1264,14 @@ export const BTEBResultsScreen: React.FC = () => {
 
           {/* Loading State Banner */}
           {searchStatus === 'loading' && (
-            <div className="p-6 bg-white rounded-2xl border border-blue-100 text-center space-y-3 shadow-xs">
-              <div className="w-10 h-10 rounded-full bg-blue-50 border-2 border-[#2563EB] border-t-transparent animate-spin mx-auto" />
+            <div className="p-6 bg-surface rounded-2xl border border-blue-100 text-center space-y-3 shadow-xs">
+              <div className="w-10 h-10 rounded-full bg-blue-50 border-2 border-brand-blue border-t-transparent animate-spin mx-auto" />
               <div className="space-y-1">
-                <h3 className="text-sm font-bold text-[#172554]">
-                  Contacting BTEB Results Repository...
+                <h3 className="text-sm font-bold text-text-primary">
+                  Checking DiplomaMate’s Imported Gazette...
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Checking online examination publications and local verified archives for Board Roll <span className="font-mono font-bold text-slate-700">{rollInput}</span>.
+                  Checking imported BTEB Gazette records for Board Roll <span className="font-mono font-bold text-slate-700">{rollInput}</span>.
                 </p>
               </div>
             </div>
@@ -1148,16 +1279,36 @@ export const BTEBResultsScreen: React.FC = () => {
 
           {/* Result Not Found State */}
           {searchStatus === 'not_found' && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-xs space-y-3">
+            <div className="bg-surface rounded-2xl border border-slate-200 p-6 text-center shadow-xs space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
                 <Info className="w-6 h-6" />
               </div>
               <div className="space-y-1.5 max-w-md mx-auto">
-                <h3 className="text-base font-bold text-[#172554]">
-                  No Examination Results Found
+                <h3 className="text-base font-bold text-text-primary">
+                  No Result in DiplomaMate Gazette
                 </h3>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  We could not find published examination records for Board Roll <strong className="font-mono text-[#172554]">{notFoundRoll}</strong> under <strong>{CURRICULUM_OPTIONS.find(c => c.id === selectedCurriculum)?.label}</strong>.
+                  No imported Gazette record was found for Board Roll <strong className="font-mono text-text-primary">{notFoundRoll}</strong> under <strong>{CURRICULUM_OPTIONS.find(c => c.id === selectedCurriculum)?.label}</strong>.
+                </p>
+                <p className="text-sm font-semibold text-amber-900" lang="bn">
+                  এই রোল নম্বরের ফলাফল বর্তমানে DiplomaMate-এ পাওয়া যায়নি।
+                </p>
+                <button
+                  type="button"
+                  onClick={openOfficialResultPortal}
+                  className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-sm font-bold shadow-xs transition-colors cursor-pointer"
+                >
+                  Official BTEB Result দেখুন
+                </button>
+                <button
+                  type="button"
+                  onClick={openBtebResultsZone}
+                  className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-800 text-white text-sm font-bold shadow-xs transition-colors cursor-pointer"
+                >
+                  BTEB Results Zone থেকে দেখুন
+                </button>
+                <p className="text-[11px] text-slate-500">
+                  BTEB Results Zone is a third-party portal. Results viewed there are not verified or provided by DiplomaMate.
                 </p>
                 {alternateCurricula.length > 0 && (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-left text-xs text-blue-900 space-y-1 mt-2">
@@ -1180,61 +1331,61 @@ export const BTEBResultsScreen: React.FC = () => {
 
           {/* Rate Limited State */}
           {searchStatus === 'rate_limited' && (
-            <div className="bg-white rounded-2xl border border-amber-200 p-6 text-center shadow-xs space-y-3">
+            <div className="bg-surface rounded-2xl border border-amber-200 p-6 text-center shadow-xs space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
                 <Clock className="w-6 h-6" />
               </div>
               <div className="space-y-1 max-w-md mx-auto">
                 <h3 className="text-sm font-bold text-amber-950">
-                  External Service Experiencing High Load (Rate Limited)
+                  Result Lookup Temporarily Unavailable
                 </h3>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  The upstream BTEB Results Zone repository is currently receiving heavy traffic and temporarily limiting automated queries (HTTP 429). This does not mean the student has no result. Please wait a few seconds and click Try Again.
+                  {errorMessage || 'The result lookup service is temporarily limiting requests. This does not mean the student has no result.'}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => handleViewResult()}
-                className="px-4 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-brand-blue hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer"
               >
                 Try Again
               </button>
             </div>
           )}
 
-          {/* External Service Unavailable / Timeout State */}
-          {searchStatus === 'external_unavailable' && (
-            <div className="bg-white rounded-2xl border border-amber-200 p-6 text-center shadow-xs space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+          {['timeout', 'network_error', 'service_unavailable', 'external_unavailable'].includes(searchStatus) && (
+            <div className="bg-surface rounded-2xl border border-rose-200 p-6 text-center shadow-xs space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center mx-auto">
                 <AlertTriangle className="w-6 h-6" />
               </div>
-              <div className="space-y-1.5 max-w-md mx-auto">
-                <h3 className="text-sm font-bold text-amber-950">
-                  External BTEB Result Service Temporarily Unavailable
+              <div className="space-y-1 max-w-md mx-auto">
+                <h3 className="text-sm font-bold text-rose-950">
+                  {searchStatus === 'timeout'
+                    ? 'Result Check Timed Out'
+                    : searchStatus === 'network_error'
+                      ? 'Connection Error'
+                      : 'Result Service Unavailable'}
                 </h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  {errorMessage ||
-                    'The external BTEB result gateway timed out or could not be reached, and this roll is not yet imported into the local verified gazette archive. A timeout or gateway outage is NOT proof that a student has no result.'}
-                </p>
+                <p className="text-xs text-slate-600 leading-relaxed">{errorMessage}</p>
               </div>
               <button
                 type="button"
                 onClick={() => handleViewResult()}
-                className="px-4 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer"
+                className="min-h-[44px] px-4 py-2 rounded-xl bg-brand-blue hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer"
               >
-                Retry Lookup
+                Try Again
               </button>
             </div>
           )}
 
           {/* Data Transparency Information Card */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-2 text-xs">
-            <h3 className="font-bold text-[#172554] flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-[#0D9488]" />
+          <div className="bg-surface rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-2 text-xs">
+            <h3 className="font-bold text-text-primary flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-brand-teal" />
               <span>How Results Are Retrieved and Protected</span>
             </h3>
             <p className="text-slate-600 leading-relaxed">
-              DiplomaMate queries verified BTEB examination records directly through authenticated gateway adapters and locally verified administrative result archives. We do not store or track students' private searches, nor do we fabricate academic results.
+              DiplomaMate searches its locally imported official BTEB Gazette records. For results not yet imported, use BTEB’s official portal, which requires a manual security check. We do not store or track students&apos; private searches, nor do we fabricate academic results.
             </p>
           </div>
         </div>
@@ -1245,12 +1396,12 @@ export const BTEBResultsScreen: React.FC = () => {
         <div className="space-y-4">
           <form
             onSubmit={handleGroupSearch}
-            className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3.5"
+            className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3.5"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h2 className="text-sm font-bold text-[#172554] flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-[#0D9488]" />
+                <h2 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-brand-teal" />
                   <span>Multi-Roll & Range Group Results Search</span>
                 </h2>
                 <p className="text-[11px] text-slate-500">
@@ -1261,7 +1412,7 @@ export const BTEBResultsScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={handleLoadSectionRosterRolls}
-                className="text-xs font-semibold bg-teal-50 hover:bg-teal-100 text-[#0D9488] px-3 py-1.5 rounded-xl border border-teal-200 transition-colors cursor-pointer"
+                className="text-xs font-semibold bg-teal-50 hover:bg-teal-100 text-brand-teal px-3 py-1.5 rounded-xl border border-teal-200 transition-colors cursor-pointer"
               >
                 + Load Section Roster Rolls
               </button>
@@ -1269,10 +1420,10 @@ export const BTEBResultsScreen: React.FC = () => {
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-[#172554]">
+                <label className="text-xs font-semibold text-text-primary">
                   Board Roll Numbers / Roll Ranges (Max 150 Rolls per Query) *
                 </label>
-                <span className="text-[11px] font-mono font-bold text-[#0D9488]">
+                <span className="text-[11px] font-mono font-bold text-brand-teal">
                   {parsedGroupPreviewCount} Roll{parsedGroupPreviewCount !== 1 ? 's' : ''} Queued
                 </span>
               </div>
@@ -1282,7 +1433,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 placeholder="Example: 542880, 542891, 542915, 750102, 750104"
                 value={groupRollInput}
                 onChange={(e) => setGroupRollInput(e.target.value)}
-                className="w-full px-3 py-2.5 text-xs sm:text-sm font-mono bg-slate-50 border border-slate-200 rounded-xl text-[#172554] focus:outline-none focus:ring-2 focus:ring-[#0D9488]"
+                className="w-full px-3 py-2.5 text-xs sm:text-sm font-mono bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-teal"
               />
             </div>
 
@@ -1294,7 +1445,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 <select
                   value={groupSemester}
                   onChange={(e) => setGroupSemester(e.target.value)}
-                  className="w-full px-2.5 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-2.5 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   <option value="all">All Semesters (Latest)</option>
                   {semestersList.map(sem => (
@@ -1310,7 +1461,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 <select
                   value={groupRegulation}
                   onChange={(e) => setGroupRegulation(e.target.value)}
-                  className="w-full px-2.5 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-2.5 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   <option value="all">All Regulations</option>
                   {regulationsList.map(r => (
@@ -1326,7 +1477,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 <select
                   value={groupExamYear}
                   onChange={(e) => setGroupExamYear(e.target.value)}
-                  className="w-full px-2.5 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-2.5 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   <option value="all">All Years</option>
                   {[2025, 2024, 2023, 2022, 2021, 2020].map(yr => (
@@ -1342,7 +1493,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 <select
                   value={groupExamType}
                   onChange={(e) => setGroupExamType(e.target.value)}
-                  className="w-full px-2.5 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-2.5 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   <option value="all">All Types</option>
                   {examTypesList.map(t => (
@@ -1362,7 +1513,7 @@ export const BTEBResultsScreen: React.FC = () => {
             <button
               type="submit"
               disabled={isSearchingGroup}
-              className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#0D9488] hover:bg-teal-700 text-white text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-brand-teal hover:bg-teal-700 text-white text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <BarChart3 className="w-4 h-4" />
               <span>{isSearchingGroup ? 'Analyzing Group Results...' : 'Analyze Group Results'}</span>
@@ -1372,10 +1523,10 @@ export const BTEBResultsScreen: React.FC = () => {
           {/* Group Performance Statistics & Detailed Student Table */}
           {groupResultData && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+              <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-[#172554] uppercase tracking-wider flex items-center gap-1.5">
-                    <BarChart3 className="w-4 h-4 text-[#0D9488]" />
+                  <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                    <BarChart3 className="w-4 h-4 text-brand-teal" />
                     <span>Group Analytics Summary</span>
                   </h3>
                   <span className="text-[11px] text-slate-500 font-mono">
@@ -1388,19 +1539,19 @@ export const BTEBResultsScreen: React.FC = () => {
                     <span className="text-[10px] font-bold uppercase text-slate-400 block">
                       Records Found
                     </span>
-                    <span className="text-xl font-extrabold font-mono text-[#172554] tabular-nums">
+                    <span className="text-xl font-extrabold font-mono text-text-primary tabular-nums">
                       {groupResultData.analytics.foundCount}
                       <span className="text-xs font-normal text-slate-400"> / {groupResultData.analytics.totalRequested}</span>
                     </span>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
-                    <span className="text-[10px] font-bold uppercase text-emerald-700 block">
+                  <div className="p-3 rounded-xl bg-green-50/70 border border-green-200">
+                    <span className="text-[10px] font-bold uppercase text-green-700 block">
                       Passed
                     </span>
-                    <span className="text-xl font-extrabold font-mono text-emerald-800 tabular-nums">
+                    <span className="text-xl font-extrabold font-mono text-green-800 tabular-nums">
                       {groupResultData.analytics.passCount}
-                      <span className="text-xs font-bold text-emerald-600 ml-1.5">
+                      <span className="text-xs font-bold text-green-600 ml-1.5">
                         ({groupResultData.analytics.passRate}%)
                       </span>
                     </span>
@@ -1416,10 +1567,10 @@ export const BTEBResultsScreen: React.FC = () => {
                   </div>
 
                   <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200">
-                    <span className="text-[10px] font-bold uppercase text-[#2563EB] block">
+                    <span className="text-[10px] font-bold uppercase text-brand-blue block">
                       Group GPA
                     </span>
-                    <span className="text-xl font-extrabold font-mono text-[#172554] tabular-nums">
+                    <span className="text-xl font-extrabold font-mono text-text-primary tabular-nums">
                       {groupResultData.analytics.averageGpa !== null
                         ? groupResultData.analytics.averageGpa.toFixed(2)
                         : '—'}
@@ -1455,7 +1606,7 @@ export const BTEBResultsScreen: React.FC = () => {
               </div>
 
               {/* Filter & Sort Controls + Individual Roll Breakdown List */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+              <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                   <div className="flex flex-wrap items-center gap-1.5">
                     {(
@@ -1472,7 +1623,7 @@ export const BTEBResultsScreen: React.FC = () => {
                         onClick={() => setGroupFilter(f.id)}
                         className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                           groupFilter === f.id
-                            ? 'bg-[#172554] text-white'
+                            ? 'bg-text-primary text-white'
                             : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                         }`}
                       >
@@ -1486,7 +1637,7 @@ export const BTEBResultsScreen: React.FC = () => {
                     <select
                       value={groupSort}
                       onChange={e => setGroupSort(e.target.value as GroupSortField)}
-                      className="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-[#172554]"
+                      className="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-text-primary"
                     >
                       <option value="roll_asc">Roll (Ascending)</option>
                       <option value="gpa_desc">GPA (Highest First)</option>
@@ -1525,7 +1676,7 @@ export const BTEBResultsScreen: React.FC = () => {
                         <div key={item.rollNumber} className="py-3 space-y-2 text-xs">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono font-black text-sm text-[#172554] bg-slate-100 px-2.5 py-1 rounded-lg">
+                              <span className="font-mono font-black text-sm text-text-primary bg-slate-100 px-2.5 py-1 rounded-lg">
                                 {item.rollNumber}
                               </span>
 
@@ -1534,7 +1685,7 @@ export const BTEBResultsScreen: React.FC = () => {
                                   <span
                                     className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
                                       rec.status === 'PASSED'
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        ? 'bg-green-50 text-green-700 border-green-200'
                                         : rec.status === 'WITHHELD'
                                           ? 'bg-rose-50 text-rose-700 border-rose-200'
                                           : 'bg-amber-50 text-amber-800 border-amber-200'
@@ -1560,7 +1711,7 @@ export const BTEBResultsScreen: React.FC = () => {
 
                             <div className="flex items-center gap-2">
                               {item.found && rec && (
-                                <span className="font-mono font-bold text-[#172554]">
+                                <span className="font-mono font-bold text-text-primary">
                                   {rec.status === 'PASSED'
                                     ? rec.gpa !== null
                                       ? `GPA ${rec.gpa.toFixed(2)}`
@@ -1590,7 +1741,7 @@ export const BTEBResultsScreen: React.FC = () => {
                                     rec?.regulation || 'all'
                                   )
                                 }
-                                className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#2563EB] font-bold text-[11px] cursor-pointer"
+                                className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue font-bold text-[11px] cursor-pointer"
                               >
                                 View Transcript
                               </button>
@@ -1602,7 +1753,7 @@ export const BTEBResultsScreen: React.FC = () => {
                               {rec.referredSubjects.map((rs, idx) => (
                                 <span
                                   key={`${rs.code}_${idx}`}
-                                  className="px-2 py-0.5 rounded bg-white border border-amber-200 text-[11px] text-amber-900 font-medium"
+                                  className="px-2 py-0.5 rounded bg-surface border border-amber-200 text-[11px] text-amber-900 font-medium"
                                 >
                                   <strong className="font-mono">{rs.code}</strong>
                                   {rs.name ? ` · ${rs.name}` : ''} ({rs.failedComponent})
@@ -1623,10 +1774,10 @@ export const BTEBResultsScreen: React.FC = () => {
       {/* TAB 3: PUBLISHED DATASETS */}
       {activeTab === 'batches' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-bold text-[#172554]">
+                <h2 className="text-sm font-bold text-text-primary">
                   Indexed Examination Batches ({batches.length})
                 </h2>
                 <p className="text-xs text-slate-500">
@@ -1660,14 +1811,14 @@ export const BTEBResultsScreen: React.FC = () => {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-blue-50 text-[#2563EB]">
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-blue-50 text-brand-blue">
                             {formatOrdinal(batch.semester)} Semester
                           </span>
                           <span className="text-xs font-semibold text-slate-500">
                             {batch.examYear} · {batch.regulation} Probidhan · {batch.examType}
                           </span>
                         </div>
-                        <h3 className="text-sm font-bold text-[#172554] mt-1">
+                        <h3 className="text-sm font-bold text-text-primary mt-1">
                           {batch.title}
                         </h3>
                       </div>
@@ -1676,7 +1827,7 @@ export const BTEBResultsScreen: React.FC = () => {
                         <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 font-bold">
                           {batch.totalRecords} Rolls
                         </span>
-                        <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold">
+                        <span className="px-2.5 py-1 rounded-lg bg-green-50 text-green-700 font-bold">
                           {batch.passCount} Passed
                         </span>
                         <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 font-bold">

@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -18,6 +19,17 @@ class NativeService {
       isNative: Capacitor.isNativePlatform(),
       platform: Capacitor.getPlatform() as 'android' | 'ios' | 'web'
     };
+  }
+
+  async openExternalUrl(url: string): Promise<void> {
+    if (Capacitor.isNativePlatform()) {
+      await Browser.open({ url });
+      return;
+    }
+
+    if (!window.open(url, '_blank', 'noopener,noreferrer')) {
+      throw new Error('The browser blocked opening a new tab.');
+    }
   }
 
   /**

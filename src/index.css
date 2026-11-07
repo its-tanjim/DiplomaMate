@@ -1,22 +1,66 @@
 @import "tailwindcss";
 
+@theme inline {
+  --color-brand-blue: var(--dm-brand-blue);
+  --color-brand-teal: var(--dm-brand-teal);
+  --color-success-green: var(--dm-success-green);
+  --color-app-bg: var(--dm-app-bg);
+  --color-surface: var(--dm-surface);
+  --color-border-app: var(--dm-border);
+  --color-text-primary: var(--dm-text-primary);
+  --color-text-secondary: var(--dm-text-secondary);
+  --color-text-muted: var(--dm-text-muted);
+  --color-blue-600: var(--dm-brand-blue);
+  --color-teal-600: var(--dm-brand-teal);
+  --color-green-600: var(--dm-success-green);
+  --color-slate-50: var(--dm-app-bg);
+  --color-slate-200: var(--dm-border);
+  --color-slate-400: var(--dm-text-muted);
+  --color-slate-600: var(--dm-text-secondary);
+  --color-slate-900: var(--dm-text-primary);
+}
+
 @layer base {
   :root {
-    --color-brand-blue: #2563eb;
-    --color-brand-teal: #0d9488;
-    --color-brand-bg: #f8fafc;
-    --color-brand-navy: #172554;
+    --dm-brand-blue: #2563eb;
+    --dm-brand-teal: #0d9488;
+    --dm-success-green: #16a34a;
+    --dm-app-bg: #f8fafc;
+    --dm-surface: #ffffff;
+    --dm-border: #e2e8f0;
+    --dm-text-primary: #0f172a;
+    --dm-text-secondary: #475569;
+    --dm-text-muted: #94a3b8;
     --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
+
+    color-scheme: light;
   }
 
   body {
-    background-color: #f8fafc;
-    color: #172554;
+    background-color: var(--dm-app-bg);
+    color: var(--dm-text-primary);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background-color: #dbeafe;
+    color: var(--dm-text-primary);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--dm-brand-blue);
+    outline-offset: 2px;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    accent-color: var(--dm-brand-teal);
   }
 
   /* Prevent text zoom on input focus in iOS */
@@ -81,4 +125,3 @@
     print-color-adjust: exact !important;
   }
 }
-

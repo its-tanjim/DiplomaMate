@@ -119,12 +119,26 @@ const app = express();
 // AI Studio dev environment requires port 3000. Use process.env.PORT only in production container deployments.
 const PORT = process.env.NODE_ENV === 'production' && process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-const allowedAppOrigins = new Set(['https://localhost']);
-for (const configuredUrl of [process.env.APP_URL, process.env.VITE_API_BASE_URL]) {
+const allowedAppOrigins = new Set([
+  'https://localhost',
+  'http://localhost:3000'
+]);
+for (const configuredUrl of [
+  process.env.APP_URL,
+  process.env.VITE_API_BASE_URL,
+  ...(process.env.CORS_ALLOWED_ORIGINS || '').split(',')
+]) {
   if (!configuredUrl?.trim()) continue;
   const parsedUrl = new URL(configuredUrl.trim());
-  if (parsedUrl.protocol !== 'https:' || parsedUrl.username || parsedUrl.password) {
-    throw new Error('APP_URL and VITE_API_BASE_URL must use HTTPS and must not contain credentials.');
+  if (
+    parsedUrl.protocol !== 'https:' ||
+    parsedUrl.username ||
+    parsedUrl.password ||
+    parsedUrl.pathname !== '/' ||
+    parsedUrl.search ||
+    parsedUrl.hash
+  ) {
+    throw new Error('APP_URL, VITE_API_BASE_URL, and CORS_ALLOWED_ORIGINS must contain HTTPS origins without paths or credentials.');
   }
   allowedAppOrigins.add(parsedUrl.origin);
 }
@@ -2008,7 +2022,10 @@ interface PersistentResultsStore {
 }
 
 const DATA_DIR = path.resolve(__dirname, 'data');
-const RESULTS_STORE_FILE = path.join(DATA_DIR, 'bteb-results.json');
+const DEFAULT_RESULTS_STORE_FILE = path.join(DATA_DIR, 'bteb-results.json');
+const RESULTS_STORE_FILE = process.env.BTEB_RESULTS_STORE_PATH
+  ? path.resolve(process.env.BTEB_RESULTS_STORE_PATH)
+  : DEFAULT_RESULTS_STORE_FILE;
 
 function normalizeBtebRollDigits(raw: string): string {
   const banglaDigits = '০১২৩৪৫৬৭৮৯';
@@ -2018,43 +2035,50 @@ function normalizeBtebRollDigits(raw: string): string {
     .replace(/[\s\-_]+/g, '');
 }
 
+function matchesBtebRoll(recordRoll: unknown, requestedRoll: string): boolean {
+  return normalizeBtebRollDigits(String(recordRoll ?? '')) === requestedRoll;
+}
+
 function convertBanglaDigitsInText(raw: string): string {
   const banglaDigits = '০১২৩৪৫৬৭৮৯';
   return String(raw || '').replace(/[০-৯]/g, ch => String(banglaDigits.indexOf(ch)));
 }
 
 function loadResultsStore(): PersistentResultsStore {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    if (fs.existsSync(RESULTS_STORE_FILE)) {
-      const raw = fs.readFileSync(RESULTS_STORE_FILE, 'utf-8');
-      const parsed = JSON.parse(raw);
-      const resultBatches = Array.isArray(parsed.resultBatches)
+  const readStore = (filePath: string): PersistentResultsStore => {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    return {
+      resultBatches: Array.isArray(parsed.resultBatches)
         ? parsed.resultBatches
         : Array.isArray(parsed.batches)
           ? parsed.batches
-          : [];
-      const studentResults = Array.isArray(parsed.studentResults)
+          : [],
+      studentResults: Array.isArray(parsed.studentResults)
         ? parsed.studentResults
         : Array.isArray(parsed.records)
           ? parsed.records
-          : [];
-      const importAuditLogs = Array.isArray(parsed.importAuditLogs)
+          : [],
+      importAuditLogs: Array.isArray(parsed.importAuditLogs)
         ? parsed.importAuditLogs
         : Array.isArray(parsed.importLogs)
           ? parsed.importLogs
-          : [];
-      return {
-        resultBatches,
-        studentResults,
-        importAuditLogs
-      };
-    }
-  } catch (err) {
-    console.error('[BTEB Results Store] Error loading store file, initializing clean store:', err);
+          : []
+    };
+  };
+
+  if (fs.existsSync(RESULTS_STORE_FILE)) {
+    return readStore(RESULTS_STORE_FILE);
   }
+
+  if (
+    RESULTS_STORE_FILE !== DEFAULT_RESULTS_STORE_FILE &&
+    fs.existsSync(DEFAULT_RESULTS_STORE_FILE)
+  ) {
+    const bundledStore = readStore(DEFAULT_RESULTS_STORE_FILE);
+    saveResultsStore(bundledStore);
+    return bundledStore;
+  }
+
   const initialStore: PersistentResultsStore = {
     resultBatches: [],
     studentResults: [],
@@ -2065,27 +2089,25 @@ function loadResultsStore(): PersistentResultsStore {
 }
 
 function saveResultsStore(store: PersistentResultsStore): void {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    const serialized = {
-      batches: store.resultBatches,
-      records: store.studentResults,
-      importLogs: store.importAuditLogs,
-      resultBatches: store.resultBatches,
-      studentResults: store.studentResults,
-      importAuditLogs: store.importAuditLogs
-    };
-    const tempFile = `${RESULTS_STORE_FILE}.tmp`;
-    fs.writeFileSync(tempFile, JSON.stringify(serialized, null, 2), 'utf-8');
-    fs.renameSync(tempFile, RESULTS_STORE_FILE);
-  } catch (err) {
-    console.error('[BTEB Results Store] Failed to persist store:', err);
-  }
+  fs.mkdirSync(path.dirname(RESULTS_STORE_FILE), { recursive: true });
+  const serialized = {
+    batches: store.resultBatches,
+    records: store.studentResults,
+    importLogs: store.importAuditLogs,
+    resultBatches: store.resultBatches,
+    studentResults: store.studentResults,
+    importAuditLogs: store.importAuditLogs
+  };
+  const tempFile = `${RESULTS_STORE_FILE}.tmp`;
+  fs.writeFileSync(tempFile, JSON.stringify(serialized, null, 2), 'utf-8');
+  fs.renameSync(tempFile, RESULTS_STORE_FILE);
 }
 
 const btebResultsStore: PersistentResultsStore = loadResultsStore();
+console.info(
+  `[BTEB Results Store] Loaded ${btebResultsStore.resultBatches.length} batches and ` +
+  `${btebResultsStore.studentResults.length} records; persistence=${process.env.BTEB_RESULTS_STORE_PATH ? 'configured-path' : 'instance-local'}.`
+);
 
 /**
  * Parses a group roll query string supporting comma/space/newline-separated rolls,
@@ -2575,6 +2597,7 @@ app.get('/api/results/batches', (req: Request, res: Response) => {
     success: true,
     totalBatches: sortedBatches.length,
     totalStudentRecords: btebResultsStore.studentResults.length,
+    persistenceMode: process.env.BTEB_RESULTS_STORE_PATH ? 'configured-path' : 'instance-local',
     batches: sortedBatches,
     ...(isSystemAdmin ? { importLogs: btebResultsStore.importAuditLogs.slice(0, 20) } : {})
   });
@@ -2620,24 +2643,24 @@ app.get('/api/results/individual', (req: Request, res: Response) => {
 
     // All records for this roll across all semesters (for the 1st-8th Semester Progression Strip)
     const allRollRecords = btebResultsStore.studentResults
-      .filter(r => r.rollNumber === roll)
+      .filter(r => matchesBtebRoll(r.rollNumber, roll))
       .sort((a, b) => a.semester - b.semester || b.examYear - a.examYear);
 
     // Filtered records matching specific search criteria
     let matchedRecords = allRollRecords.filter(r => {
-      if (semesterParam !== 'all' && r.semester !== Number(semesterParam)) return false;
-      if (regulationParam !== 'all' && r.regulation !== regulationParam) return false;
-      if (examYearParam !== 'all' && r.examYear !== Number(examYearParam)) return false;
-      if (examTypeParam !== 'all' && r.examType.toLowerCase() !== examTypeParam.toLowerCase()) return false;
+      if (semesterParam !== 'all' && Number(r.semester) !== Number(semesterParam)) return false;
+      if (regulationParam !== 'all' && String(r.regulation) !== regulationParam) return false;
+      if (examYearParam !== 'all' && Number(r.examYear) !== Number(examYearParam)) return false;
+      if (examTypeParam !== 'all' && String(r.examType).toLowerCase() !== examTypeParam.toLowerCase()) return false;
       return true;
     });
 
     let regulationNote: string | null = null;
     if (matchedRecords.length === 0 && regulationParam !== 'all' && allRollRecords.length > 0) {
       const crossRegMatches = allRollRecords.filter(r => {
-        if (semesterParam !== 'all' && r.semester !== Number(semesterParam)) return false;
-        if (examYearParam !== 'all' && r.examYear !== Number(examYearParam)) return false;
-        if (examTypeParam !== 'all' && r.examType.toLowerCase() !== examTypeParam.toLowerCase()) return false;
+        if (semesterParam !== 'all' && Number(r.semester) !== Number(semesterParam)) return false;
+        if (examYearParam !== 'all' && Number(r.examYear) !== Number(examYearParam)) return false;
+        if (examTypeParam !== 'all' && String(r.examType).toLowerCase() !== examTypeParam.toLowerCase()) return false;
         return true;
       });
       if (crossRegMatches.length > 0) {
@@ -2648,10 +2671,10 @@ app.get('/api/results/individual', (req: Request, res: Response) => {
 
     // Check if ANY batch has been imported for the requested filter (so UI can explain whether dataset is unimported vs roll not found in imported batch)
     const matchingBatches = btebResultsStore.resultBatches.filter(b => {
-      if (semesterParam !== 'all' && b.semester !== Number(semesterParam)) return false;
-      if (regulationParam !== 'all' && b.regulation !== regulationParam) return false;
-      if (examYearParam !== 'all' && b.examYear !== Number(examYearParam)) return false;
-      if (examTypeParam !== 'all' && b.examType.toLowerCase() !== examTypeParam.toLowerCase()) return false;
+      if (semesterParam !== 'all' && Number(b.semester) !== Number(semesterParam)) return false;
+      if (regulationParam !== 'all' && String(b.regulation) !== regulationParam) return false;
+      if (examYearParam !== 'all' && Number(b.examYear) !== Number(examYearParam)) return false;
+      if (examTypeParam !== 'all' && String(b.examType).toLowerCase() !== examTypeParam.toLowerCase()) return false;
       return true;
     });
 
@@ -2664,6 +2687,7 @@ app.get('/api/results/individual', (req: Request, res: Response) => {
       regulationNote,
       matchingBatchesCount: matchingBatches.length,
       totalBatchesInDatabase: btebResultsStore.resultBatches.length,
+      persistenceMode: process.env.BTEB_RESULTS_STORE_PATH ? 'configured-path' : 'instance-local',
       dataSourceNotice:
         'Official BTEB Imported Dataset. Subject names marked as "curriculum-mapped" are resolved from the BTEB Probidhan curriculum directory.'
     });
@@ -2678,20 +2702,13 @@ app.get('/api/results/individual', (req: Request, res: Response) => {
  * 9D. NATIVE BTEB RESULT STATEMENT ENDPOINT (`GET /api/results/lookup`)
  * ============================================================================
  * - Queries BTEB Examination results by Board Roll number
- * - Queries online BTEB Results Zone live repository with timeout and caching
- * - Falls back to local verified official BTEB gazette database
+ * - Queries the locally imported, verified official BTEB gazette database
+ * - Does not call undocumented external result APIs
  * - Validates input format (4-8 numeric digits, including Bangla numerals)
  * - Sanitizes parameters and maps curriculum names
  * - Resolves subject names via central BTEB curriculum directory
  * - Does NOT persist student roll queries to disk (privacy preservation)
  */
-interface CachedRawRollResponse {
-  items: any[];
-  cachedAt: number;
-}
-const liveRawRollCache = new Map<string, CachedRawRollResponse>();
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15-minute in-memory cache to prevent 429 rate limits
-
 function getCurriculumDisplayName(curriculumId: string): string {
   switch (curriculumId) {
     case 'diploma_in_engineering':
@@ -2711,180 +2728,6 @@ function getCurriculumDisplayName(curriculumId: string): string {
   }
 }
 
-function transformBtebZoneDataToStatement(
-  item: any,
-  roll: string,
-  regulationNote?: string | null
-): BtebStudentResultStatement {
-  const regulationStr = String(item.regulation || '2022');
-
-  // Transform semester results first so we know which subjects have been cleared (passed: true)
-  const rawSemResults: any[] = Array.isArray(item.semesterResults) ? item.semesterResults : [];
-  const clearedSubCodes = new Set<string>();
-  const activeFromSemesters = new Map<string, BtebFailedSubjectDetail>();
-
-  const semItems: BtebSemesterSummaryItem[] = rawSemResults
-    .map((sr: any) => {
-      const semNum = Number(sr.semester) as SemesterNumber;
-      const pubs: any[] = Array.isArray(sr.results) ? sr.results : [];
-
-      let gpa: number | null = null;
-      let cgpa: number | null = null;
-
-      for (const p of pubs) {
-        if (typeof p.gpa === 'number') gpa = p.gpa;
-        if (typeof p.cgpa === 'number') cgpa = p.cgpa;
-      }
-
-      const failedSubsMap = new Map<string, BtebFailedSubjectDetail>();
-      for (const p of pubs) {
-        if (Array.isArray(p.failedSubjects)) {
-          for (const fs of p.failedSubjects) {
-            const codeStr = String(fs.subCode);
-            let name = fs.subName;
-            if (!name || name === 'Subject') {
-              const resolved = resolveBtebSubjectCode(codeStr);
-              name = resolved?.name || `Subject Code ${codeStr}`;
-            }
-            const existing = failedSubsMap.get(codeStr);
-            if (!existing) {
-              failedSubsMap.set(codeStr, {
-                subCode: fs.subCode,
-                subName: name,
-                type: fs.type || 'T',
-                originSemester: Number(fs.originSemester || semNum),
-                passed: Boolean(fs.passed)
-              });
-            } else if (fs.passed) {
-              existing.passed = true;
-            }
-          }
-        }
-      }
-      const failedSubs = Array.from(failedSubsMap.values());
-      for (const f of failedSubs) {
-        const cStr = String(f.subCode);
-        if (f.passed) {
-          clearedSubCodes.add(cStr);
-          activeFromSemesters.delete(cStr);
-        } else if (!clearedSubCodes.has(cStr)) {
-          activeFromSemesters.set(cStr, f);
-        }
-      }
-
-      const activeFailedSubs = failedSubs.filter(f => !f.passed);
-
-      const statusVal: 'failed' | 'passed' | 'referred' | 'withheld' =
-        sr.status === 'withheld'
-          ? 'withheld'
-          : sr.status === 'passed'
-            ? 'passed'
-            : activeFailedSubs.length > 0 || sr.status === 'failed' || sr.status === 'referred'
-              ? 'referred'
-              : 'passed';
-
-      return {
-        semester: semNum,
-        status: statusVal,
-        gpa,
-        cgpa,
-        publications: pubs.map((p: any) => ({
-          date: p.date,
-          fileHash: p.fileHash,
-          fileName: p.fileName,
-          semester: p.semester,
-          instituteCode: p.instituteCode,
-          deptCode: p.deptCode,
-          gpa: p.gpa,
-          cgpa: p.cgpa,
-          failedSubjects: (p.failedSubjects || []).map((fs: any) => ({
-            subCode: fs.subCode,
-            subName: fs.subName || resolveBtebSubjectCode(String(fs.subCode))?.name || `Subject ${fs.subCode}`,
-            type: fs.type || 'T',
-            originSemester: fs.originSemester || semNum,
-            passed: Boolean(fs.passed)
-          })),
-          republished: p.republished
-        })),
-        latestPublication: pubs[0],
-        failedSubjects: failedSubs
-      };
-    })
-    .sort((a, b) => a.semester - b.semester);
-
-  // Transform and deduplicate current ACTIVE failed subjects (exclude any subject with passed: true or cleared in semesterResults)
-  const currentFailedMap = new Map<string, BtebFailedSubjectDetail>();
-  if (rawSemResults.length > 0) {
-    for (const [codeStr, detail] of activeFromSemesters.entries()) {
-      if (!clearedSubCodes.has(codeStr)) {
-        currentFailedMap.set(codeStr, detail);
-      }
-    }
-  } else {
-    for (const fs of (item.currentFailedSubjects || [])) {
-      const codeStr = String(fs.subCode);
-      if (fs.passed || clearedSubCodes.has(codeStr)) continue;
-      let name = fs.subName;
-      if (!name || name === 'Subject') {
-        const resolved = resolveBtebSubjectCode(codeStr);
-        name = resolved?.name || `Subject Code ${codeStr}`;
-      }
-      if (!currentFailedMap.has(codeStr)) {
-        currentFailedMap.set(codeStr, {
-          subCode: fs.subCode,
-          subName: name,
-          type: fs.type || 'T',
-          originSemester: Number(fs.originSemester || 1),
-          passed: false
-        });
-      }
-    }
-  }
-  const currentFailed = Array.from(currentFailedMap.values());
-
-  // Overall calculations
-  let overallCgpa: number | null = null;
-  for (const s of semItems) {
-    if (typeof s.cgpa === 'number') overallCgpa = s.cgpa;
-  }
-
-  const highestSemester = semItems.length > 0 ? Math.max(...semItems.map(s => s.semester)) : 0;
-  const passedSemesters = semItems.filter(s => s.status === 'passed').length;
-
-  let overallStatus: 'passed_all' | 'referred_pending' | 'in_progress' = 'in_progress';
-  if (currentFailed.length > 0 || semItems.some(s => s.status === 'referred' || s.status === 'withheld')) {
-    overallStatus = 'referred_pending';
-  } else if (highestSemester === 8 && overallCgpa !== null) {
-    overallStatus = 'passed_all';
-  } else {
-    overallStatus = 'in_progress';
-  }
-
-  return {
-    rollNumber: String(item.roll || roll),
-    curriculumId: item.curriculumId || 'diploma_in_engineering',
-    curriculumName: getCurriculumDisplayName(item.curriculumId || 'diploma_in_engineering'),
-    regulation: regulationStr,
-    regulationNote: regulationNote || null,
-    deptCode: item.deptCode || null,
-    deptName: item.deptName || null,
-    institute: {
-      code: item.institute?.code || '—',
-      name: item.institute?.name || 'Polytechnic Institute',
-      district: item.institute?.district || '—'
-    },
-    overallStatus,
-    overallCgpa,
-    completedSemestersCount: passedSemesters,
-    highestSemester,
-    currentFailedSubjects: currentFailed,
-    semesterResults: semItems,
-    dataSource: 'bteb_results_zone_online',
-    dataSourceLabel: 'BTEB Results Zone (Online Live Ingestion)',
-    retrievedAt: new Date().toISOString()
-  };
-}
-
 function buildStatementFromLocalStore(
   roll: string,
   curriculumId = 'diploma_in_engineering',
@@ -2896,7 +2739,7 @@ function buildStatementFromLocalStore(
   }
 
   const allForRoll = btebResultsStore.studentResults
-    .filter(r => r.rollNumber === roll)
+    .filter(r => matchesBtebRoll(r.rollNumber, roll))
     .sort((a, b) => a.semester - b.semester || b.examYear - a.examYear);
 
   if (allForRoll.length === 0) return null;
@@ -2916,9 +2759,10 @@ function buildStatementFromLocalStore(
   // Group records by semester so multiple publications for the same semester are combined cleanly
   const bySemester = new Map<SemesterNumber, StudentResultRecord[]>();
   for (const r of records) {
-    const list = bySemester.get(r.semester) || [];
+    const semester = Number(r.semester) as SemesterNumber;
+    const list = bySemester.get(semester) || [];
     list.push(r);
-    bySemester.set(r.semester, list);
+    bySemester.set(semester, list);
   }
 
   const sortedSemesters = Array.from(bySemester.keys()).sort((a, b) => a - b);
@@ -3050,122 +2894,9 @@ function buildStatementFromLocalStore(
     currentFailedSubjects: allPendingFailed,
     semesterResults: semItems,
     dataSource: 'official_bteb_gazette_store',
-    dataSourceLabel: 'Official BTEB Gazette Publication Sheet (Verified Local Dataset)',
+    dataSourceLabel: 'DiplomaMate Official Gazette Database',
     retrievedAt: new Date().toISOString()
   };
-}
-
-async function fetchLiveBtebResults(
-  roll: string,
-  curriculumId?: string,
-  regulation?: string
-): Promise<{
-  statement: BtebStudentResultStatement | null;
-  alternateCurricula: string[];
-}> {
-  const targetCurriculum = curriculumId || 'diploma_in_engineering';
-  let rawItems: any[] | null = null;
-
-  const cached = liveRawRollCache.get(roll);
-  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
-    rawItems = cached.items;
-  } else {
-    // Query by roll without restricting regulation so 1 upstream request caches all regulations/curricula for this roll
-    const url = new URL('https://btebresultszone.com/api/student-results');
-    url.searchParams.set('roll', roll);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    try {
-      const response = await fetch(url.toString(), {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) DiplomaMate/2.5',
-          Accept: 'application/json'
-        },
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      if (response.status === 429) {
-        const err: any = new Error('Rate limited by external BTEB Results Zone server (HTTP 429)');
-        err.code = 'RATE_LIMITED';
-        throw err;
-      }
-
-      if (response.status === 403 || response.status >= 500) {
-        const responseBody = await response.text();
-        console.error(
-        `[BTEB Results Lookup] Upstream HTTP ${response.status} response:`,
-        responseBody.slice(0, 1000)
-       );
-
-        const err: any = new Error(
-       `External BTEB result server returned HTTP ${response.status}`
-       );
-        err.code = 'UPSTREAM_UNAVAILABLE';
-        throw err;
-     }
-
-      const json = (await response.json()) as any;
-      if (json && json.success && Array.isArray(json.data)) {
-        const fetchedItems: any[] = json.data;
-        rawItems = fetchedItems;
-        liveRawRollCache.set(roll, { items: fetchedItems, cachedAt: Date.now() });
-      } else if (json && json.success === false && /no results found/i.test(String(json.error || ''))) {
-        rawItems = [];
-        liveRawRollCache.set(roll, { items: [], cachedAt: Date.now() });
-      } else {
-        rawItems = [];
-      }
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        const timeoutErr: any = new Error('Timeout connecting to BTEB Results Zone');
-        timeoutErr.code = 'TIMEOUT';
-        throw timeoutErr;
-      }
-      if (!err.code) {
-        err.code = 'UPSTREAM_UNAVAILABLE';
-      }
-      throw err;
-    }
-  }
-
-  if (!rawItems || rawItems.length === 0) {
-    return { statement: null, alternateCurricula: [] };
-  }
-
-  // Strictly match curriculumId first — never return SSC Vocational or HSC BM as Diploma in Engineering
-  const curriculumMatches = rawItems.filter((d: any) => d.curriculumId === targetCurriculum);
-
-  if (curriculumMatches.length === 0) {
-    const alternateCurricula = Array.from(
-      new Set(rawItems.map((d: any) => getCurriculumDisplayName(String(d.curriculumId || ''))).filter(Boolean))
-    );
-    return { statement: null, alternateCurricula };
-  }
-
-  // Match regulation if specified; if student selected a different regulation (e.g. 2022 vs 2016), auto-match with a clear note
-  let matchedItem = curriculumMatches.find((d: any) => {
-    if (regulation && regulation !== 'all' && regulation !== 'any' && String(d.regulation) !== String(regulation)) return false;
-    return true;
-  });
-
-  let regulationNote: string | null = null;
-  if (!matchedItem && curriculumMatches.length > 0) {
-    matchedItem = curriculumMatches[0];
-    if (regulation && regulation !== 'all' && regulation !== 'any') {
-      regulationNote = `Matched under ${matchedItem.regulation} Probidhan (searched with ${regulation} Probidhan selected).`;
-    }
-  }
-
-  if (!matchedItem) {
-    return { statement: null, alternateCurricula: [] };
-  }
-
-  const statement = transformBtebZoneDataToStatement(matchedItem, roll, regulationNote);
-  return { statement, alternateCurricula: [] };
 }
 
 app.get('/api/results/lookup', async (req: Request, res: Response) => {
@@ -3183,68 +2914,28 @@ app.get('/api/results/lookup', async (req: Request, res: Response) => {
     const rawReg = req.query.regulation ? String(req.query.regulation).trim() : 'all';
     const regulation = rawReg === 'any' ? 'all' : rawReg;
 
-    let alternateCurricula: string[] = [];
-
-    // 1. Try Live Online Retrieval
-    try {
-      const liveResult = await fetchLiveBtebResults(rawRoll, curriculum, regulation);
-      if (liveResult.statement) {
-        return res.status(200).json({
-          success: true,
-          found: true,
-          rollNumber: rawRoll,
-          statement: liveResult.statement
-        });
-      }
-      alternateCurricula = liveResult.alternateCurricula;
-    } catch (liveErr: any) {
-      console.warn(`[BTEB Results Lookup] Live fetch notice for roll ${rawRoll}:`, liveErr?.message);
-      const localFallback = buildStatementFromLocalStore(rawRoll, curriculum, regulation);
-      if (localFallback) {
-        return res.status(200).json({
-          success: true,
-          found: true,
-          rollNumber: rawRoll,
-          statement: localFallback,
-          notice:
-            liveErr?.code === 'RATE_LIMITED'
-              ? 'Retrieved from verified local BTEB official gazette archive (online gateway is currently rate-limited).'
-              : 'Retrieved from verified local BTEB official gazette archive (online gateway timed out or was unreachable).'
-        });
-      }
-
-      if (liveErr?.code === 'RATE_LIMITED') {
-        return res.status(200).json({
-          success: false,
-          rateLimited: true,
-          externalUnavailable: true,
-          rollNumber: rawRoll,
-          error:
-            'The external BTEB online result gateway is currently rate-limiting requests (HTTP 429), and this roll number is not yet imported into the local verified gazette archive. Please wait a few seconds and try again.'
-        });
-      }
-
-      if (liveErr?.code === 'TIMEOUT') {
-        return res.status(200).json({
-          success: false,
-          timeout: true,
-          externalUnavailable: true,
-          rollNumber: rawRoll,
-          error:
-            'The external BTEB result server timed out before responding, and this roll number is not in the local verified gazette archive. This does NOT mean the student has no result—please retry shortly.'
-        });
-      }
-
-      return res.status(200).json({
+    const supportedCurricula = new Set<string>([
+      'diploma_in_engineering',
+      'diploma_in_textile',
+      'diploma_in_agriculture',
+      'diploma_in_tourism',
+      'hsc_bm',
+      'ssc_vocational'
+    ]);
+    if (!supportedCurricula.has(curriculum)) {
+      return res.status(400).json({
         success: false,
-        externalUnavailable: true,
-        rollNumber: rawRoll,
-        error:
-          'The external BTEB result service is temporarily unavailable, and this roll number is not in the local verified gazette archive. This is a service availability issue, not a missing result.'
+        error: 'Please select a supported BTEB curriculum.'
       });
     }
 
-    // 2. Check Local Verified Database
+    if (!['all', '2022', '2016', '2010'].includes(regulation)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please select a supported BTEB regulation or "all".'
+      });
+    }
+
     const localStatement = buildStatementFromLocalStore(rawRoll, curriculum, regulation);
     if (localStatement) {
       return res.status(200).json({
@@ -3255,21 +2946,24 @@ app.get('/api/results/lookup', async (req: Request, res: Response) => {
       });
     }
 
-    // 3. Not Found in either source (cleanly verified as not found for requested curriculum)
-    const altMessage =
-      alternateCurricula.length > 0
-        ? ` Note: Board Roll ${rawRoll} exists under ${alternateCurricula.join(', ')}, not under ${getCurriculumDisplayName(curriculum)}.`
-        : '';
-
-    return res.status(200).json({
-      success: true,
+    console.warn(
+      `[BTEB Results Lookup] No imported record; curriculum=${curriculum}, regulation=${regulation}, ` +
+      `records=${btebResultsStore.studentResults.length}, batches=${btebResultsStore.resultBatches.length}, ` +
+      `persistence=${process.env.BTEB_RESULTS_STORE_PATH ? 'configured-path' : 'instance-local'}.`
+    );
+    return res.status(503).json({
+      success: false,
       found: false,
       rollNumber: rawRoll,
-      alternateCurricula,
-      message: `No published examination result was found for Board Roll ${rawRoll} under ${getCurriculumDisplayName(curriculum)}.${altMessage}`
+      externalUnavailable: true,
+      manualVerificationRequired: true,
+      officialPortalUrl: 'https://result.bteb.gov.bd/result-search',
+      error:
+        'This roll is not present in DiplomaMate’s imported official Gazette records. The official BTEB portal requires registration number, exam details, and a manual security check, so DiplomaMate cannot verify this result automatically. Open the official portal or ask an administrator to import the official result file.'
     });
   } catch (err: any) {
-    console.error('[BTEB Results Lookup] Server error:', err);
+    const errorType = err instanceof Error ? err.name : 'UnknownError';
+    console.error(`[BTEB Results Lookup] HTTP 500: local Gazette lookup failed (${errorType}).`);
     return res.status(500).json({
       success: false,
       error: 'An internal error occurred while retrieving examination results. Please try again later.'
@@ -3313,23 +3007,24 @@ app.post('/api/results/group', (req: Request, res: Response) => {
 
     // Filter candidate pool from store
     const candidatePool = btebResultsStore.studentResults.filter(r => {
-      if (semNum !== null && r.semester !== semNum) return false;
-      if (regulation !== 'all' && r.regulation !== regulation) return false;
-      if (yearNum !== null && r.examYear !== yearNum) return false;
-      if (examType !== 'all' && r.examType.toLowerCase() !== String(examType).toLowerCase()) return false;
+      if (semNum !== null && Number(r.semester) !== semNum) return false;
+      if (regulation !== 'all' && String(r.regulation) !== regulation) return false;
+      if (yearNum !== null && Number(r.examYear) !== yearNum) return false;
+      if (examType !== 'all' && String(r.examType).toLowerCase() !== String(examType).toLowerCase()) return false;
       return true;
     });
 
     // Map by roll number (if multiple records match when 'all' is selected, pick latest semester/year)
     const rollRecordMap = new Map<string, StudentResultRecord>();
     for (const rec of candidatePool) {
-      const existing = rollRecordMap.get(rec.rollNumber);
+      const normalizedRoll = normalizeBtebRollDigits(String(rec.rollNumber ?? ''));
+      const existing = rollRecordMap.get(normalizedRoll);
       if (
         !existing ||
-        rec.examYear > existing.examYear ||
-        (rec.examYear === existing.examYear && rec.semester > existing.semester)
+        Number(rec.examYear) > Number(existing.examYear) ||
+        (Number(rec.examYear) === Number(existing.examYear) && Number(rec.semester) > Number(existing.semester))
       ) {
-        rollRecordMap.set(rec.rollNumber, rec);
+        rollRecordMap.set(normalizedRoll, rec);
       }
     }
 
@@ -3338,20 +3033,21 @@ app.post('/api/results/group', (req: Request, res: Response) => {
       for (const roll of rolls) {
         if (!rollRecordMap.has(roll)) {
           const crossRegPool = btebResultsStore.studentResults.filter(r => {
-            if (r.rollNumber !== roll) return false;
-            if (semNum !== null && r.semester !== semNum) return false;
-            if (yearNum !== null && r.examYear !== yearNum) return false;
-            if (examType !== 'all' && r.examType.toLowerCase() !== String(examType).toLowerCase()) return false;
+            if (!matchesBtebRoll(r.rollNumber, roll)) return false;
+            if (semNum !== null && Number(r.semester) !== semNum) return false;
+            if (yearNum !== null && Number(r.examYear) !== yearNum) return false;
+            if (examType !== 'all' && String(r.examType).toLowerCase() !== String(examType).toLowerCase()) return false;
             return true;
           });
           for (const rec of crossRegPool) {
-            const existing = rollRecordMap.get(rec.rollNumber);
+            const normalizedRoll = normalizeBtebRollDigits(String(rec.rollNumber ?? ''));
+            const existing = rollRecordMap.get(normalizedRoll);
             if (
               !existing ||
-              rec.examYear > existing.examYear ||
-              (rec.examYear === existing.examYear && rec.semester > existing.semester)
+              Number(rec.examYear) > Number(existing.examYear) ||
+              (Number(rec.examYear) === Number(existing.examYear) && Number(rec.semester) > Number(existing.semester))
             ) {
-              rollRecordMap.set(rec.rollNumber, rec);
+              rollRecordMap.set(normalizedRoll, rec);
             }
           }
         }
@@ -3521,17 +3217,23 @@ app.post('/api/admin/results/preview-parse', requireSystemAdmin, async (req: Req
       mimeType
     } = req.body;
 
-    let contentToParse = String(rawText || '').trim();
-    if (!contentToParse && fileDataUrl) {
+    let contentToParse = '';
+
+    if (fileDataUrl) {
       try {
         contentToParse = await extractTextFromUploadedResultPdf(fileDataUrl, mimeType);
-      } catch (pdfErr: any) {
+      }
+
+      catch (pdfErr: any) {
         return res.status(400).json({
           success: false,
           error: pdfErr?.message || 'Could not extract text from PDF.'
         });
       }
     }
+    else {
+  contentToParse = String(rawText || '').trim();
+}
 
     if (!contentToParse) {
       return res.status(400).json({
@@ -3565,12 +3267,12 @@ app.post('/api/admin/results/preview-parse', requireSystemAdmin, async (req: Req
       btebResultsStore.studentResults
         .filter(
           r =>
-            r.semester === semNum &&
-            r.regulation === regStr &&
-            r.examYear === yearNum &&
-            r.examType === typeStr
+          Number(r.semester) === semNum &&
+          String(r.regulation) === regStr &&
+          Number(r.examYear) === yearNum &&
+          String(r.examType).toLowerCase() === typeStr.toLowerCase()
         )
-        .map(r => r.rollNumber)
+      .map(r => normalizeBtebRollDigits(String(r.rollNumber ?? '')))
     );
 
     const existingConflicts = parsedRecords
@@ -3656,6 +3358,12 @@ app.post('/api/admin/results/import', requireSystemAdmin, async (req: Request, r
       });
     }
 
+    const nextStore: PersistentResultsStore = {
+      resultBatches: [...btebResultsStore.resultBatches],
+      studentResults: [...btebResultsStore.studentResults],
+      importAuditLogs: [...btebResultsStore.importAuditLogs]
+    };
+
     const batchId = `BTEB_${yearNum}_REG${regStr}_SEM${semNum}_${typeStr.toUpperCase()}`;
     const batchTitle =
       title && String(title).trim()
@@ -3670,8 +3378,8 @@ app.post('/api/admin/results/import', requireSystemAdmin, async (req: Request, r
 
     // Index existing records by composite key `${batchId}_${rollNumber}`
     const existingIndexMap = new Map<string, number>();
-    btebResultsStore.studentResults.forEach((rec, idx) => {
-      existingIndexMap.set(rec.id, idx);
+    nextStore.studentResults.forEach((rec, idx) => {
+      existingIndexMap.set(`${rec.batchId}_${normalizeBtebRollDigits(String(rec.rollNumber ?? ''))}`, idx);
     });
 
     for (const candidate of parsedRecords) {
@@ -3705,18 +3413,18 @@ app.post('/api/admin/results/import', requireSystemAdmin, async (req: Request, r
         if (duplicateMode === 'skip') {
           skippedCount += 1;
         } else {
-          btebResultsStore.studentResults[existingIdx] = fullRecord;
+          nextStore.studentResults[existingIdx] = fullRecord;
           updatedCount += 1;
         }
       } else {
-        btebResultsStore.studentResults.push(fullRecord);
-        existingIndexMap.set(recordId, btebResultsStore.studentResults.length - 1);
+        nextStore.studentResults.push(fullRecord);
+        existingIndexMap.set(recordId, nextStore.studentResults.length - 1);
         insertedCount += 1;
       }
     }
 
     // Recompute batch totals from all records belonging to this batchId
-    const batchRecords = btebResultsStore.studentResults.filter(r => r.batchId === batchId);
+    const batchRecords = nextStore.studentResults.filter(r => r.batchId === batchId);
     const passCount = batchRecords.filter(r => r.status === 'PASSED').length;
     const referredCount = batchRecords.filter(r => r.status === 'REFERRED').length;
     const withheldCount = batchRecords.filter(r => r.status === 'WITHHELD').length;
@@ -3739,11 +3447,11 @@ app.post('/api/admin/results/import', requireSystemAdmin, async (req: Request, r
       notes: notes ? String(notes).trim() : undefined
     };
 
-    const existingBatchIdx = btebResultsStore.resultBatches.findIndex(b => b.id === batchId);
+    const existingBatchIdx = nextStore.resultBatches.findIndex(b => b.id === batchId);
     if (existingBatchIdx >= 0) {
-      btebResultsStore.resultBatches[existingBatchIdx] = batchRecord;
+      nextStore.resultBatches[existingBatchIdx] = batchRecord;
     } else {
-      btebResultsStore.resultBatches.push(batchRecord);
+      nextStore.resultBatches.push(batchRecord);
     }
 
     const auditEntry: ResultImportAuditLog = {
@@ -3759,9 +3467,16 @@ app.post('/api/admin/results/import', requireSystemAdmin, async (req: Request, r
       skippedCount,
       duplicateMode: duplicateMode === 'skip' ? 'skip' : 'overwrite'
     };
-    btebResultsStore.importAuditLogs.unshift(auditEntry);
+    nextStore.importAuditLogs.unshift(auditEntry);
 
-    saveResultsStore(btebResultsStore);
+    saveResultsStore(nextStore);
+    btebResultsStore.resultBatches = nextStore.resultBatches;
+    btebResultsStore.studentResults = nextStore.studentResults;
+    btebResultsStore.importAuditLogs = nextStore.importAuditLogs;
+
+    console.info(
+      `[BTEB Results Import] Saved batch ${batchId}: parsed=${parsedRecords.length}, inserted=${insertedCount}, updated=${updatedCount}, skipped=${skippedCount}.`
+    );
 
     return res.status(200).json({
       success: true,
@@ -3770,8 +3485,9 @@ app.post('/api/admin/results/import', requireSystemAdmin, async (req: Request, r
       auditEntry
     });
   } catch (error) {
-    console.error('Admin results import error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to import BTEB result batch.' });
+    const errorType = error instanceof Error ? error.name : 'UnknownError';
+    console.error(`[BTEB Results Import] Failed to persist result batch (${errorType}).`);
+    return res.status(500).json({ success: false, error: 'Failed to save the imported BTEB result batch. Please try again or contact an administrator.' });
   }
 });
 
@@ -3788,12 +3504,18 @@ app.delete('/api/admin/results/batches/:batchId', requireSystemAdmin, (req: Requ
       return res.status(404).json({ success: false, error: 'Result batch not found.' });
     }
 
-    btebResultsStore.resultBatches = btebResultsStore.resultBatches.filter(b => b.id !== batchId);
+    const nextStore: PersistentResultsStore = {
+      resultBatches: btebResultsStore.resultBatches.filter(b => b.id !== batchId),
+      studentResults: btebResultsStore.studentResults.filter(r => r.batchId !== batchId),
+      importAuditLogs: [...btebResultsStore.importAuditLogs]
+    };
     const beforeCount = btebResultsStore.studentResults.length;
-    btebResultsStore.studentResults = btebResultsStore.studentResults.filter(r => r.batchId !== batchId);
-    const removedRecords = beforeCount - btebResultsStore.studentResults.length;
+    const removedRecords = beforeCount - nextStore.studentResults.length;
 
-    saveResultsStore(btebResultsStore);
+    saveResultsStore(nextStore);
+    btebResultsStore.resultBatches = nextStore.resultBatches;
+    btebResultsStore.studentResults = nextStore.studentResults;
+    btebResultsStore.importAuditLogs = nextStore.importAuditLogs;
 
     return res.status(200).json({
       success: true,
@@ -3801,7 +3523,8 @@ app.delete('/api/admin/results/batches/:batchId', requireSystemAdmin, (req: Requ
       removedRecords
     });
   } catch (error) {
-    console.error('Delete result batch error:', error);
+    const errorType = error instanceof Error ? error.name : 'UnknownError';
+    console.error(`[BTEB Results Import] Failed to delete batch (${errorType}).`);
     return res.status(500).json({ success: false, error: 'Failed to delete result batch.' });
   }
 });

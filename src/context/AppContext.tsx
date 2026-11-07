@@ -1,3 +1,4 @@
+import { apiFetch } from '../services/apiClient';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { 
   StudentProfile, 
@@ -410,7 +411,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Fetch verified teachers, contacts, and shift schedule configurations from backend on mount
   useEffect(() => {
-    fetch('/api/teacher-contacts/access')
+    apiFetch('/api/teacher-contacts/access')
       .then(async response => {
         const data = await response.json();
         if (!response.ok || !data.success || typeof data.locked !== 'boolean') {
@@ -422,7 +423,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.error('Teacher Contact access settings request failed:', error);
       });
 
-    fetch('/api/teachers')
+    apiFetch('/api/teachers')
       .then(res => res.json())
       .then(data => {
         if (data.success && Array.isArray(data.teachers)) {
@@ -431,7 +432,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
       .catch(() => {});
 
-    fetch('/api/teacher-contacts')
+    apiFetch('/api/teacher-contacts')
       .then(res => res.json())
       .then(data => {
         if (data.success && Array.isArray(data.contacts)) {
@@ -449,7 +450,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
       .catch(() => {});
 
-    fetch('/api/schedule-config?scopeKey=default')
+    apiFetch('/api/schedule-config?scopeKey=default')
       .then(res => res.json())
       .then(data => {
         if (data.success && data.schedules) {
@@ -468,7 +469,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isLoggedIn &&
       (userProfile.accountType === 'student' || userProfile.accountType === 'class_captain')
     ) {
-      fetch('/api/auth/session', {
+      apiFetch('/api/auth/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -534,7 +535,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    fetch('/api/auth/me', {
+    apiFetch('/api/auth/me', {
       headers: { Authorization: `Bearer ${tokenToCheck}` }
     })
       .then(async res => ({ ok: res.ok, data: await res.json() }))
@@ -568,10 +569,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       const [notesRes, asgRes, routinesRes, notifRes] = await Promise.all([
-        fetch('/api/notes', { headers }),
-        fetch('/api/assignments', { headers }),
-        tokenToUse ? fetch(`/api/routines?${routineQuery.toString()}`, { headers }) : Promise.resolve(null),
-        tokenToUse ? fetch('/api/routines/notifications', { headers }) : Promise.resolve(null)
+        apiFetch('/api/notes', { headers }),
+        apiFetch('/api/assignments', { headers }),
+        tokenToUse ? apiFetch(`/api/routines?${routineQuery.toString()}`, { headers }) : Promise.resolve(null),
+        tokenToUse ? apiFetch('/api/routines/notifications', { headers }) : Promise.resolve(null)
       ]);
 
       if (notesRes.ok) {
@@ -675,7 +676,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setIsCheckingAdminSession(true);
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await apiFetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${tokenToCheck}` }
       });
       const data = await res.json();
@@ -761,7 +762,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     role: 'student' | 'class_captain'
   ): Promise<{ success: boolean; message: string }> => {
     try {
-      const response = await fetch('/api/students/login', {
+      const response = await apiFetch('/api/students/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ boardRoll, regNumber, role })
@@ -820,7 +821,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = () => {
     const tokenToInvalidate = authToken;
     if (tokenToInvalidate) {
-      fetch('/api/auth/logout', {
+      apiFetch('/api/auth/logout', {
         method: 'POST',
         headers: { Authorization: `Bearer ${tokenToInvalidate}` }
       }).catch(() => {});
@@ -896,7 +897,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     password: string
   ): Promise<{ success: boolean; message: string }> => {
     try {
-      const response = await fetch('/api/admin/login', {
+      const response = await apiFetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -908,8 +909,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       applyAuthenticatedSystemAdmin(data.admin, data.sessionToken);
       return { success: true, message: data.message || 'Authenticated as System Administrator.' };
-    } catch {
-      return { success: false, message: 'Could not connect to administrator authentication server.' };
+        } catch (error) {
+      console.error('Admin authentication error:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Could not connect to administrator authentication server.'
+      };
     }
   };
 
@@ -920,7 +925,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     password: string
   ): Promise<{ success: boolean; message: string }> => {
     try {
-      const response = await fetch('/api/admin/bootstrap', {
+      const response = await apiFetch('/api/admin/bootstrap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bootstrapToken, name, email, password })
@@ -943,7 +948,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pin: string
   ): Promise<{ success: boolean; message: string; teacher?: TeacherProfile }> => {
     try {
-      const response = await fetch('/api/teachers/login', {
+      const response = await apiFetch('/api/teachers/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneOrEmail, pin })
@@ -1003,7 +1008,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const teacherRegister = async (regData: any): Promise<{ success: boolean; message: string; teacher?: TeacherProfile }> => {
     try {
-      const response = await fetch('/api/teachers/register', {
+      const response = await apiFetch('/api/teachers/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(regData)
@@ -1060,7 +1065,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Sync teacher profile with server-side teacher store
     try {
       if (authToken) {
-        await fetch('/api/teachers/profile', {
+        await apiFetch('/api/teachers/profile', {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -1090,7 +1095,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         consultingHours: contactDetails?.consultingHours || 'Mon & Wed: 11:00 AM - 01:00 PM'
       };
 
-      const res = await fetch('/api/teacher-contacts', {
+      const res = await apiFetch('/api/teacher-contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1122,7 +1127,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const adminVerifyTeacher = async (teacherId: string, status: 'Verified' | 'Rejected', adminNotes?: string): Promise<boolean> => {
     try {
-      const response = await fetch('/api/teachers/verify', {
+      const response = await apiFetch('/api/teachers/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1152,7 +1157,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const adminResetTeacherLockout = async (teacherId: string): Promise<boolean> => {
     try {
-      const response = await fetch('/api/teachers/reset-lockout', {
+      const response = await apiFetch('/api/teachers/reset-lockout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1177,7 +1182,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const teacherChangePin = async (currentPin: string, newPin: string): Promise<{ success: boolean; message: string }> => {
     if (!currentTeacherProfile) return { success: false, message: 'No teacher signed in.' };
     try {
-      const response = await fetch('/api/teachers/change-pin', {
+      const response = await apiFetch('/api/teachers/change-pin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teacherId: currentTeacherProfile.id, currentPin, newPin })
@@ -1260,7 +1265,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!targetApp) return { success: false, message: 'Application not found.' };
 
     try {
-      const response = await fetch('/api/verification/teacher-approve', {
+      const response = await apiFetch('/api/verification/teacher-approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -1359,7 +1364,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Verify server-side system_admin authorization before approving captain
-    const res = await fetch('/api/admin/captains/decision', {
+    const res = await apiFetch('/api/admin/captains/decision', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1406,7 +1411,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const adminRejectApplication = async (appId: string, reason: string): Promise<boolean> => {
-    const res = await fetch('/api/admin/captains/decision', {
+    const res = await apiFetch('/api/admin/captains/decision', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1456,7 +1461,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = applications.find(a => a.id === appId);
     if (!target) return false;
 
-    const res = await fetch('/api/admin/captains/decision', {
+    const res = await apiFetch('/api/admin/captains/decision', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1503,7 +1508,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const response = await fetch('/api/payments/verify', {
+      const response = await apiFetch('/api/payments/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1545,7 +1550,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const response = await fetch('/api/admin/settings/teacher-contact-access', {
+      const response = await apiFetch('/api/admin/settings/teacher-contact-access', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1614,7 +1619,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetSemester = period.semester ?? userProfile.semester;
 
     try {
-      const res = await fetch('/api/routines', {
+      const res = await apiFetch('/api/routines', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1682,7 +1687,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; message: string }> => {
     const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
     try {
-      const res = await fetch(`/api/routines/${id}`, {
+      const res = await apiFetch(`/api/routines/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1713,7 +1718,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; message: string }> => {
     const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
     try {
-      const res = await fetch(`/api/routines/${id}`, {
+      const res = await apiFetch(`/api/routines/${id}`, {
         method: 'DELETE',
         headers: {
           ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
@@ -1856,7 +1861,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; message: string }> => {
     const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
     try {
-      const res = await fetch('/api/routines/publish-batch', {
+      const res = await apiFetch('/api/routines/publish-batch', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1912,7 +1917,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; message: string }> => {
     const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
     try {
-      const res = await fetch('/api/notes', {
+      const res = await apiFetch('/api/notes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1949,7 +1954,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; message: string }> => {
     const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
     try {
-      const res = await fetch('/api/assignments', {
+      const res = await apiFetch('/api/assignments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1992,7 +1997,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
     try {
-      const res = await fetch(`/api/assignments/${id}/submit`, {
+      const res = await apiFetch(`/api/assignments/${id}/submit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2045,7 +2050,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; message: string }> => {
     const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
     try {
-      const res = await fetch('/api/jobs', {
+      const res = await apiFetch('/api/jobs', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2113,7 +2118,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const response = await fetch('/api/teacher-contacts', {
+      const response = await apiFetch('/api/teacher-contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2167,7 +2172,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const response = await fetch(`/api/teacher-contacts/${contactId}/archive`, {
+      const response = await apiFetch(`/api/teacher-contacts/${contactId}/archive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2276,7 +2281,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (tokenToUse) {
         headers.Authorization = `Bearer ${tokenToUse}`;
       }
-      const res = await fetch('/api/schedule-config', {
+      const res = await apiFetch('/api/schedule-config', {
         method: 'PUT',
         headers,
         body: JSON.stringify({
@@ -2317,7 +2322,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     try {
-      const res = await fetch('/api/schedule-config/reset', {
+      const res = await apiFetch('/api/schedule-config/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

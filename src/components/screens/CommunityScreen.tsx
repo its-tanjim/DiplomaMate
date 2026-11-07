@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/apiClient';
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
@@ -130,7 +131,7 @@ export const CommunityScreen: React.FC = () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/communities', { credentials: 'omit', headers: getHeaders() });
+      const res = await apiFetch('/api/communities', { credentials: 'omit', headers: getHeaders() });
       const data = await res.json();
       if (data.success) {
         setCommunities(data.communities || []);
@@ -168,7 +169,7 @@ export const CommunityScreen: React.FC = () => {
       }
 
       const url = `/api/communities/${communityId}/messages?${queryParams.toString()}`;
-      const res = await fetch(url, { headers: getHeaders() });
+      const res = await apiFetch(url, { headers: getHeaders() });
       const data = await res.json();
       if (data.success) {
         setMessages(data.messages || []);
@@ -185,7 +186,7 @@ export const CommunityScreen: React.FC = () => {
   // 3. Fetch Members for Selected Community
   const loadMembers = async (communityId: string) => {
     try {
-      const res = await fetch(`/api/communities/${communityId}/members`, { headers: getHeaders() });
+      const res = await apiFetch(`/api/communities/${communityId}/members`, { headers: getHeaders() });
       const data = await res.json();
       if (data.success) {
         setMembers(data.members || []);
@@ -213,7 +214,7 @@ export const CommunityScreen: React.FC = () => {
   const handleJoin = async (community: AcademicCommunity) => {
     setErrorMsg(null);
     try {
-      const res = await fetch(`/api/communities/${community.id}/join`, {
+      const res = await apiFetch(`/api/communities/${community.id}/join`, {
         method: 'POST',
         headers: getHeaders()
       });
@@ -235,7 +236,7 @@ export const CommunityScreen: React.FC = () => {
   // Handle Leave Community
   const handleLeave = async (communityId: string) => {
     try {
-      const res = await fetch(`/api/communities/${communityId}/leave`, {
+      const res = await apiFetch(`/api/communities/${communityId}/leave`, {
         method: 'POST',
         headers: getHeaders()
       });
@@ -256,7 +257,7 @@ export const CommunityScreen: React.FC = () => {
   const handleToggleMute = async (communityId: string) => {
     const currentMuted = userMemberships[communityId]?.is_muted || false;
     try {
-      const res = await fetch(`/api/communities/${communityId}/mute`, {
+      const res = await apiFetch(`/api/communities/${communityId}/mute`, {
         method: 'PUT',
         headers: getHeaders(),
         body: JSON.stringify({ is_muted: !currentMuted })
@@ -347,7 +348,7 @@ export const CommunityScreen: React.FC = () => {
         ];
       }
 
-      const res = await fetch(`/api/communities/${selectedCommunity.id}/messages`, {
+      const res = await apiFetch(`/api/communities/${selectedCommunity.id}/messages`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify(payload)
@@ -372,7 +373,7 @@ export const CommunityScreen: React.FC = () => {
   const handleTogglePin = async (msgId: string) => {
     if (!selectedCommunity) return;
     try {
-      const res = await fetch(`/api/communities/${selectedCommunity.id}/messages/${msgId}/pin`, {
+      const res = await apiFetch(`/api/communities/${selectedCommunity.id}/messages/${msgId}/pin`, {
         method: 'POST',
         headers: getHeaders()
       });
@@ -392,7 +393,7 @@ export const CommunityScreen: React.FC = () => {
   const handleDeleteMessage = async (msgId: string) => {
     if (!selectedCommunity) return;
     try {
-      const res = await fetch(`/api/communities/${selectedCommunity.id}/messages/${msgId}`, {
+      const res = await apiFetch(`/api/communities/${selectedCommunity.id}/messages/${msgId}`, {
         method: 'DELETE',
         headers: getHeaders()
       });
@@ -412,7 +413,7 @@ export const CommunityScreen: React.FC = () => {
   const handleSubmitReport = async () => {
     if (!selectedCommunity || !reportingTarget) return;
     try {
-      const res = await fetch(`/api/communities/${selectedCommunity.id}/report`, {
+      const res = await apiFetch(`/api/communities/${selectedCommunity.id}/report`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({
@@ -456,7 +457,7 @@ export const CommunityScreen: React.FC = () => {
         visibility: createVisibility
       };
 
-      const res = await fetch('/api/communities', {
+      const res = await apiFetch('/api/communities', {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify(payload)
@@ -538,9 +539,9 @@ export const CommunityScreen: React.FC = () => {
       {/* VIEW A: CHAT ROOM VIEW (When a Community is Selected) */}
       {/* ==================================================================== */}
       {selectedCommunity ? (
-        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col min-h-[640px]">
+        <div className="bg-surface rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col min-h-[640px]">
           {/* Room Header */}
-          <div className="bg-gradient-to-r from-[#172554] via-blue-900 to-[#1e3a8a] text-white p-3.5 sm:p-4 flex items-center justify-between gap-3 border-b border-blue-950">
+          <div className="bg-gradient-to-r from-text-primary via-blue-900 to-[#1e3a8a] text-white p-3.5 sm:p-4 flex items-center justify-between gap-3 border-b border-blue-950">
             <div className="flex items-center gap-2.5 min-w-0">
               <button
                 onClick={() => {
@@ -548,7 +549,7 @@ export const CommunityScreen: React.FC = () => {
                   setSearchQuery('');
                   setFilterType('all');
                 }}
-                className="p-1.5 -ml-1 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer shrink-0"
+                className="p-1.5 -ml-1 rounded-lg bg-surface/10 hover:bg-surface/20 text-white transition-colors cursor-pointer shrink-0"
                 title="Back to Communities Hub"
               >
                 <ChevronLeft className="w-5 h-5" />
@@ -590,7 +591,7 @@ export const CommunityScreen: React.FC = () => {
                 className={`p-2 rounded-lg transition-colors cursor-pointer ${
                   userMemberships[selectedCommunity.id]?.is_muted
                     ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
-                    : 'bg-white/10 text-white hover:bg-white/20'
+                    : 'bg-surface/10 text-white hover:bg-surface/20'
                 }`}
                 title={userMemberships[selectedCommunity.id]?.is_muted ? 'Unmute Group Notifications' : 'Mute Group Notifications'}
               >
@@ -604,7 +605,7 @@ export const CommunityScreen: React.FC = () => {
               {/* Members List Button */}
               <button
                 onClick={() => setShowMembersModal(true)}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                className="p-2 rounded-lg bg-surface/10 hover:bg-surface/20 text-white transition-colors cursor-pointer"
                 title="View Group Members"
               >
                 <Users className="w-4 h-4" />
@@ -656,7 +657,7 @@ export const CommunityScreen: React.FC = () => {
                 placeholder="Search messages, notes, PDFs..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#2563EB]"
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface border border-slate-200 rounded-lg focus:outline-none focus:border-brand-blue"
               />
               {searchQuery && (
                 <button
@@ -672,7 +673,7 @@ export const CommunityScreen: React.FC = () => {
               <button
                 onClick={() => setFilterType('all')}
                 className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
-                  filterType === 'all' ? 'bg-[#2563EB] text-white' : 'bg-white text-slate-600 border border-slate-200'
+                  filterType === 'all' ? 'bg-brand-blue text-white' : 'bg-surface text-slate-600 border border-slate-200'
                 }`}
               >
                 All
@@ -680,7 +681,7 @@ export const CommunityScreen: React.FC = () => {
               <button
                 onClick={() => setFilterType('files')}
                 className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
-                  filterType === 'files' ? 'bg-[#2563EB] text-white' : 'bg-white text-slate-600 border border-slate-200'
+                  filterType === 'files' ? 'bg-brand-blue text-white' : 'bg-surface text-slate-600 border border-slate-200'
                 }`}
               >
                 <FileText className="w-3 h-3" /> Files & Videos
@@ -697,10 +698,10 @@ export const CommunityScreen: React.FC = () => {
               </div>
             ) : messages.length === 0 ? (
               <div className="text-center py-12 px-4 text-slate-500">
-                <div className="w-12 h-12 rounded-full bg-blue-100/70 text-[#2563EB] mx-auto flex items-center justify-center mb-2.5">
+                <div className="w-12 h-12 rounded-full bg-blue-100/70 text-brand-blue mx-auto flex items-center justify-center mb-2.5">
                   <MessageSquare className="w-6 h-6" />
                 </div>
-                <h4 className="font-bold text-sm text-[#172554]">No messages yet</h4>
+                <h4 className="font-bold text-sm text-text-primary">No messages yet</h4>
                 <p className="text-xs text-slate-500 max-w-xs mx-auto mt-1">
                   Start the discussion! Share academic questions, study notes, PDFs, or small lab videos.
                 </p>
@@ -729,7 +730,7 @@ export const CommunityScreen: React.FC = () => {
 
                         {/* Role Badges */}
                         {msg.sender_role === 'teacher' ? (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                             <GraduationCap className="w-3 h-3" /> Teacher
                           </span>
                         ) : msg.sender_role === 'class_captain' ? (
@@ -754,8 +755,8 @@ export const CommunityScreen: React.FC = () => {
                       <div 
                         className={`relative max-w-sm sm:max-w-md md:max-w-lg rounded-2xl p-3 text-xs leading-relaxed shadow-xs ${
                           isAuthor
-                            ? 'bg-[#2563EB] text-white rounded-tr-none'
-                            : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
+                            ? 'bg-brand-blue text-white rounded-tr-none'
+                            : 'bg-surface border border-slate-200 text-slate-800 rounded-tl-none'
                         } ${msg.is_pinned ? 'ring-2 ring-amber-400' : ''}`}
                       >
                         {/* Pinned Indicator on Message */}
@@ -814,8 +815,8 @@ export const CommunityScreen: React.FC = () => {
                                       rel="noreferrer"
                                       className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 shrink-0 ${
                                         isAuthor 
-                                          ? 'bg-white text-blue-700 hover:bg-blue-50' 
-                                          : 'bg-blue-50 text-[#2563EB] hover:bg-blue-100'
+                                          ? 'bg-surface text-blue-700 hover:bg-blue-50'
+                                          : 'bg-blue-50 text-brand-blue hover:bg-blue-100'
                                       }`}
                                       title="Download File"
                                     >
@@ -882,9 +883,9 @@ export const CommunityScreen: React.FC = () => {
             <div className="bg-blue-50 border-t border-blue-200 px-4 py-2 flex items-center justify-between gap-3 text-xs text-blue-900">
               <div className="flex items-center gap-2 min-w-0">
                 {attachment.fileType === 'video' ? (
-                  <Video className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <Video className="w-4 h-4 text-blue-600 shrink-0" />
                 ) : (
-                  <FileText className="w-4 h-4 text-[#2563EB] shrink-0" />
+                  <FileText className="w-4 h-4 text-brand-blue shrink-0" />
                 )}
                 <span className="font-semibold truncate">{attachment.fileName}</span>
                 <span className="text-[11px] text-blue-700 shrink-0">({formatBytes(attachment.fileSize)})</span>
@@ -904,7 +905,7 @@ export const CommunityScreen: React.FC = () => {
           {/* Chat Input Bar */}
           <form 
             onSubmit={handleSendMessage}
-            className="p-3 bg-white border-t border-slate-200 flex items-center gap-2"
+            className="p-3 bg-surface border-t border-slate-200 flex items-center gap-2"
           >
             {/* Attachment Button */}
             <input 
@@ -917,7 +918,7 @@ export const CommunityScreen: React.FC = () => {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-[#2563EB] transition-colors cursor-pointer shrink-0"
+              className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-brand-blue transition-colors cursor-pointer shrink-0"
               title="Share PDF, Study Note, or Lab Video (Max 15MB video, 10MB PDF)"
             >
               <Upload className="w-4 h-4" />
@@ -929,14 +930,14 @@ export const CommunityScreen: React.FC = () => {
               placeholder={`Message ${selectedCommunity.name}...`}
               value={newMsgContent}
               onChange={e => setNewMsgContent(e.target.value)}
-              className="flex-1 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#2563EB] focus:bg-white transition-colors"
+              className="flex-1 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-brand-blue focus:bg-surface transition-colors"
             />
 
             {/* Send Button */}
             <button
               type="submit"
               disabled={isSubmittingMessage || (!newMsgContent.trim() && !attachment)}
-              className="p-2.5 rounded-xl bg-[#2563EB] hover:bg-blue-700 disabled:opacity-50 text-white transition-colors cursor-pointer shrink-0"
+              className="p-2.5 rounded-xl bg-brand-blue hover:bg-blue-700 disabled:opacity-50 text-white transition-colors cursor-pointer shrink-0"
               title="Send message"
             >
               <Send className="w-4 h-4" />
@@ -949,7 +950,7 @@ export const CommunityScreen: React.FC = () => {
         /* ==================================================================== */
         <div className="space-y-4">
           {/* Header Zone */}
-          <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-[#172554] rounded-2xl p-4 sm:p-5 text-white shadow-md relative overflow-hidden">
+          <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-text-primary rounded-2xl p-4 sm:p-5 text-white shadow-md relative overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
               <div>
                 <div className="flex items-center gap-2 mb-1 text-blue-200 text-xs">
@@ -964,15 +965,15 @@ export const CommunityScreen: React.FC = () => {
                 </p>
 
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-blue-200 mt-2 font-mono">
-                  <span className="bg-white/10 px-2 py-0.5 rounded border border-white/10">
+                  <span className="bg-surface/10 px-2 py-0.5 rounded border border-white/10">
                     {userProfile.college}
                   </span>
                   <span>·</span>
-                  <span className="bg-white/10 px-2 py-0.5 rounded border border-white/10">
+                  <span className="bg-surface/10 px-2 py-0.5 rounded border border-white/10">
                     {userProfile.department}
                   </span>
                   <span>·</span>
-                  <span className="bg-white/10 px-2 py-0.5 rounded border border-white/10">
+                  <span className="bg-surface/10 px-2 py-0.5 rounded border border-white/10">
                     Semester {userProfile.semester}
                   </span>
                 </div>
@@ -1001,7 +1002,7 @@ export const CommunityScreen: React.FC = () => {
                 onClick={() => setActiveTab('my_groups')}
                 className={`px-3 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
                   activeTab === 'my_groups'
-                    ? 'bg-[#2563EB] text-white shadow-xs'
+                    ? 'bg-brand-blue text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
@@ -1013,7 +1014,7 @@ export const CommunityScreen: React.FC = () => {
                 onClick={() => setActiveTab('discover')}
                 className={`px-3 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
                   activeTab === 'discover'
-                    ? 'bg-[#2563EB] text-white shadow-xs'
+                    ? 'bg-brand-blue text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
@@ -1026,7 +1027,7 @@ export const CommunityScreen: React.FC = () => {
                   onClick={() => setActiveTab('admin')}
                   className={`px-3 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
                     activeTab === 'admin'
-                      ? 'bg-[#172554] text-white shadow-xs'
+                      ? 'bg-text-primary text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
@@ -1039,7 +1040,7 @@ export const CommunityScreen: React.FC = () => {
             <button
               onClick={loadCommunities}
               disabled={loading}
-              className="text-[11px] text-slate-500 hover:text-[#2563EB] cursor-pointer"
+              className="text-[11px] text-slate-500 hover:text-brand-blue cursor-pointer"
             >
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
@@ -1049,11 +1050,11 @@ export const CommunityScreen: React.FC = () => {
           {activeTab === 'my_groups' && (
             <div className="space-y-3">
               {myJoinedCommunities.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-200/90 p-8 text-center shadow-xs">
-                  <div className="w-12 h-12 rounded-full bg-blue-50 text-[#2563EB] mx-auto flex items-center justify-center mb-3">
+                <div className="bg-surface rounded-2xl border border-slate-200/90 p-8 text-center shadow-xs">
+                  <div className="w-12 h-12 rounded-full bg-blue-50 text-brand-blue mx-auto flex items-center justify-center mb-3">
                     <Users className="w-6 h-6" />
                   </div>
-                  <h3 className="font-bold text-base text-[#172554]">
+                  <h3 className="font-bold text-base text-text-primary">
                     {communities.length === 0 ? 'No communities created yet' : 'No joined communities yet'}
                   </h3>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
@@ -1065,7 +1066,7 @@ export const CommunityScreen: React.FC = () => {
                   </p>
                   <button
                     onClick={() => setActiveTab('discover')}
-                    className="mt-4 px-4 py-2 bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
+                    className="mt-4 px-4 py-2 bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
                   >
                     Discover Eligible Groups
                   </button>
@@ -1079,16 +1080,16 @@ export const CommunityScreen: React.FC = () => {
                     return (
                       <div
                         key={comm.id}
-                        className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-[#2563EB] transition-all flex flex-col justify-between"
+                        className="bg-surface rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-brand-blue transition-all flex flex-col justify-between"
                       >
                         <div>
                           <div className="flex items-start justify-between gap-2 mb-2">
                             <div className="flex items-center gap-2">
-                              <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center font-bold text-sm">
+                              <div className="w-9 h-9 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center font-bold text-sm">
                                 {comm.avatar_emoji || '👥'}
                               </div>
                               <div>
-                                <h3 className="font-bold text-sm text-[#172554] leading-tight">
+                                <h3 className="font-bold text-sm text-text-primary leading-tight">
                                   {comm.name}
                                 </h3>
                                 <p className="text-[11px] text-slate-500">
@@ -1133,7 +1134,7 @@ export const CommunityScreen: React.FC = () => {
                         <div className="mt-3 pt-2 flex items-center justify-between gap-2">
                           <button
                             onClick={() => setSelectedCommunity(comm)}
-                            className="flex-1 py-2 px-3 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                            className="flex-1 py-2 px-3 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
                           >
                             <MessageSquare className="w-3.5 h-3.5" />
                             <span>Enter Room</span>
@@ -1151,11 +1152,11 @@ export const CommunityScreen: React.FC = () => {
           {activeTab === 'discover' && (
             <div className="space-y-3">
               {discoverableCommunities.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-200/90 p-8 text-center shadow-xs">
+                <div className="bg-surface rounded-2xl border border-slate-200/90 p-8 text-center shadow-xs">
                   <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center mb-3">
                     <Globe className="w-6 h-6" />
                   </div>
-                  <h3 className="font-bold text-base text-[#172554]">No additional cohort groups found</h3>
+                  <h3 className="font-bold text-base text-text-primary">No additional cohort groups found</h3>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
                     You have joined all current groups matching your academic profile ({userProfile.department}, Semester {userProfile.semester}).                     New groups are created by system administrators and will appear here.
                   </p>
@@ -1169,7 +1170,7 @@ export const CommunityScreen: React.FC = () => {
                     return (
                       <div
                         key={comm.id}
-                        className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs flex flex-col justify-between"
+                        className="bg-surface rounded-2xl border border-slate-200/90 p-4 shadow-xs flex flex-col justify-between"
                       >
                         <div>
                           <div className="flex items-start justify-between gap-2 mb-2">
@@ -1178,7 +1179,7 @@ export const CommunityScreen: React.FC = () => {
                                 {comm.avatar_emoji || '👥'}
                               </div>
                               <div>
-                                <h3 className="font-bold text-sm text-[#172554] leading-tight">
+                                <h3 className="font-bold text-sm text-text-primary leading-tight">
                                   {comm.name}
                                 </h3>
                                 <p className="text-[11px] text-slate-500">
@@ -1219,7 +1220,7 @@ export const CommunityScreen: React.FC = () => {
                           ) : (
                             <button
                               onClick={() => handleJoin(comm)}
-                              className="w-full py-2 px-3 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                              className="w-full py-2 px-3 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
                             >
                               <Plus className="w-3.5 h-3.5" />
                               <span>{comm.visibility === 'private' ? 'Request to Join' : 'Join Academic Group'}</span>
@@ -1236,10 +1237,10 @@ export const CommunityScreen: React.FC = () => {
 
           {/* TAB 3: ADMIN MODERATION (System Admin Only) */}
           {activeTab === 'admin' && accountType === 'system_admin' && isServerVerifiedAdmin && (
-            <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-4">
+            <div className="bg-surface rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-bold text-sm text-[#172554]">Community Abuse & Reports Queue</h3>
+                  <h3 className="font-bold text-sm text-text-primary">Community Abuse & Reports Queue</h3>
                   <p className="text-xs text-slate-500">Review reported messages and toggle community active states.</p>
                 </div>
               </div>
@@ -1282,7 +1283,7 @@ export const CommunityScreen: React.FC = () => {
                           <button
                             onClick={async () => {
                               try {
-                                const res = await fetch(`/api/admin/communities/${comm.id}/toggle-active`, {
+                                const res = await apiFetch(`/api/admin/communities/${comm.id}/toggle-active`, {
                                   method: 'POST',
                                   headers: getHeaders()
                                 });
@@ -1315,11 +1316,11 @@ export const CommunityScreen: React.FC = () => {
       {/* ==================================================================== */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-[#2563EB]" />
-                <h3 className="font-bold text-base text-[#172554]">Create Academic Community</h3>
+                <Users className="w-5 h-5 text-brand-blue" />
+                <h3 className="font-bold text-base text-text-primary">Create Academic Community</h3>
               </div>
               <button
                 onClick={() => setShowCreateModal(false)}
@@ -1340,7 +1341,7 @@ export const CommunityScreen: React.FC = () => {
                   onChange={e => setCreateName(e.target.value)}
                   placeholder="e.g. CST 6th Semester Study Group"
                   required
-                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#2563EB]"
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-brand-blue"
                 />
               </div>
 
@@ -1353,7 +1354,7 @@ export const CommunityScreen: React.FC = () => {
                   onChange={e => setCreateDescription(e.target.value)}
                   placeholder="Announcements, notes sharing, lab practicals & midterms prep..."
                   rows={2}
-                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-[#2563EB]"
+                  className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-blue"
                 />
               </div>
 
@@ -1415,7 +1416,7 @@ export const CommunityScreen: React.FC = () => {
                 </label>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <label className={`border rounded-xl p-2.5 flex items-start gap-2 cursor-pointer transition-colors ${
-                    createVisibility === 'public' ? 'border-[#2563EB] bg-blue-50/50' : 'border-slate-200 bg-white'
+                    createVisibility === 'public' ? 'border-brand-blue bg-blue-50/50' : 'border-slate-200 bg-surface'
                   }`}>
                     <input
                       type="radio"
@@ -1436,7 +1437,7 @@ export const CommunityScreen: React.FC = () => {
                   </label>
 
                   <label className={`border rounded-xl p-2.5 flex items-start gap-2 cursor-pointer transition-colors ${
-                    createVisibility === 'private' ? 'border-[#2563EB] bg-blue-50/50' : 'border-slate-200 bg-white'
+                    createVisibility === 'private' ? 'border-brand-blue bg-blue-50/50' : 'border-slate-200 bg-surface'
                   }`}>
                     <input
                       type="radio"
@@ -1469,7 +1470,7 @@ export const CommunityScreen: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isCreating}
-                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-[#2563EB] hover:bg-blue-700 disabled:opacity-50 text-white shadow-xs"
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-brand-blue hover:bg-blue-700 disabled:opacity-50 text-white shadow-xs"
                 >
                   {isCreating ? 'Creating...' : 'Create Group'}
                 </button>
@@ -1484,11 +1485,11 @@ export const CommunityScreen: React.FC = () => {
       {/* ==================================================================== */}
       {showMembersModal && selectedCommunity && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-[#2563EB]" />
-                <h3 className="font-bold text-sm text-[#172554]">
+                <Users className="w-5 h-5 text-brand-blue" />
+                <h3 className="font-bold text-sm text-text-primary">
                   Group Members ({members.length})
                 </h3>
               </div>
@@ -1507,7 +1508,7 @@ export const CommunityScreen: React.FC = () => {
                     <div className="font-bold text-slate-800 flex items-center gap-1.5">
                       <span>{mem.user_name}</span>
                       {mem.membership_role === 'owner' && (
-                        <span className="text-[10px] bg-indigo-50 text-indigo-700 font-semibold px-1 rounded border border-indigo-200">
+                        <span className="text-[10px] bg-blue-50 text-blue-700 font-semibold px-1 rounded border border-blue-200">
                           Creator
                         </span>
                       )}
@@ -1537,11 +1538,11 @@ export const CommunityScreen: React.FC = () => {
       {/* ==================================================================== */}
       {showReportModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200">
+          <div className="bg-surface rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2 text-rose-600">
                 <AlertTriangle className="w-5 h-5" />
-                <h3 className="font-bold text-sm text-[#172554]">Report Content or User</h3>
+                <h3 className="font-bold text-sm text-text-primary">Report Content or User</h3>
               </div>
               <button
                 onClick={() => setShowReportModal(false)}

@@ -27,7 +27,7 @@ export const BottomNav: React.FC = () => {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-lg no-print">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md border-t border-slate-200/90 shadow-lg no-print">
       <div className="max-w-lg mx-auto grid grid-cols-7 h-16 items-center px-1">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -37,7 +37,7 @@ export const BottomNav: React.FC = () => {
               key={item.screen}
               onClick={() => setActiveScreen(item.screen)}
               className={`flex flex-col items-center justify-center h-full min-h-[44px] min-w-[44px] transition-colors relative ${
-                isActive ? 'text-[#2563EB]' : 'text-slate-500 hover:text-slate-800'
+                isActive ? 'text-brand-blue' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               <div className="relative">
@@ -46,11 +46,11 @@ export const BottomNav: React.FC = () => {
                   <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-amber-500" />
                 )}
               </div>
-              <span className={`text-[10px] mt-1 whitespace-nowrap tracking-tight ${isActive ? 'font-bold text-[#2563EB]' : 'font-medium text-slate-500'}`}>
+              <span className={`text-[10px] mt-1 whitespace-nowrap tracking-tight ${isActive ? 'font-bold text-brand-blue' : 'font-medium text-slate-500'}`}>
                 {item.label}
               </span>
               {isActive && (
-                <div className="absolute bottom-1 w-5 h-0.5 bg-[#2563EB] rounded-full" />
+                <div className="absolute bottom-1 w-5 h-0.5 bg-brand-blue rounded-full" />
               )}
             </button>
           );

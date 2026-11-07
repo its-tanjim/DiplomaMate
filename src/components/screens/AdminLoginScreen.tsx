@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/apiClient';
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -30,7 +31,7 @@ export const AdminLoginScreen: React.FC = () => {
   const [adminName, setAdminName] = useState<string>('Academic System Administrator');
 
   useEffect(() => {
-    fetch('/api/admin/bootstrap-status')
+    apiFetch('/api/admin/bootstrap-status')
       .then(res => res.json())
       .then(data => {
         if (data.success) {
@@ -88,22 +89,22 @@ export const AdminLoginScreen: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-center py-8 px-4">
+    <div className="min-h-screen bg-app-bg flex flex-col justify-center py-8 px-4">
       <div className="max-w-md w-full mx-auto space-y-4">
         {/* Back button */}
         <button
           type="button"
           onClick={() => setActiveScreen(isLoggedIn ? 'home' : 'welcome')}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-[#172554] transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-text-primary transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>{isLoggedIn ? 'Back to Dashboard' : 'Back to DiplomaMate Sign In'}</span>
         </button>
 
         {/* Main Card */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-lg overflow-hidden">
+        <div className="bg-surface rounded-2xl border border-slate-200/90 shadow-lg overflow-hidden">
           {/* Header Banner */}
-          <div className="bg-gradient-to-br from-[#172554] via-slate-900 to-indigo-950 p-5 text-white">
+          <div className="bg-gradient-to-br from-text-primary via-slate-900 to-blue-950 p-5 text-white">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-300 shrink-0">
                 <ShieldCheck className="w-5 h-5" />
@@ -134,7 +135,7 @@ export const AdminLoginScreen: React.FC = () => {
                   }}
                   className={`py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     mode === 'login'
-                      ? 'bg-white text-[#172554] shadow-2xs'
+                      ? 'bg-surface text-text-primary shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -148,7 +149,7 @@ export const AdminLoginScreen: React.FC = () => {
                   }}
                   className={`py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     mode === 'bootstrap'
-                      ? 'bg-white text-[#0D9488] shadow-2xs'
+                      ? 'bg-surface text-brand-teal shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -167,7 +168,7 @@ export const AdminLoginScreen: React.FC = () => {
             {mode === 'login' ? (
               <form onSubmit={handleLoginSubmit} className="space-y-3.5">
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">
+                  <label className="block text-xs font-semibold text-text-primary mb-1">
                     Administrator Email *
                   </label>
                   <div className="relative">
@@ -179,13 +180,13 @@ export const AdminLoginScreen: React.FC = () => {
                       placeholder="admin@bteb-authority.edu.bd"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554] focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">
+                  <label className="block text-xs font-semibold text-text-primary mb-1">
                     Administrator Password *
                   </label>
                   <div className="relative">
@@ -197,7 +198,7 @@ export const AdminLoginScreen: React.FC = () => {
                       placeholder="Enter administrator password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554] focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                     />
                   </div>
                 </div>
@@ -205,7 +206,7 @@ export const AdminLoginScreen: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#172554] hover:bg-blue-950 text-white text-xs font-bold shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-text-primary hover:bg-blue-950 text-white text-xs font-bold shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <ShieldCheck className="w-4 h-4 text-teal-400" />
                   <span>{isSubmitting ? 'Verifying Server Session...' : 'Sign In as System Administrator'}</span>
@@ -214,7 +215,7 @@ export const AdminLoginScreen: React.FC = () => {
             ) : (
               <form onSubmit={handleBootstrapSubmit} className="space-y-3.5">
                 <div className="p-3 rounded-xl bg-teal-50 border border-teal-200 text-[11px] text-teal-950 space-y-1">
-                  <span className="font-bold flex items-center gap-1 text-[#0D9488]">
+                  <span className="font-bold flex items-center gap-1 text-brand-teal">
                     <KeyRound className="w-3.5 h-3.5" />
                     One-Time First Administrator Provisioning
                   </span>
@@ -224,7 +225,7 @@ export const AdminLoginScreen: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">
+                  <label className="block text-xs font-semibold text-text-primary mb-1">
                     Server Bootstrap Setup Token *
                   </label>
                   <div className="relative">
@@ -235,13 +236,13 @@ export const AdminLoginScreen: React.FC = () => {
                       placeholder="Paste server-side setup token"
                       value={bootstrapToken}
                       onChange={(e) => setBootstrapToken(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl text-[#172554] focus:outline-none focus:ring-2 focus:ring-[#0D9488]"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-teal"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">
+                  <label className="block text-xs font-semibold text-text-primary mb-1">
                     Administrator Full Name *
                   </label>
                   <div className="relative">
@@ -251,13 +252,13 @@ export const AdminLoginScreen: React.FC = () => {
                       required
                       value={adminName}
                       onChange={(e) => setAdminName(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">
+                  <label className="block text-xs font-semibold text-text-primary mb-1">
                     Administrator Email *
                   </label>
                   <div className="relative">
@@ -268,13 +269,13 @@ export const AdminLoginScreen: React.FC = () => {
                       placeholder="admin@dpi.gov.bd"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#172554] mb-1">
+                  <label className="block text-xs font-semibold text-text-primary mb-1">
                     Password (Min 8 Characters) *
                   </label>
                   <div className="relative">
@@ -286,7 +287,7 @@ export const AdminLoginScreen: React.FC = () => {
                       placeholder="Create strong administrator password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                     />
                   </div>
                 </div>
@@ -294,7 +295,7 @@ export const AdminLoginScreen: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#0D9488] hover:bg-teal-700 text-white text-xs font-bold shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-brand-teal hover:bg-teal-700 text-white text-xs font-bold shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>{isSubmitting ? 'Provisioning...' : 'Provision & Sign In as First Administrator'}</span>

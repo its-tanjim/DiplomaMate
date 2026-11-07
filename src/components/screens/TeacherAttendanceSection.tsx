@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/apiClient';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -205,8 +206,8 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
       });
 
       const [rosterRes, sheetsRes] = await Promise.all([
-        fetch(`/api/roster?${params.toString()}`, { headers: getAuthHeaders() }),
-        fetch(`/api/attendance/sheets?${params.toString()}`, { headers: getAuthHeaders() })
+        apiFetch(`/api/roster?${params.toString()}`, { headers: getAuthHeaders() }),
+        apiFetch(`/api/attendance/sheets?${params.toString()}`, { headers: getAuthHeaders() })
       ]);
 
       const rosterJson = await rosterRes.json();
@@ -313,7 +314,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
         subjectCode: monthlySubjectFilter
       });
 
-      const res = await fetch(`/api/attendance/monthly?${params.toString()}`, {
+      const res = await apiFetch(`/api/attendance/monthly?${params.toString()}`, {
         headers: getAuthHeaders()
       });
       const data = await res.json();
@@ -402,7 +403,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
     setIsSavingSheet(true);
     setSaveFeedback(null);
     try {
-      const res = await fetch('/api/attendance/sheets', {
+      const res = await apiFetch('/api/attendance/sheets', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -487,7 +488,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
     setIsExtractingOcr(true);
     setOcrError(null);
     try {
-      const res = await fetch('/api/attendance/roster-ocr', {
+      const res = await apiFetch('/api/attendance/roster-ocr', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -604,7 +605,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
     setIsMergingRoster(true);
     setOcrError(null);
     try {
-      const res = await fetch('/api/attendance/roster/merge', {
+      const res = await apiFetch('/api/attendance/roster/merge', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -722,7 +723,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
   return (
     <div className="space-y-4">
       {/* Attendance Header & View Switcher */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-4">
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -730,7 +731,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 <CheckSquare className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-sm sm:text-base font-bold text-[#172554]">
+                <h2 className="text-sm sm:text-base font-bold text-text-primary">
                   Class Attendance Management
                 </h2>
                 <p className="text-[11px] text-slate-500">
@@ -747,7 +748,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
               onClick={() => setViewMode('daily')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 viewMode === 'daily'
-                  ? 'bg-white text-blue-700 shadow-xs'
+                  ? 'bg-surface text-blue-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -758,7 +759,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
               onClick={() => setViewMode('monthly')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 viewMode === 'monthly'
-                  ? 'bg-white text-blue-700 shadow-xs'
+                  ? 'bg-surface text-blue-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -769,7 +770,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
               onClick={() => setViewMode('history')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 viewMode === 'history'
-                  ? 'bg-white text-blue-700 shadow-xs'
+                  ? 'bg-surface text-blue-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -795,7 +796,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
         {/* Semester 1st-8th */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-bold text-[#172554]">
+            <label className="text-xs font-bold text-text-primary">
               3. Semester (1st–8th)
             </label>
             <span className="text-[11px] text-slate-500">
@@ -840,7 +841,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   onClick={() => handleAttendanceShiftChange(sh)}
                   className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                     selectedShift === sh
-                      ? 'bg-white text-blue-700 shadow-xs'
+                      ? 'bg-surface text-blue-700 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -862,7 +863,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   onClick={() => setSelectedSection(sec)}
                   className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                     selectedSection === sec
-                      ? 'bg-white text-blue-700 shadow-xs'
+                      ? 'bg-surface text-blue-700 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -880,7 +881,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
               type="date"
               value={attendanceDate}
               onChange={e => setAttendanceDate(e.target.value)}
-              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554] font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
@@ -892,7 +893,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
               <button
                 type="button"
                 onClick={() => setShowScheduleConfigModal(true)}
-                className="text-[10px] font-bold text-indigo-700 hover:text-indigo-900 flex items-center gap-0.5 cursor-pointer"
+                className="text-[10px] font-bold text-blue-700 hover:text-blue-900 flex items-center gap-0.5 cursor-pointer"
                 title="Configure Shift & Period Timings"
               >
                 <Sliders className="w-3 h-3" />
@@ -904,7 +905,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
               onChange={e => setSelectedPeriodLabel(e.target.value)}
               className={`w-full px-2.5 py-1.5 text-xs border rounded-xl font-bold truncate focus:outline-none focus:ring-1 focus:ring-blue-500 ${
                 selectedPeriodLabel
-                  ? 'bg-slate-50 border-slate-200 text-[#172554]'
+                  ? 'bg-slate-50 border-slate-200 text-text-primary'
                   : 'bg-amber-50/70 border-amber-300 text-amber-900'
               }`}
               title="Select Desired Class Period"
@@ -966,7 +967,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
               <button
                 type="button"
                 onClick={() => setShowAuditModal(true)}
-                className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-teal-100 text-teal-800 border border-teal-200 font-semibold flex items-center gap-1 self-start sm:self-auto shrink-0 cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-teal-100 text-teal-800 border border-teal-200 font-semibold flex items-center gap-1 self-start sm:self-auto shrink-0 cursor-pointer"
               >
                 <History className="w-3.5 h-3.5" />
                 <span>Audit Log ({existingSheet.auditTrail?.length || 1})</span>
@@ -989,7 +990,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
             <div
               className={`p-3 rounded-2xl border text-xs flex items-center justify-between gap-2 ${
                 saveFeedback.type === 'success'
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  ? 'bg-green-50 border-green-200 text-green-900'
                   : saveFeedback.type === 'warning'
                     ? 'bg-amber-50 border-amber-200 text-amber-900'
                     : 'bg-rose-50 border-rose-200 text-rose-900'
@@ -997,7 +998,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
             >
               <div className="flex items-center gap-2">
                 {saveFeedback.type === 'success' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
                 ) : (
                   <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                 )}
@@ -1014,22 +1015,22 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
           )}
 
           {/* KPI Summary Strip + Action Controls */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                   Total Roster
                 </span>
-                <span className="text-base font-bold text-[#172554] font-mono">
+                <span className="text-base font-bold text-text-primary font-mono">
                   {dailyStats.total}
                 </span>
               </div>
 
-              <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+              <div className="p-2.5 rounded-xl bg-green-50/70 border border-green-200/80">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-green-700 block">
                   Present (✓)
                 </span>
-                <span className="text-base font-bold text-emerald-700 font-mono">
+                <span className="text-base font-bold text-green-700 font-mono">
                   {dailyStats.present}
                 </span>
               </div>
@@ -1083,7 +1084,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                     setOcrError(null);
                     setShowOcrModal(true);
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Upload className="w-3.5 h-3.5" />
                   <span>Upload Student List (Image/PDF)</span>
@@ -1094,7 +1095,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   type="button"
                   onClick={() => setShowSelectAllConfirm(true)}
                   disabled={sheetEntries.length === 0}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-xl bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <CheckSquare className="w-3.5 h-3.5" />
                   <span>Select All Present</span>
@@ -1114,7 +1115,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
           </div>
 
           {/* Student Attendance Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+          <div className="bg-surface rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
             {isLoadingRoster ? (
               <div className="p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
@@ -1123,7 +1124,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
             ) : filteredDailyRecords.length === 0 ? (
               <div className="p-8 text-center space-y-2">
                 <Users className="w-9 h-9 text-slate-300 mx-auto" />
-                <h3 className="text-sm font-bold text-[#172554]">
+                <h3 className="text-sm font-bold text-text-primary">
                   No Students Found for This Cohort
                 </h3>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
@@ -1162,7 +1163,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                           key={rec.boardRoll}
                           className={`transition-colors ${
                             isPresent
-                              ? 'bg-emerald-50/30 hover:bg-emerald-50/60'
+                              ? 'bg-green-50/30 hover:bg-green-50/60'
                               : isAbsent
                                 ? 'bg-rose-50/30 hover:bg-rose-50/60'
                                 : 'hover:bg-slate-50/80'
@@ -1171,7 +1172,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                           <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
                             {rec.classRoll}
                           </td>
-                          <td className="py-2.5 px-3 font-semibold text-[#172554]">
+                          <td className="py-2.5 px-3 font-semibold text-text-primary">
                             {rec.studentName}
                           </td>
                           <td className="py-2.5 px-3 font-mono font-semibold text-blue-700">
@@ -1189,8 +1190,8 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                               aria-label={`Mark ${rec.studentName} Present`}
                               className={`w-6 h-6 rounded-lg inline-flex items-center justify-center border transition-all cursor-pointer ${
                                 isPresent
-                                  ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
-                                  : 'bg-white border-slate-300 text-transparent hover:border-emerald-500'
+                                  ? 'bg-green-600 border-green-600 text-white shadow-xs'
+                                  : 'bg-surface border-slate-300 text-transparent hover:border-green-500'
                               }`}
                             >
                               <Check className="w-4 h-4 stroke-[3]" />
@@ -1205,8 +1206,8 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                                 onClick={() => setStudentStatus(rec.boardRoll, 'present')}
                                 className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                                   isPresent
-                                    ? 'bg-emerald-600 text-white shadow-xs'
-                                    : 'text-slate-600 hover:text-emerald-700'
+                                    ? 'bg-green-600 text-white shadow-xs'
+                                    : 'text-slate-600 hover:text-green-700'
                                 }`}
                               >
                                 Present
@@ -1248,7 +1249,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
               <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="text-xs text-slate-600">
                   <span>
-                    Summary: <strong className="text-emerald-700">{dailyStats.present} Present</strong> ·{' '}
+                    Summary: <strong className="text-green-700">{dailyStats.present} Present</strong> ·{' '}
                     <strong className="text-rose-700">{dailyStats.absent} Absent</strong> ·{' '}
                     <strong className="text-amber-700">{dailyStats.notMarked} Not Marked</strong>
                   </span>
@@ -1288,10 +1289,10 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
       {viewMode === 'monthly' && (
         <div className="space-y-3">
           {/* Month / Year / Subject Filter Bar */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-[#172554]">
+                <h3 className="text-sm font-bold text-text-primary">
                   Monthly Attendance Register ({MONTH_NAMES[selectedMonth - 1]} {selectedYear})
                 </h3>
                 <p className="text-[11px] text-slate-500">
@@ -1303,7 +1304,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 <select
                   value={selectedMonth}
                   onChange={e => setSelectedMonth(Number(e.target.value))}
-                  className="px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   {MONTH_NAMES.map((m, idx) => (
                     <option key={m} value={idx + 1}>
@@ -1315,7 +1316,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 <select
                   value={selectedYear}
                   onChange={e => setSelectedYear(Number(e.target.value))}
-                  className="px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   {[2024, 2025, 2026, 2027].map(yr => (
                     <option key={yr} value={yr}>
@@ -1327,7 +1328,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 <select
                   value={monthlySubjectFilter}
                   onChange={e => setMonthlySubjectFilter(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="px-2.5 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   <option value="all">All Subjects Combined</option>
                   {Array.from(
@@ -1372,7 +1373,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px]">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="inline-flex items-center gap-1">
-                  <span className="w-4 h-4 rounded bg-emerald-100 text-emerald-800 font-bold inline-flex items-center justify-center text-[10px]">
+                  <span className="w-4 h-4 rounded bg-green-100 text-green-800 font-bold inline-flex items-center justify-center text-[10px]">
                     P
                   </span>
                   <span>Present</span>
@@ -1412,7 +1413,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   monthlyData?.summary?.overallAttendancePercentage !== undefined && (
                     <span className="ml-3">
                       Class Avg:{' '}
-                      <strong className="text-emerald-700 font-mono">
+                      <strong className="text-green-700 font-mono">
                         {monthlyData.summary.overallAttendancePercentage}%
                       </strong>
                     </span>
@@ -1422,7 +1423,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
           </div>
 
           {/* Monthly Matrix Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+          <div className="bg-surface rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
             {isLoadingMonthly ? (
               <div className="p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
@@ -1464,7 +1465,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                           </div>
                         </th>
                       ))}
-                      <th className="py-2 px-2 text-center bg-emerald-50 text-emerald-800 font-mono">
+                      <th className="py-2 px-2 text-center bg-green-50 text-green-800 font-mono">
                         P
                       </th>
                       <th className="py-2 px-2 text-center bg-rose-50 text-rose-800 font-mono">
@@ -1473,7 +1474,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                       <th className="py-2 px-2 text-center bg-amber-50 text-amber-800 font-mono">
                         NM
                       </th>
-                      <th className="py-2 px-2.5 text-right bg-slate-100 text-[#172554] font-mono">
+                      <th className="py-2 px-2.5 text-right bg-slate-100 text-text-primary font-mono">
                         Rate %
                       </th>
                     </tr>
@@ -1481,8 +1482,8 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   <tbody className="divide-y divide-slate-100">
                     {monthlyData.studentRows.map(row => (
                       <tr key={row.boardRoll} className="hover:bg-slate-50/80">
-                        <td className="py-2 px-2.5 sticky left-0 bg-white z-10 border-r border-slate-200 whitespace-nowrap">
-                          <div className="font-bold text-[#172554]">
+                        <td className="py-2 px-2.5 sticky left-0 bg-surface z-10 border-r border-slate-200 whitespace-nowrap">
+                          <div className="font-bold text-text-primary">
                             <span className="font-mono text-slate-500 mr-1.5">#{row.classRoll}</span>
                             {row.studentName}
                           </div>
@@ -1502,7 +1503,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                               }`}
                             >
                               {status === 'present' && (
-                                <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                                <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-green-100 text-green-800 font-bold text-[10px]">
                                   P
                                 </span>
                               )}
@@ -1528,7 +1529,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                           );
                         })}
 
-                        <td className="py-2 px-2 text-center font-mono font-bold text-emerald-700 bg-emerald-50/40">
+                        <td className="py-2 px-2 text-center font-mono font-bold text-green-700 bg-green-50/40">
                           {row.presentCount}
                         </td>
                         <td className="py-2 px-2 text-center font-mono font-bold text-rose-700 bg-rose-50/40">
@@ -1542,7 +1543,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                             <span
                               className={
                                 row.attendancePercentage >= 75
-                                  ? 'text-emerald-700'
+                                  ? 'text-green-700'
                                   : 'text-rose-600'
                               }
                             >
@@ -1566,10 +1567,10 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
       {/* VIEW 3: SAVED SHEETS HISTORY FOR THIS COHORT                           */}
       {/* ===================================================================== */}
       {viewMode === 'history' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+        <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-[#172554]">
+              <h3 className="text-sm font-bold text-text-primary">
                 Saved Attendance Sheets ({allCohortSheets.length})
               </h3>
               <p className="text-[11px] text-slate-500">
@@ -1598,7 +1599,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                         <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
                           {sh.date}
                         </span>
-                        <span className="font-bold text-[#172554]">
+                        <span className="font-bold text-text-primary">
                           {sh.subjectCode} - {sh.subjectName}
                         </span>
                         <span className="text-[11px] text-slate-500">
@@ -1607,7 +1608,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                       </div>
                       <div className="text-[11px] text-slate-500 mt-1">
                         Recorded by <strong>{sh.teacherName}</strong> · Present:{' '}
-                        <strong className="text-emerald-700">{pCount}</strong> · Absent:{' '}
+                        <strong className="text-green-700">{pCount}</strong> · Absent:{' '}
                         <strong className="text-rose-700">{aCount}</strong> · Not Marked:{' '}
                         <strong className="text-amber-700">{nmCount}</strong>
                       </div>
@@ -1638,13 +1639,13 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
       {/* ===================================================================== */}
       {showSelectAllConfirm && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl border border-slate-200">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl border border-slate-200">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <div className="w-9 h-9 rounded-xl bg-green-100 text-green-700 flex items-center justify-center shrink-0">
                 <CheckSquare className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-[#172554]">
+                <h3 className="text-sm font-bold text-text-primary">
                   Confirm Mark All Students Present
                 </h3>
                 <p className="text-xs text-slate-500">
@@ -1668,7 +1669,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
               <button
                 type="button"
                 onClick={handleConfirmSelectAllPresent}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold shadow-xs cursor-pointer"
               >
                 Yes, Mark All Present
               </button>
@@ -1682,14 +1683,14 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
       {/* ===================================================================== */}
       {showOcrModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl border border-slate-200 my-8 max-h-[90vh] overflow-y-auto">
+          <div className="bg-surface rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl border border-slate-200 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
                   <Sparkles className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-[#172554]">
+                  <h3 className="text-sm font-bold text-text-primary">
                     Upload Student Roster from Image or PDF (OCR)
                   </h3>
                   <p className="text-[11px] text-slate-500">
@@ -1709,24 +1710,24 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
             {/* Step 1: Upload File or Paste Roster Text */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                <label className="block text-xs font-bold text-[#172554]">
+                <label className="block text-xs font-bold text-text-primary">
                   Option A: Upload Roster Image or PDF
                 </label>
                 <input
                   type="file"
                   accept="image/*,.pdf"
                   onChange={handleOcrFileChange}
-                  className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 cursor-pointer"
+                  className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 cursor-pointer"
                 />
                 {ocrFileName && (
-                  <p className="text-[11px] text-indigo-700 font-semibold truncate">
+                  <p className="text-[11px] text-blue-700 font-semibold truncate">
                     Selected: {ocrFileName}
                   </p>
                 )}
               </div>
 
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
-                <label className="block text-xs font-bold text-[#172554]">
+                <label className="block text-xs font-bold text-text-primary">
                   Option B: Or Paste Student List Text
                 </label>
                 <textarea
@@ -1734,7 +1735,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   value={ocrRawText}
                   onChange={e => setOcrRawText(e.target.value)}
                   placeholder={'01 | 542880 | 1502187320 | Nusrat Jahan\n02 | 542891 | 1502187342 | Tanvir Ahmed'}
-                  className="w-full px-2.5 py-1.5 text-[11px] font-mono bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-full px-2.5 py-1.5 text-[11px] font-mono bg-surface border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -1744,7 +1745,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 type="button"
                 onClick={handleRunRosterOcr}
                 disabled={isExtractingOcr}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>{isExtractingOcr ? 'Extracting Student List...' : 'Extract & Preview Student List'}</span>
@@ -1775,7 +1776,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
               <div className="space-y-3 pt-2 border-t border-slate-100">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                    <span className="font-bold text-[#172554]">
+                    <span className="font-bold text-text-primary">
                       Preview Detected Students ({ocrCandidates.length})
                     </span>
                     {ocrSummary && (
@@ -1826,7 +1827,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                                 ? 'bg-rose-50/50'
                                 : isUncertain
                                   ? 'bg-amber-50/50'
-                                  : 'bg-white'
+                                  : 'bg-surface'
                             }
                           >
                             <td className="py-1.5 px-2">
@@ -1847,7 +1848,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                                   handleUpdateOcrCandidate(c.tempId, 'name', e.target.value)
                                 }
                                 placeholder="Student Name"
-                                className="w-full px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded font-semibold text-[#172554]"
+                                className="w-full px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded font-semibold text-text-primary"
                               />
                             </td>
                             <td className="py-1.5 px-2">
@@ -1944,11 +1945,11 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
       {/* ===================================================================== */}
       {showAuditModal && existingSheet && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl border border-slate-200">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl border border-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-2">
                 <History className="w-4 h-4 text-blue-600" />
-                <h3 className="text-sm font-bold text-[#172554]">
+                <h3 className="text-sm font-bold text-text-primary">
                   Attendance Audit Trail
                 </h3>
               </div>
@@ -1967,7 +1968,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   key={idx}
                   className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-0.5"
                 >
-                  <div className="flex items-center justify-between font-bold text-[#172554]">
+                  <div className="flex items-center justify-between font-bold text-text-primary">
                     <span className="capitalize">{entry.action} by {entry.performedBy}</span>
                     <span className="text-[10px] font-mono text-slate-500">
                       {new Date(entry.timestamp).toLocaleString('en-GB')}

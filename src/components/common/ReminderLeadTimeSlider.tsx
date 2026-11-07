@@ -26,7 +26,7 @@ export const ReminderLeadTimeSlider: React.FC<ReminderLeadTimeSliderProps> = ({
             <Bell className="w-4 h-4" />
           </div>
           <div>
-            <span className="text-xs font-bold text-[#172554] block">{label}</span>
+            <span className="text-xs font-bold text-text-primary block">{label}</span>
             <span className="text-[11px] text-slate-500">{helperText}</span>
           </div>
         </div>
@@ -71,7 +71,7 @@ export const ReminderLeadTimeSlider: React.FC<ReminderLeadTimeSliderProps> = ({
             className={`text-[11px] px-2.5 py-1 rounded-lg border font-semibold transition-all ${
               value === mins
                 ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                : 'bg-white text-slate-700 border-slate-200 hover:border-blue-300 hover:bg-blue-50/50'
+                : 'bg-surface text-slate-700 border-slate-200 hover:border-blue-300 hover:bg-blue-50/50'
             }`}
           >
             {mins}m

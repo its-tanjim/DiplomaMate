@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/apiClient';
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
@@ -178,7 +179,7 @@ export const AdminPortalScreen: React.FC = () => {
 
   const fetchCatalogRecords = async () => {
     try {
-      const res = await fetch('/api/catalog/subjects?activeOnly=false');
+      const res = await apiFetch('/api/catalog/subjects?activeOnly=false');
       const data = await res.json();
       if (res.ok && data.success) {
         setCatalogRecords(data.records || []);
@@ -194,7 +195,7 @@ export const AdminPortalScreen: React.FC = () => {
     setCatalogPreview(null);
     setConfirmCatalogImportChecked(false);
     try {
-      const res = await fetch(`/api/admin/catalog/starter-json?mode=${mode}`, {
+      const res = await apiFetch(`/api/admin/catalog/starter-json?mode=${mode}`, {
         headers: { Authorization: `Bearer ${authToken}` }
       });
       const data = await res.json();
@@ -238,7 +239,7 @@ export const AdminPortalScreen: React.FC = () => {
 
     setIsPreviewingCatalog(true);
     try {
-      const res = await fetch('/api/admin/catalog/preview-import', {
+      const res = await apiFetch('/api/admin/catalog/preview-import', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -270,7 +271,7 @@ export const AdminPortalScreen: React.FC = () => {
     setCatalogError('');
     setIsImportingCatalog(true);
     try {
-      const res = await fetch('/api/admin/catalog/import', {
+      const res = await apiFetch('/api/admin/catalog/import', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -304,7 +305,7 @@ export const AdminPortalScreen: React.FC = () => {
   ) => {
     if (!authToken) return;
     try {
-      const res = await fetch(`/api/admin/catalog/records/${encodeURIComponent(recordId)}`, {
+      const res = await apiFetch(`/api/admin/catalog/records/${encodeURIComponent(recordId)}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -329,7 +330,7 @@ export const AdminPortalScreen: React.FC = () => {
     e.preventDefault();
     if (!authToken) return;
     try {
-      const res = await fetch('/api/admin/catalog/records', {
+      const res = await apiFetch('/api/admin/catalog/records', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -371,7 +372,7 @@ export const AdminPortalScreen: React.FC = () => {
   const fetchResultBatches = async () => {
     if (!authToken || !isServerVerifiedAdmin) return;
     try {
-      const res = await fetch('/api/admin/results/import-history', {
+      const res = await apiFetch('/api/admin/results/import-history', {
         headers: {
           Authorization: `Bearer ${authToken}`
         }
@@ -439,7 +440,7 @@ export const AdminPortalScreen: React.FC = () => {
 
     setIsParsingPreview(true);
     try {
-      const res = await fetch('/api/admin/results/preview-parse', {
+      const res = await apiFetch('/api/admin/results/preview-parse', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -476,7 +477,7 @@ export const AdminPortalScreen: React.FC = () => {
     setPreviewError('');
     setIsPublishingBatch(true);
     try {
-      const res = await fetch('/api/admin/results/import', {
+      const res = await apiFetch('/api/admin/results/import', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -516,7 +517,7 @@ export const AdminPortalScreen: React.FC = () => {
 
   const handleDeleteBatch = async (batchId: string) => {
     try {
-      const res = await fetch(`/api/admin/results/batches/${encodeURIComponent(batchId)}`, {
+      const res = await apiFetch(`/api/admin/results/batches/${encodeURIComponent(batchId)}`, {
         method: 'DELETE',
         headers: {
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
@@ -606,8 +607,8 @@ export const AdminPortalScreen: React.FC = () => {
 
   if (isCheckingAdminSession) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs space-y-2">
-        <RefreshCw className="w-6 h-6 text-[#2563EB] animate-spin mx-auto" />
+      <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs space-y-2">
+        <RefreshCw className="w-6 h-6 text-brand-blue animate-spin mx-auto" />
         <p className="text-xs font-semibold text-slate-600">
           Verifying System Administrator session with server...
         </p>
@@ -619,7 +620,7 @@ export const AdminPortalScreen: React.FC = () => {
   // Student, Class Captain, and Teacher accounts are strictly blocked from viewing or using Admin Portal / Result Import
   if (accountType !== 'system_admin' || !isServerVerifiedAdmin) {
     return (
-      <div className="bg-white rounded-2xl border border-rose-200 p-6 sm:p-8 text-center shadow-sm space-y-4 my-4">
+      <div className="bg-surface rounded-2xl border border-rose-200 p-6 sm:p-8 text-center shadow-sm space-y-4 my-4">
         <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center mx-auto">
           <Lock className="w-6 h-6" />
         </div>
@@ -627,7 +628,7 @@ export const AdminPortalScreen: React.FC = () => {
           <span className="text-[10px] font-mono uppercase tracking-wider font-bold text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-md border border-rose-200">
             HTTP 403 Forbidden · Restricted Route
           </span>
-          <h2 className="text-base sm:text-lg font-bold text-[#172554]">
+          <h2 className="text-base sm:text-lg font-bold text-text-primary">
             System Administrator Authorization Required
           </h2>
           <p className="text-xs text-slate-600 leading-relaxed">
@@ -645,7 +646,7 @@ export const AdminPortalScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveScreen('admin_login')}
-            className="px-4 py-2.5 rounded-xl bg-[#172554] hover:bg-blue-950 text-white text-xs font-bold shadow-xs cursor-pointer"
+            className="px-4 py-2.5 rounded-xl bg-text-primary hover:bg-blue-950 text-white text-xs font-bold shadow-xs cursor-pointer"
           >
             System Administrator Sign In →
           </button>
@@ -657,7 +658,7 @@ export const AdminPortalScreen: React.FC = () => {
   return (
     <div className="space-y-4 pb-12">
       {/* Top Header Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
             <button
@@ -667,15 +668,15 @@ export const AdminPortalScreen: React.FC = () => {
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
               <ShieldCheck className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-bold text-[#172554]">
+                <h1 className="text-base sm:text-lg font-bold text-text-primary">
                   Administrator Verification Portal
                 </h1>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-teal-50 text-[#0D9488] border border-teal-200">
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-teal-50 text-brand-teal border border-teal-200">
                   system_admin
                 </span>
               </div>
@@ -701,7 +702,7 @@ export const AdminPortalScreen: React.FC = () => {
             onClick={() => setActivePortalTab('management')}
             className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activePortalTab === 'management'
-                ? 'bg-white text-teal-700 shadow-xs'
+                ? 'bg-surface text-teal-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -713,7 +714,7 @@ export const AdminPortalScreen: React.FC = () => {
             onClick={() => setActivePortalTab('captains')}
             className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activePortalTab === 'captains'
-                ? 'bg-white text-blue-700 shadow-xs'
+                ? 'bg-surface text-blue-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -726,7 +727,7 @@ export const AdminPortalScreen: React.FC = () => {
             onClick={() => setActivePortalTab('teachers')}
             className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activePortalTab === 'teachers'
-                ? 'bg-white text-indigo-700 shadow-xs'
+                ? 'bg-surface text-blue-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -739,7 +740,7 @@ export const AdminPortalScreen: React.FC = () => {
             onClick={() => setActivePortalTab('results')}
             className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activePortalTab === 'results'
-                ? 'bg-white text-[#0D9488] shadow-xs'
+                ? 'bg-surface text-brand-teal shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -752,7 +753,7 @@ export const AdminPortalScreen: React.FC = () => {
             onClick={() => setActivePortalTab('catalog')}
             className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activePortalTab === 'catalog'
-                ? 'bg-white text-blue-700 shadow-xs'
+                ? 'bg-surface text-blue-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -773,7 +774,7 @@ export const AdminPortalScreen: React.FC = () => {
                 placeholder={activePortalTab === 'captains' ? "Search student name, roll number, or department..." : "Search teacher name, department, or phone..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554] placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
 
@@ -784,7 +785,7 @@ export const AdminPortalScreen: React.FC = () => {
                   onClick={() => setStatusFilter(tab)}
                   className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
                     statusFilter === tab
-                      ? 'bg-[#172554] text-white shadow-xs'
+                      ? 'bg-text-primary text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
@@ -810,7 +811,7 @@ export const AdminPortalScreen: React.FC = () => {
           {/* Applications list */}
           <div className="space-y-3">
             {filteredApps.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-500 shadow-xs">
+              <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center text-slate-500 shadow-xs">
                 <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                 <p className="text-sm font-semibold">No applications found matching criteria.</p>
               </div>
@@ -827,17 +828,17 @@ export const AdminPortalScreen: React.FC = () => {
                 return (
                   <div 
                     key={app.id} 
-                    className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3"
+                    className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-sm text-[#172554]">
+                          <h3 className="font-bold text-sm text-text-primary">
                             {app.studentName}
                           </h3>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                             app.status === 'Approved' 
-                              ? 'bg-teal-100 text-[#0D9488]' 
+                              ? 'bg-teal-100 text-brand-teal'
                               : app.status === 'Rejected'
                                 ? 'bg-red-100 text-red-700'
                                 : 'bg-amber-100 text-amber-800'
@@ -851,11 +852,11 @@ export const AdminPortalScreen: React.FC = () => {
                       </div>
 
                       <div className="text-left sm:text-right text-xs">
-                        <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-[#2563EB] font-bold">
+                        <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-brand-blue font-bold">
                           Sem {app.semester} · {app.shift} Shift · Sec {app.section}
                         </span>
                         <div className="text-[11px] text-slate-500 mt-0.5">
-                          Section Quota: <strong className={currentCount >= 2 ? 'text-red-600' : 'text-emerald-600'}>{currentCount}/2 Captains</strong>
+                          Section Quota: <strong className={currentCount >= 2 ? 'text-red-600' : 'text-green-600'}>{currentCount}/2 Captains</strong>
                         </div>
                       </div>
                     </div>
@@ -912,7 +913,7 @@ export const AdminPortalScreen: React.FC = () => {
                     <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 flex-wrap">
                       <button
                         onClick={() => setSelectedAppForDoc(app)}
-                        className="text-xs font-semibold text-[#2563EB] hover:text-blue-700 flex items-center gap-1 py-1 cursor-pointer"
+                        className="text-xs font-semibold text-brand-blue hover:text-blue-700 flex items-center gap-1 py-1 cursor-pointer"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         <span>Review Signed Form</span>
@@ -935,7 +936,7 @@ export const AdminPortalScreen: React.FC = () => {
                                 setActionModal({ app, action: 'approve' });
                                 setActionReason('Verified with guide teacher endorsement and institute record.');
                               }}
-                              className="px-3 py-1 rounded-lg bg-[#0D9488] hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                              className="px-3 py-1 rounded-lg bg-brand-teal hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                             >
                               Approve Captain
                             </button>
@@ -967,8 +968,8 @@ export const AdminPortalScreen: React.FC = () => {
       {/* SECTION 2: TEACHERS & FACULTY VERIFICATION MANAGEMENT */}
       {activePortalTab === 'teachers' && (
         <div className="space-y-3">
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-950 flex items-start gap-2">
-            <GraduationCap className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-950 flex items-start gap-2">
+            <GraduationCap className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold">Faculty Authorization Protocol:</span> Only verified institutional faculty members can approve Class Captains for their designated semester and shift cohorts. Review identity, teaching assignments, and status below.
             </div>
@@ -976,7 +977,7 @@ export const AdminPortalScreen: React.FC = () => {
 
           <div className="space-y-3">
             {filteredTeachers.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-500 shadow-xs">
+              <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center text-slate-500 shadow-xs">
                 <GraduationCap className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                 <p className="text-sm font-semibold">No teachers found matching criteria.</p>
               </div>
@@ -990,17 +991,17 @@ export const AdminPortalScreen: React.FC = () => {
                 return (
                   <div
                     key={teacher.id}
-                    className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3"
+                    className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-sm text-[#172554]">
+                          <h3 className="font-bold text-sm text-text-primary">
                             {teacher.name}
                           </h3>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                             isVerified 
-                              ? 'bg-emerald-100 text-emerald-800' 
+                              ? 'bg-green-100 text-green-800'
                               : isRejected
                                 ? 'bg-rose-100 text-rose-800'
                                 : 'bg-amber-100 text-amber-800'
@@ -1020,7 +1021,7 @@ export const AdminPortalScreen: React.FC = () => {
                       </div>
 
                       <div className="text-left sm:text-right text-xs">
-                        <span className="inline-block px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold">
+                        <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold">
                           Semesters: {teacher.semestersTaught.map(s => `${s}th`).join(', ')} · {teacher.shift} Shift
                         </span>
                       </div>
@@ -1084,7 +1085,7 @@ export const AdminPortalScreen: React.FC = () => {
                                 setTeacherActionModal({ teacher, action: 'approve' });
                                 setTeacherActionNotes('Credentials verified against polytechnic faculty roster.');
                               }}
-                              className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
+                              className="px-3 py-1 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
                             >
                               Approve Faculty
                             </button>
@@ -1111,7 +1112,7 @@ export const AdminPortalScreen: React.FC = () => {
                               setTeacherActionModal({ teacher, action: 'approve' });
                               setTeacherActionNotes('Re-evaluated and approved.');
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer"
+                            className="px-2.5 py-1 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-semibold cursor-pointer"
                           >
                             Re-Approve
                           </button>
@@ -1132,7 +1133,7 @@ export const AdminPortalScreen: React.FC = () => {
           {/* Security & Data Integrity Banner */}
           <div className="bg-teal-50 border border-teal-200 rounded-2xl p-3.5 text-xs text-teal-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div className="flex items-start gap-2.5">
-              <Database className="w-4 h-4 text-[#0D9488] shrink-0 mt-0.5" />
+              <Database className="w-4 h-4 text-brand-teal shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold">Official BTEB Result Extraction & Publishing Pipeline: </span>
                 Upload an official BTEB Result Book (`.pdf`, `.txt`, `.csv`, `.json`) or paste raw result text. All records are validated, mapped against the 19-technology curriculum subject catalog, and checked for duplicates before publishing.
@@ -1141,16 +1142,16 @@ export const AdminPortalScreen: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveScreen('bteb_results')}
-              className="shrink-0 px-3 py-1.5 rounded-xl bg-[#0D9488] hover:bg-teal-700 text-white font-bold shadow-xs cursor-pointer"
+              className="shrink-0 px-3 py-1.5 rounded-xl bg-brand-teal hover:bg-teal-700 text-white font-bold shadow-xs cursor-pointer"
             >
               Open Student Result Search →
             </button>
           </div>
 
           {/* Step 1: Configure Batch Metadata & Source Content */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-4">
-            <h2 className="text-sm font-bold text-[#172554] flex items-center gap-2">
-              <Upload className="w-4 h-4 text-[#2563EB]" />
+          <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-4">
+            <h2 className="text-sm font-bold text-text-primary flex items-center gap-2">
+              <Upload className="w-4 h-4 text-brand-blue" />
               <span>1. Configure Examination Batch & Upload Official BTEB Dataset</span>
             </h2>
 
@@ -1162,7 +1163,7 @@ export const AdminPortalScreen: React.FC = () => {
                 <select
                   value={batchSemester}
                   onChange={(e) => setBatchSemester(Number(e.target.value) as SemesterNumber)}
-                  className="w-full px-2.5 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-2.5 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   {([1, 2, 3, 4, 5, 6, 7, 8] as SemesterNumber[]).map(s => (
                     <option key={s} value={s}>{s}th Semester</option>
@@ -1177,7 +1178,7 @@ export const AdminPortalScreen: React.FC = () => {
                 <select
                   value={batchRegulation}
                   onChange={(e) => setBatchRegulation(e.target.value as BtebRegulation)}
-                  className="w-full px-2.5 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-2.5 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   <option value="2022">2022 Probidhan</option>
                   <option value="2016">2016 Probidhan</option>
@@ -1195,7 +1196,7 @@ export const AdminPortalScreen: React.FC = () => {
                   max={2030}
                   value={batchExamYear}
                   onChange={(e) => setBatchExamYear(Number(e.target.value))}
-                  className="w-full px-2.5 py-2 text-xs font-bold font-mono bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-2.5 py-2 text-xs font-bold font-mono bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 />
               </div>
 
@@ -1206,7 +1207,7 @@ export const AdminPortalScreen: React.FC = () => {
                 <select
                   value={batchExamType}
                   onChange={(e) => setBatchExamType(e.target.value as BtebExamType)}
-                  className="w-full px-2.5 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-2.5 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 >
                   <option value="Regular">Regular</option>
                   <option value="Irregular">Irregular</option>
@@ -1225,7 +1226,7 @@ export const AdminPortalScreen: React.FC = () => {
                   placeholder={`e.g. ${batchSemester}th Semester ${batchExamType} Exam ${batchExamYear} (${batchRegulation} Reg)`}
                   value={batchTitle}
                   onChange={(e) => setBatchTitle(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 />
               </div>
 
@@ -1237,7 +1238,7 @@ export const AdminPortalScreen: React.FC = () => {
                   type="date"
                   value={batchPubDate}
                   onChange={(e) => setBatchPubDate(e.target.value)}
-                  className="w-full px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                  className="w-full px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
                 />
               </div>
             </div>
@@ -1245,7 +1246,7 @@ export const AdminPortalScreen: React.FC = () => {
             {/* File Upload Input */}
             <div className="p-3.5 rounded-xl bg-slate-50 border border-dashed border-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="text-xs">
-                <span className="font-bold text-[#172554] block">
+                <span className="font-bold text-text-primary block">
                   Upload Official BTEB Result File (.pdf, .txt, .csv, .json)
                 </span>
                 <span className="text-[11px] text-slate-500">
@@ -1254,7 +1255,7 @@ export const AdminPortalScreen: React.FC = () => {
                     : 'Or paste extracted text from an official BTEB PDF sheet in the box below'}
                 </span>
               </div>
-              <label className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-blue-400 text-xs font-bold text-[#2563EB] shadow-2xs cursor-pointer shrink-0 text-center">
+              <label className="px-3.5 py-2 rounded-xl bg-surface border border-slate-200 hover:border-blue-400 text-xs font-bold text-brand-blue shadow-2xs cursor-pointer shrink-0 text-center">
                 <span>Choose Result File</span>
                 <input
                   type="file"
@@ -1268,7 +1269,7 @@ export const AdminPortalScreen: React.FC = () => {
             {/* Raw Text / Paste Box */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-[#172554]">
+                <label className="text-xs font-semibold text-text-primary">
                   Official BTEB Result Text / CSV / JSON Content
                 </label>
                 <span className="text-[10px] font-mono text-slate-500">
@@ -1283,7 +1284,7 @@ export const AdminPortalScreen: React.FC = () => {
                   setRawResultText(e.target.value);
                   setPreviewResult(null);
                 }}
-                className="w-full px-3 py-2.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl text-[#172554] focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                className="w-full px-3 py-2.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
               />
             </div>
 
@@ -1299,7 +1300,7 @@ export const AdminPortalScreen: React.FC = () => {
                 type="button"
                 disabled={isParsingPreview}
                 onClick={handlePreviewParse}
-                className="px-4 py-2.5 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
               >
                 {isParsingPreview ? 'Validating & Parsing...' : 'Validate & Preview Parse'}
               </button>
@@ -1308,26 +1309,26 @@ export const AdminPortalScreen: React.FC = () => {
 
           {/* Step 2: Dry-Run Validation Preview & Commit */}
           {previewResult && (
-            <div className="bg-white rounded-2xl border-2 border-[#0D9488] p-4 shadow-md space-y-4">
+            <div className="bg-surface rounded-2xl border-2 border-brand-teal p-4 shadow-md space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                 <div>
-                  <h3 className="text-sm font-bold text-[#172554] flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-[#0D9488]" />
+                  <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-brand-teal" />
                     <span>2. Validation Dry-Run Summary (Ready to Publish)</span>
                   </h3>
                   <p className="text-xs text-slate-500">
                     Review extracted records, curriculum subject mappings, and conflict counts before committing to the database.
                   </p>
                 </div>
-                <span className="text-xs font-mono font-bold bg-teal-50 text-[#0D9488] px-3 py-1 rounded-lg border border-teal-200">
+                <span className="text-xs font-mono font-bold bg-teal-50 text-brand-teal px-3 py-1 rounded-lg border border-teal-200">
                   {previewResult.summary.totalParsed} Valid Records Parsed
                 </span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
-                  <span className="text-[10px] font-bold uppercase text-emerald-700 block">Passed Rolls</span>
-                  <span className="text-lg font-extrabold font-mono text-emerald-800">{previewResult.summary.passCount}</span>
+                <div className="p-2.5 rounded-xl bg-green-50 border border-green-200">
+                  <span className="text-[10px] font-bold uppercase text-green-700 block">Passed Rolls</span>
+                  <span className="text-lg font-extrabold font-mono text-green-800">{previewResult.summary.passCount}</span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
                   <span className="text-[10px] font-bold uppercase text-amber-700 block">Referred Rolls</span>
@@ -1345,7 +1346,7 @@ export const AdminPortalScreen: React.FC = () => {
 
               {previewResult.summary.detectedInstitutes.length > 0 && (
                 <div className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <span className="font-bold text-[#172554]">Detected Polytechnic Institutes: </span>
+                  <span className="font-bold text-text-primary">Detected Polytechnic Institutes: </span>
                   {previewResult.summary.detectedInstitutes.join(', ')}
                 </div>
               )}
@@ -1357,7 +1358,7 @@ export const AdminPortalScreen: React.FC = () => {
                 </div>
                 <div className="overflow-x-auto max-h-60">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-white border-b border-slate-100 text-slate-500">
+                    <thead className="bg-surface border-b border-slate-100 text-slate-500">
                       <tr>
                         <th className="py-2 px-3 font-mono">Roll</th>
                         <th className="py-2 px-3">Institute</th>
@@ -1368,12 +1369,12 @@ export const AdminPortalScreen: React.FC = () => {
                     <tbody className="divide-y divide-slate-100">
                       {previewResult.sampleRecords.map((rec, idx) => (
                         <tr key={idx}>
-                          <td className="py-2 px-3 font-mono font-bold text-[#172554]">{rec.rollNumber}</td>
+                          <td className="py-2 px-3 font-mono font-bold text-text-primary">{rec.rollNumber}</td>
                           <td className="py-2 px-3 text-slate-600">{rec.collegeName || 'BTEB'}</td>
                           <td className="py-2 px-3">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
                               rec.status === 'PASSED'
-                                ? 'bg-emerald-100 text-emerald-800'
+                                ? 'bg-green-100 text-green-800'
                                 : 'bg-amber-100 text-amber-800'
                             }`}>
                               {rec.status}
@@ -1381,7 +1382,7 @@ export const AdminPortalScreen: React.FC = () => {
                           </td>
                           <td className="py-2 px-3 font-mono">
                             {rec.status === 'PASSED' ? (
-                              <span className="font-bold text-emerald-700">GPA: {rec.gpa?.toFixed(2)}</span>
+                              <span className="font-bold text-green-700">GPA: {rec.gpa?.toFixed(2)}</span>
                             ) : (
                               <span className="text-amber-900">
                                 {rec.referredSubjects
@@ -1404,7 +1405,7 @@ export const AdminPortalScreen: React.FC = () => {
                   <select
                     value={duplicateMode}
                     onChange={(e) => setDuplicateMode(e.target.value as 'overwrite' | 'skip')}
-                    className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-[#172554]"
+                    className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-text-primary"
                   >
                     <option value="overwrite">Update / Overwrite Record</option>
                     <option value="skip">Skip Existing Record</option>
@@ -1415,7 +1416,7 @@ export const AdminPortalScreen: React.FC = () => {
                   type="button"
                   disabled={isPublishingBatch}
                   onClick={handlePublishBatch}
-                  className="px-5 py-2.5 rounded-xl bg-[#0D9488] hover:bg-teal-700 text-white text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl bg-brand-teal hover:bg-teal-700 text-white text-xs font-bold shadow-sm transition-colors cursor-pointer"
                 >
                   {isPublishingBatch ? 'Publishing Batch...' : `Publish ${previewResult.summary.totalParsed} Verified Records`}
                 </button>
@@ -1424,9 +1425,9 @@ export const AdminPortalScreen: React.FC = () => {
           )}
 
           {/* Published Batches Management List */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-[#172554]">
+              <h3 className="text-sm font-bold text-text-primary">
                 Published Result Batches in Database ({resultBatches.length})
               </h3>
               <button
@@ -1451,7 +1452,7 @@ export const AdminPortalScreen: React.FC = () => {
                     className="p-3 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
                   >
                     <div>
-                      <div className="font-bold text-[#172554]">{b.title}</div>
+                      <div className="font-bold text-text-primary">{b.title}</div>
                       <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                         ID: {b.id} · {b.totalRecords} Rolls ({b.passCount} Passed, {b.referredCount} Referred)
                       </div>
@@ -1471,8 +1472,8 @@ export const AdminPortalScreen: React.FC = () => {
           </div>
 
           {/* Import Management Audit History (Restricted to system_admin) */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
-            <h3 className="text-sm font-bold text-[#172554]">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+            <h3 className="text-sm font-bold text-text-primary">
               Import Management Audit History ({importLogs.length})
             </h3>
             {importLogs.length === 0 ? (
@@ -1487,12 +1488,12 @@ export const AdminPortalScreen: React.FC = () => {
                     className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                   >
                     <div>
-                      <div className="font-bold text-[#172554]">{log.batchTitle}</div>
+                      <div className="font-bold text-text-primary">{log.batchTitle}</div>
                       <div className="text-[11px] text-slate-500 font-mono">
                         Source: {log.sourceFileName} · By {log.importedBy} · {new Date(log.importedAt).toLocaleString('en-GB')}
                       </div>
                     </div>
-                    <div className="text-[11px] font-mono font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shrink-0">
+                    <div className="text-[11px] font-mono font-bold text-slate-700 bg-surface px-2.5 py-1 rounded-lg border border-slate-200 shrink-0">
                       +{log.insertedCount} new · {log.updatedCount} upd · {log.skippedCount} skip
                     </div>
                   </div>
@@ -1520,10 +1521,10 @@ export const AdminPortalScreen: React.FC = () => {
           </div>
 
           {/* JSON Import & Pre-Import Validation Card */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-sm font-bold text-[#172554]">
+                <h3 className="text-sm font-bold text-text-primary">
                   Import & Validate Subject Catalog JSON
                 </h3>
                 <p className="text-xs text-slate-500">
@@ -1534,7 +1535,7 @@ export const AdminPortalScreen: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handleLoadStarterCatalogJson('uploaded_10_depts')}
-                  className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition-colors cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold transition-colors cursor-pointer"
                 >
                   Load 15 Dept Datasets (796)
                 </button>
@@ -1545,7 +1546,7 @@ export const AdminPortalScreen: React.FC = () => {
                 >
                   Load Full Starter JSON
                 </button>
-                <label className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#2563EB] text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1">
+                <label className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1">
                   <Upload className="w-3.5 h-3.5" />
                   <span>Upload .JSON</span>
                   <input
@@ -1583,7 +1584,7 @@ export const AdminPortalScreen: React.FC = () => {
                 type="button"
                 onClick={handlePreviewCatalogImport}
                 disabled={isPreviewingCatalog}
-                className="px-4 py-2 rounded-xl bg-[#172554] hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-text-primary hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
               >
                 {isPreviewingCatalog ? 'Validating Catalog JSON...' : '1. Run Pre-Import Validation Preview'}
               </button>
@@ -1591,7 +1592,7 @@ export const AdminPortalScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowAddCatalogModal(true)}
-                className="px-3 py-2 rounded-xl bg-[#0D9488] hover:bg-teal-700 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-brand-teal hover:bg-teal-700 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Single Subject</span>
@@ -1602,25 +1603,25 @@ export const AdminPortalScreen: React.FC = () => {
             {catalogPreview && (
               <div className="mt-3 p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h4 className="text-xs font-extrabold text-[#172554] uppercase tracking-wider">
+                  <h4 className="text-xs font-extrabold text-text-primary uppercase tracking-wider">
                     Pre-Import Validation Summary
                   </h4>
-                  <span className="text-xs font-mono font-bold text-[#2563EB]">
+                  <span className="text-xs font-mono font-bold text-brand-blue">
                     {catalogPreview.summary.validRecordsCount} Valid / {catalogPreview.summary.totalRecords} Total
                   </span>
                 </div>
 
                 {/* Key Counters */}
                 <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-center">
-                  <div className="bg-white p-2.5 rounded-xl border border-slate-200">
+                  <div className="bg-surface p-2.5 rounded-xl border border-slate-200">
                     <span className="text-[10px] text-slate-500 block font-semibold">Total Records</span>
-                    <span className="text-sm font-extrabold text-[#172554] font-mono">
+                    <span className="text-sm font-extrabold text-text-primary font-mono">
                       {catalogPreview.summary.totalRecords}
                     </span>
                   </div>
-                  <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
-                    <span className="text-[10px] text-emerald-700 block font-semibold">Verified</span>
-                    <span className="text-sm font-extrabold text-emerald-800 font-mono">
+                  <div className="bg-green-50 p-2.5 rounded-xl border border-green-200">
+                    <span className="text-[10px] text-green-700 block font-semibold">Verified</span>
+                    <span className="text-sm font-extrabold text-green-800 font-mono">
                       {catalogPreview.summary.verifiedCount}
                     </span>
                   </div>
@@ -1636,9 +1637,9 @@ export const AdminPortalScreen: React.FC = () => {
                       {catalogPreview.summary.duplicateCodes.length}
                     </span>
                   </div>
-                  <div className="bg-indigo-50 p-2.5 rounded-xl border border-indigo-200">
-                    <span className="text-[10px] text-indigo-700 block font-semibold">Protected Verified</span>
-                    <span className="text-sm font-extrabold text-indigo-800 font-mono">
+                  <div className="bg-blue-50 p-2.5 rounded-xl border border-blue-200">
+                    <span className="text-[10px] text-blue-700 block font-semibold">Protected Verified</span>
+                    <span className="text-sm font-extrabold text-blue-800 font-mono">
                       {catalogPreview.summary.protectedVerifiedConflicts.length}
                     </span>
                   </div>
@@ -1666,8 +1667,8 @@ export const AdminPortalScreen: React.FC = () => {
                 )}
 
                 {/* Grouped by Technology / Regulation / Semester */}
-                <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
-                  <div className="text-[11px] font-bold text-[#172554]">
+                <div className="bg-surface p-3 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="text-[11px] font-bold text-text-primary">
                     Records Grouped by Technology, Regulation & Semester ({catalogPreview.summary.groupedCounts.length} technology/regulation groups):
                   </div>
                   <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
@@ -1679,7 +1680,7 @@ export const AdminPortalScreen: React.FC = () => {
                         <span className="font-medium text-slate-700 truncate">
                           {grp.technology} · Probidhan {grp.regulation} (Semesters: {Object.entries(grp.semesterCounts).map(([s, c]) => `S${s}:${c}`).join(', ')})
                         </span>
-                        <span className="font-mono font-bold text-[#2563EB] shrink-0 ml-2">
+                        <span className="font-mono font-bold text-brand-blue shrink-0 ml-2">
                           {grp.totalInGroup} subjects
                         </span>
                       </div>
@@ -1708,14 +1709,14 @@ export const AdminPortalScreen: React.FC = () => {
 
                 {/* Protected Verified Conflicts Warning */}
                 {catalogPreview.summary.protectedVerifiedConflicts.length > 0 && (
-                  <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-xs text-indigo-950 space-y-1">
+                  <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-950 space-y-1">
                     <div className="font-bold flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
                       <span>
                         Verified Record Overwrite Protection ({catalogPreview.summary.protectedVerifiedConflicts.length} protected):
                       </span>
                     </div>
-                    <p className="text-[11px] text-indigo-800">
+                    <p className="text-[11px] text-blue-800">
                       The following existing <strong>verified</strong> catalog records will NOT be overwritten by incoming provisional/unverified records:
                     </p>
                     <ul className="list-disc list-inside text-[11px] font-mono space-y-0.5">
@@ -1729,8 +1730,8 @@ export const AdminPortalScreen: React.FC = () => {
                 )}
 
                 {/* Missing Semester Coverage Summary */}
-                <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
-                  <div className="text-[11px] font-bold text-[#172554]">
+                <div className="bg-surface p-3 rounded-xl border border-slate-200 space-y-1">
+                  <div className="text-[11px] font-bold text-text-primary">
                     Missing Semester Data in Grouped Selection ({catalogPreview.summary.groupedCounts.filter(g => g.missingSemesters.length > 0).length} incomplete technology/regulation pairs):
                   </div>
                   <p className="text-[11px] text-slate-500">
@@ -1747,7 +1748,7 @@ export const AdminPortalScreen: React.FC = () => {
 
                 {/* Explicit Confirmation Checkbox & Import Button */}
                 <div className="pt-2 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <label className="flex items-center gap-2 text-xs font-semibold text-[#172554] cursor-pointer">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-text-primary cursor-pointer">
                     <input
                       type="checkbox"
                       checked={confirmCatalogImportChecked}
@@ -1763,7 +1764,7 @@ export const AdminPortalScreen: React.FC = () => {
                     type="button"
                     disabled={!confirmCatalogImportChecked || isImportingCatalog}
                     onClick={handleConfirmCatalogImport}
-                    className="px-4 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                    className="px-4 py-2 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50 shrink-0"
                   >
                     {isImportingCatalog ? 'Importing...' : '2. Confirm & Execute Catalog Import'}
                   </button>
@@ -1773,9 +1774,9 @@ export const AdminPortalScreen: React.FC = () => {
           </div>
 
           {/* Existing Catalog Records Browser & Governance Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <h3 className="text-sm font-bold text-[#172554]">
+              <h3 className="text-sm font-bold text-text-primary">
                 Central Subject Catalog Records ({catalogRecords.length})
               </h3>
               <button
@@ -1793,7 +1794,7 @@ export const AdminPortalScreen: React.FC = () => {
               <select
                 value={catalogFilterTech}
                 onChange={(e) => setCatalogFilterTech(e.target.value)}
-                className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554] font-semibold"
+                className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary font-semibold"
               >
                 <option value="ALL">All 19 Technologies</option>
                 {TECHNOLOGIES_DIRECTORY.map((t) => (
@@ -1806,7 +1807,7 @@ export const AdminPortalScreen: React.FC = () => {
               <select
                 value={catalogFilterReg}
                 onChange={(e) => setCatalogFilterReg(e.target.value)}
-                className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554] font-semibold"
+                className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary font-semibold"
               >
                 <option value="ALL">All Regulations (2016 & 2022)</option>
                 <option value="2022">Regulation 2022</option>
@@ -1816,7 +1817,7 @@ export const AdminPortalScreen: React.FC = () => {
               <select
                 value={catalogFilterSem}
                 onChange={(e) => setCatalogFilterSem(e.target.value)}
-                className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554] font-semibold"
+                className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary font-semibold"
               >
                 <option value="ALL">All Semesters (1–8)</option>
                 {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
@@ -1831,12 +1832,12 @@ export const AdminPortalScreen: React.FC = () => {
                 value={catalogSearch}
                 onChange={(e) => setCatalogSearch(e.target.value)}
                 placeholder="Search code or subject name..."
-                className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#172554]"
+                className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary"
               />
             </div>
 
             {/* Filtered Catalog List */}
-            <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-115 overflow-y-auto pr-1">
               {catalogRecords
                 .filter((r) => {
                   if (catalogFilterTech !== 'ALL' && r.technology_key !== catalogFilterTech) return false;
@@ -1856,20 +1857,20 @@ export const AdminPortalScreen: React.FC = () => {
                     key={rec.id}
                     className={`p-3 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
                       rec.is_active
-                        ? 'bg-white border-slate-200'
+                        ? 'bg-surface border-slate-200'
                         : 'bg-slate-100 border-slate-200 opacity-60'
                     }`}
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-mono font-bold text-[#2563EB] bg-blue-50 px-2 py-0.5 rounded">
+                        <span className="font-mono font-bold text-brand-blue bg-blue-50 px-2 py-0.5 rounded">
                           {rec.subject_code}
                         </span>
-                        <span className="font-bold text-[#172554]">{rec.subject_name}</span>
+                        <span className="font-bold text-text-primary">{rec.subject_name}</span>
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                             rec.verification_status === 'verified'
-                              ? 'bg-emerald-100 text-emerald-800'
+                              ? 'bg-green-100 text-green-800'
                               : rec.verification_status === 'provisional'
                               ? 'bg-amber-100 text-amber-800'
                               : 'bg-slate-200 text-slate-700'
@@ -1897,7 +1898,7 @@ export const AdminPortalScreen: React.FC = () => {
                           onClick={() =>
                             handleUpdateCatalogRecord(rec.id, { verification_status: 'verified' })
                           }
-                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg bg-green-600 hover:bg-green-700 text-white text-[11px] font-bold cursor-pointer"
                         >
                           Approve Verified
                         </button>
@@ -1934,9 +1935,9 @@ export const AdminPortalScreen: React.FC = () => {
       {/* MODAL: ADD SINGLE CATALOG SUBJECT */}
       {showAddCatalogModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3 max-h-[90vh] overflow-y-auto">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="font-bold text-sm text-[#172554]">Add Subject to Central Catalog</h3>
+              <h3 className="font-bold text-sm text-text-primary">Add Subject to Central Catalog</h3>
               <button
                 type="button"
                 onClick={() => setShowAddCatalogModal(false)}
@@ -1947,7 +1948,7 @@ export const AdminPortalScreen: React.FC = () => {
             </div>
             <form onSubmit={handleCreateCatalogRecord} className="space-y-2.5 text-xs">
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Technology</label>
+                <label className="block font-semibold text-text-primary mb-1">Technology</label>
                 <select
                   value={newCatalogForm.technology}
                   onChange={(e) => setNewCatalogForm({ ...newCatalogForm, technology: e.target.value })}
@@ -1962,7 +1963,7 @@ export const AdminPortalScreen: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Regulation</label>
+                  <label className="block font-semibold text-text-primary mb-1">Regulation</label>
                   <select
                     value={newCatalogForm.regulation}
                     onChange={(e) =>
@@ -1975,7 +1976,7 @@ export const AdminPortalScreen: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Semester</label>
+                  <label className="block font-semibold text-text-primary mb-1">Semester</label>
                   <select
                     value={newCatalogForm.semester}
                     onChange={(e) =>
@@ -1996,7 +1997,7 @@ export const AdminPortalScreen: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Subject Code *</label>
+                  <label className="block font-semibold text-text-primary mb-1">Subject Code *</label>
                   <input
                     type="text"
                     required
@@ -2007,7 +2008,7 @@ export const AdminPortalScreen: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Verification Status</label>
+                  <label className="block font-semibold text-text-primary mb-1">Verification Status</label>
                   <select
                     value={newCatalogForm.verification_status}
                     onChange={(e) =>
@@ -2025,7 +2026,7 @@ export const AdminPortalScreen: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Subject Name *</label>
+                <label className="block font-semibold text-text-primary mb-1">Subject Name *</label>
                 <input
                   type="text"
                   required
@@ -2037,7 +2038,7 @@ export const AdminPortalScreen: React.FC = () => {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Type</label>
+                  <label className="block font-semibold text-text-primary mb-1">Type</label>
                   <input
                     type="text"
                     value={newCatalogForm.subject_type}
@@ -2047,7 +2048,7 @@ export const AdminPortalScreen: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Marks</label>
+                  <label className="block font-semibold text-text-primary mb-1">Marks</label>
                   <input
                     type="number"
                     value={newCatalogForm.marks}
@@ -2057,7 +2058,7 @@ export const AdminPortalScreen: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Credits</label>
+                  <label className="block font-semibold text-text-primary mb-1">Credits</label>
                   <input
                     type="number"
                     value={newCatalogForm.credits}
@@ -2077,7 +2078,7 @@ export const AdminPortalScreen: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 bg-[#2563EB] text-white rounded-xl font-bold cursor-pointer"
+                  className="flex-1 py-2 bg-brand-blue text-white rounded-xl font-bold cursor-pointer"
                 >
                   Save Subject
                 </button>
@@ -2090,13 +2091,13 @@ export const AdminPortalScreen: React.FC = () => {
       {/* MODAL: EDIT CATALOG RECORD */}
       {editingCatalogRecord && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3">
-            <h3 className="font-bold text-sm text-[#172554]">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3">
+            <h3 className="font-bold text-sm text-text-primary">
               Edit Catalog Subject ({editingCatalogRecord.subject_code})
             </h3>
             <div className="space-y-2 text-xs">
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Subject Name</label>
+                <label className="block font-semibold text-text-primary mb-1">Subject Name</label>
                 <input
                   type="text"
                   value={editingCatalogRecord.subject_name}
@@ -2108,7 +2109,7 @@ export const AdminPortalScreen: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Subject Code</label>
+                  <label className="block font-semibold text-text-primary mb-1">Subject Code</label>
                   <input
                     type="text"
                     value={editingCatalogRecord.subject_code}
@@ -2119,7 +2120,7 @@ export const AdminPortalScreen: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Verification Status</label>
+                  <label className="block font-semibold text-text-primary mb-1">Verification Status</label>
                   <select
                     value={editingCatalogRecord.verification_status}
                     onChange={(e) =>
@@ -2137,7 +2138,7 @@ export const AdminPortalScreen: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Notes</label>
+                <label className="block font-semibold text-text-primary mb-1">Notes</label>
                 <input
                   type="text"
                   value={editingCatalogRecord.notes || ''}
@@ -2166,7 +2167,7 @@ export const AdminPortalScreen: React.FC = () => {
                     notes: editingCatalogRecord.notes
                   })
                 }
-                className="flex-1 py-2 bg-[#2563EB] text-white rounded-xl text-xs font-bold cursor-pointer"
+                className="flex-1 py-2 bg-brand-blue text-white rounded-xl text-xs font-bold cursor-pointer"
               >
                 Save Changes
               </button>
@@ -2178,8 +2179,8 @@ export const AdminPortalScreen: React.FC = () => {
       {/* CONFIRM DELETE RESULT BATCH MODAL */}
       {deleteConfirmBatch && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3">
-            <h3 className="font-bold text-base text-[#172554]">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3">
+            <h3 className="font-bold text-base text-text-primary">
               Remove Published BTEB Result Batch?
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed">
@@ -2208,10 +2209,10 @@ export const AdminPortalScreen: React.FC = () => {
       {/* MODAL: VIEW SIGNED VERIFICATION FORM */}
       {selectedAppForDoc && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="font-bold text-sm text-[#172554]">
+                <h3 className="font-bold text-sm text-text-primary">
                   Uploaded Verification Form
                 </h3>
                 <p className="text-xs text-slate-500">
@@ -2227,15 +2228,15 @@ export const AdminPortalScreen: React.FC = () => {
             </div>
 
             <div className="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col items-center text-center">
-              <FileText className="w-16 h-16 text-[#2563EB] mb-2" />
-              <h4 className="text-xs font-bold text-[#172554]">
+              <FileText className="w-16 h-16 text-brand-blue mb-2" />
+              <h4 className="text-xs font-bold text-text-primary">
                 {selectedAppForDoc.verificationFormName || 'BTEB_CR_Form_Signed.pdf'}
               </h4>
               <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
                 Official BTEB Class Captain Application Form with Guide Teacher Signature & Institutional Seal.
               </p>
 
-              <div className="mt-3 p-3 bg-white rounded-lg border border-slate-200 text-xs w-full text-left space-y-1 font-mono">
+              <div className="mt-3 p-3 bg-surface rounded-lg border border-slate-200 text-xs w-full text-left space-y-1 font-mono">
                 <div>Applicant: <strong>{selectedAppForDoc.studentName}</strong></div>
                 <div>Institute: <strong>{selectedAppForDoc.college}</strong></div>
                 <div>Cohort: <strong>Sem {selectedAppForDoc.semester} · {selectedAppForDoc.shift} · Sec {selectedAppForDoc.section}</strong></div>
@@ -2257,19 +2258,19 @@ export const AdminPortalScreen: React.FC = () => {
       {/* CONFIRM CAPTAIN ACTION MODAL */}
       {actionModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
-            <h3 className="font-bold text-base text-[#172554]">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
+            <h3 className="font-bold text-base text-text-primary">
               {actionModal.action === 'approve' && 'Confirm Class Captain Approval'}
               {actionModal.action === 'reject' && 'Reject Class Captain Application'}
               {actionModal.action === 'revoke' && 'Revoke Class Captain Approval'}
             </h3>
 
             <p className="text-xs text-slate-600">
-              Student: <span className="font-bold text-[#172554]">{actionModal.app.studentName}</span> (Roll: {actionModal.app.boardRoll}, Sec {actionModal.app.section})
+              Student: <span className="font-bold text-text-primary">{actionModal.app.studentName}</span> (Roll: {actionModal.app.boardRoll}, Sec {actionModal.app.section})
             </p>
 
             <div>
-              <label className="block text-xs font-semibold text-[#172554] mb-1">
+              <label className="block text-xs font-semibold text-text-primary mb-1">
                 {actionModal.action === 'approve' ? 'Approval Remarks / Notes (Optional)' : 'Reason (Mandatory) *'}
               </label>
               <textarea
@@ -2281,7 +2282,7 @@ export const AdminPortalScreen: React.FC = () => {
                     ? 'e.g. Verified by Department Head. Officially authorized.'
                     : 'e.g. Document seal illegible, or section quota exhausted.'
                 }
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
               />
             </div>
 
@@ -2300,7 +2301,7 @@ export const AdminPortalScreen: React.FC = () => {
                 disabled={isProcessing}
                 className={`flex-1 py-2 text-xs font-semibold rounded-xl text-white shadow-xs ${
                   actionModal.action === 'approve'
-                    ? 'bg-[#0D9488] hover:bg-teal-700'
+                    ? 'bg-brand-teal hover:bg-teal-700'
                     : 'bg-red-600 hover:bg-red-700'
                 }`}
               >
@@ -2314,17 +2315,17 @@ export const AdminPortalScreen: React.FC = () => {
       {/* CONFIRM TEACHER ACTION MODAL */}
       {teacherActionModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
-            <h3 className="font-bold text-base text-[#172554]">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
+            <h3 className="font-bold text-base text-text-primary">
               {teacherActionModal.action === 'approve' ? 'Approve Faculty Verification' : 'Reject / Revoke Faculty Authorization'}
             </h3>
 
             <p className="text-xs text-slate-600">
-              Teacher: <span className="font-bold text-[#172554]">{teacherActionModal.teacher.name}</span> ({teacherActionModal.teacher.department})
+              Teacher: <span className="font-bold text-text-primary">{teacherActionModal.teacher.name}</span> ({teacherActionModal.teacher.department})
             </p>
 
             <div>
-              <label className="block text-xs font-semibold text-[#172554] mb-1">
+              <label className="block text-xs font-semibold text-text-primary mb-1">
                 Administrator Notes & Authority Verification Remarks:
               </label>
               <textarea
@@ -2332,7 +2333,7 @@ export const AdminPortalScreen: React.FC = () => {
                 value={teacherActionNotes}
                 onChange={(e) => setTeacherActionNotes(e.target.value)}
                 placeholder="e.g. Verified with Teacher Employment Registry & Departmental Head approval."
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
               />
             </div>
 
@@ -2348,7 +2349,7 @@ export const AdminPortalScreen: React.FC = () => {
                 disabled={isProcessing}
                 className={`flex-1 py-2 text-xs font-semibold rounded-xl text-white shadow-xs ${
                   teacherActionModal.action === 'approve'
-                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    ? 'bg-green-600 hover:bg-green-700'
                     : 'bg-red-600 hover:bg-red-700'
                 }`}
               >

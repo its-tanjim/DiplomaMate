@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/apiClient';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
@@ -232,7 +233,7 @@ export const WelcomeScreen: React.FC = () => {
         };
 
         try {
-          const response = await fetch('/api/students/register', {
+          const response = await apiFetch('/api/students/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newProfile)
@@ -270,7 +271,7 @@ export const WelcomeScreen: React.FC = () => {
             shift: newProfile.shift,
             section: newProfile.section
           });
-          const res = await fetch(`/api/communities/recommended?${q.toString()}`);
+          const res = await apiFetch(`/api/communities/recommended?${q.toString()}`);
           const d = await res.json();
           if (d.success && Array.isArray(d.recommendedCommunities)) {
             setRecommendedCommunities(d.recommendedCommunities);
@@ -289,7 +290,7 @@ export const WelcomeScreen: React.FC = () => {
   const handleOnboardingJoinCommunity = async (comm: AcademicCommunity) => {
     if (!onboardingProfile) return;
     try {
-      const sessionRes = await fetch('/api/auth/session', {
+      const sessionRes = await apiFetch('/api/auth/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -309,7 +310,7 @@ export const WelcomeScreen: React.FC = () => {
       const sessionData = await sessionRes.json();
       const token = sessionData.sessionToken;
 
-      const res = await fetch(`/api/communities/${comm.id}/join`, {
+      const res = await apiFetch(`/api/communities/${comm.id}/join`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -346,14 +347,14 @@ export const WelcomeScreen: React.FC = () => {
 
   if (onboardingProfile) {
     return (
-      <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-center py-8 px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-app-bg flex flex-col justify-center py-8 px-4 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-lg">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200/90 p-5 sm:p-6 space-y-4">
+          <div className="bg-surface rounded-2xl shadow-xl border border-slate-200/90 p-5 sm:p-6 space-y-4">
             <div className="text-center">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 mb-2">
                 <Users className="w-6 h-6" />
               </div>
-              <h2 className="text-xl font-bold text-[#172554]">
+              <h2 className="text-xl font-bold text-text-primary">
                 Welcome, {onboardingProfile.name}!
               </h2>
               <p className="text-xs text-slate-500 mt-1">
@@ -370,7 +371,7 @@ export const WelcomeScreen: React.FC = () => {
 
             <div className="border-t border-slate-100 pt-4">
               <div className="flex items-center justify-between mb-2.5">
-                <h3 className="text-xs font-bold text-[#172554] uppercase tracking-wider">
+                <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">
                   Recommended Academic Communities
                 </h3>
                 <span className="text-[11px] text-teal-600 font-semibold">Cohort Verified</span>
@@ -410,7 +411,7 @@ export const WelcomeScreen: React.FC = () => {
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
                             isJoined
                               ? 'bg-teal-100 text-teal-800 cursor-default'
-                              : 'bg-[#2563EB] hover:bg-blue-700 text-white cursor-pointer shadow-xs'
+                              : 'bg-brand-blue hover:bg-blue-700 text-white cursor-pointer shadow-xs'
                           }`}
                         >
                           {isJoined ? '✓ Joined' : 'Join Group'}
@@ -426,7 +427,7 @@ export const WelcomeScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={handleFinishOnboarding}
-                className="w-full py-2.5 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/20 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                className="w-full py-2.5 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/20 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
                 <span>{joinedCommunityIds.length > 0 ? 'Enter Community Hub' : 'Proceed to Dashboard'}</span>
                 <ArrowRight className="w-4 h-4" />
@@ -439,14 +440,14 @@ export const WelcomeScreen: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-center py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-app-bg flex flex-col justify-center py-8 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* App Logo & Header */}
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#2563EB] text-white shadow-md shadow-blue-500/20 mb-3">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-blue text-white shadow-md shadow-blue-500/20 mb-3">
             <GraduationCap className="w-8 h-8" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#172554] tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
             DiplomaMate
           </h1>
           <p className="mt-1 text-sm text-slate-600 font-normal">
@@ -455,7 +456,7 @@ export const WelcomeScreen: React.FC = () => {
         </div>
 
         {/* Main Card */}
-        <div className="mt-5 bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 sm:p-6">
+        <div className="mt-5 bg-surface rounded-2xl border border-slate-200/90 shadow-sm p-5 sm:p-6">
           {/* Sign In vs Sign Up Tabs */}
           <div className="flex rounded-lg bg-slate-100 p-1 mb-4">
             <button
@@ -463,7 +464,7 @@ export const WelcomeScreen: React.FC = () => {
               onClick={() => { setTab('signin'); setSignInError(''); }}
               className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
                 tab === 'signin'
-                  ? 'bg-white text-slate-900 shadow-xs'
+                  ? 'bg-surface text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -474,7 +475,7 @@ export const WelcomeScreen: React.FC = () => {
               onClick={() => { setTab('signup'); setSignInError(''); }}
               className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
                 tab === 'signup'
-                  ? 'bg-white text-slate-900 shadow-xs'
+                  ? 'bg-surface text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -493,7 +494,7 @@ export const WelcomeScreen: React.FC = () => {
                 onClick={() => { setSelectedRole('student'); setSignInError(''); }}
                 className={`py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
                   selectedRole === 'student'
-                    ? 'bg-white text-blue-700 shadow-xs'
+                    ? 'bg-surface text-blue-700 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -506,7 +507,7 @@ export const WelcomeScreen: React.FC = () => {
                 onClick={() => { setSelectedRole('class_captain'); setSignInError(''); }}
                 className={`py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
                   selectedRole === 'class_captain'
-                    ? 'bg-white text-teal-700 shadow-xs'
+                    ? 'bg-surface text-teal-700 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -519,7 +520,7 @@ export const WelcomeScreen: React.FC = () => {
                 onClick={() => { setSelectedRole('teacher'); setSignInError(''); }}
                 className={`py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
                   selectedRole === 'teacher'
-                    ? 'bg-white text-indigo-700 shadow-xs'
+                    ? 'bg-surface text-blue-700 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -542,7 +543,7 @@ export const WelcomeScreen: React.FC = () => {
               {selectedRole === 'teacher' ? (
                 <>
                   <div>
-                    <label className="block text-xs font-semibold text-[#172554] mb-1">
+                    <label className="block text-xs font-semibold text-text-primary mb-1">
                       Faculty Phone Number or Institutional Email
                     </label>
                     <input
@@ -551,12 +552,12 @@ export const WelcomeScreen: React.FC = () => {
                       placeholder="+880 1819-334455 or teacher@dpi.gov.bd"
                       value={teacherPhoneOrEmail}
                       onChange={(e) => setTeacherPhoneOrEmail(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-[#172554] mb-1 flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-text-primary mb-1 flex items-center justify-between">
                       <span>Faculty Security PIN</span>
                     </label>
                     <input
@@ -566,18 +567,18 @@ export const WelcomeScreen: React.FC = () => {
                       placeholder="Enter 4-8 digit PIN"
                       value={teacherPin}
                       onChange={(e) => setTeacherPin(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
-                  <p className="text-[11px] text-slate-500 bg-indigo-50/60 border border-indigo-100 p-2 rounded-xl">
+                  <p className="text-[11px] text-slate-500 bg-blue-50/60 border border-blue-100 p-2 rounded-xl">
                     Institutional faculty PIN is salt-hashed on the server with 5-attempt rate-limiting lockout.
                   </p>
                 </>
               ) : (
                 <>
                   <div>
-                    <label className="block text-xs font-semibold text-[#172554] mb-1">
+                    <label className="block text-xs font-semibold text-text-primary mb-1">
                       BTEB Board Roll Number
                     </label>
                     <input
@@ -591,7 +592,7 @@ export const WelcomeScreen: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-[#172554] mb-1">
+                    <label className="block text-xs font-semibold text-text-primary mb-1">
                       Registration Number
                     </label>
                     <input
@@ -617,7 +618,7 @@ export const WelcomeScreen: React.FC = () => {
                 disabled={isSubmitting}
                 className={`w-full py-2.5 rounded-xl text-xs font-bold text-white shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
                   selectedRole === 'teacher'
-                    ? 'bg-indigo-600 hover:bg-indigo-700'
+                    ? 'bg-blue-600 hover:bg-blue-700'
                     : selectedRole === 'class_captain'
                       ? 'bg-teal-600 hover:bg-teal-700'
                       : 'bg-blue-600 hover:bg-blue-700'
@@ -635,7 +636,7 @@ export const WelcomeScreen: React.FC = () => {
               {selectedRole === 'teacher' ? (
                 <>
                   <div>
-                    <label className="block text-xs font-semibold text-[#172554] mb-1">Full Name (with Title) *</label>
+                    <label className="block text-xs font-semibold text-text-primary mb-1">Full Name (with Title) *</label>
                     <input
                       type="text"
                       required
@@ -648,7 +649,7 @@ export const WelcomeScreen: React.FC = () => {
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-semibold text-[#172554] mb-1">Phone Number *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">Phone Number *</label>
                       <input
                         type="text"
                         required
@@ -659,7 +660,7 @@ export const WelcomeScreen: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-[#172554] mb-1">Official Email</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">Official Email</label>
                       <input
                         type="email"
                         placeholder="teacher@dpi.gov.bd"
@@ -685,7 +686,7 @@ export const WelcomeScreen: React.FC = () => {
                       required
                     />
                     <div>
-                      <label className="block text-xs font-semibold text-[#172554] mb-1.5">Designation</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1.5">Designation</label>
                       <select
                         value={teacherDesignation}
                         onChange={(e) => setTeacherDesignation(e.target.value)}
@@ -700,7 +701,7 @@ export const WelcomeScreen: React.FC = () => {
                   {/* Semesters Taught (Multi-select 1-8) & Regulation */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div className="sm:col-span-2">
-                      <label className="block text-xs font-semibold text-[#172554] mb-1">
+                      <label className="block text-xs font-semibold text-text-primary mb-1">
                         Semesters Taught (1–8):
                       </label>
                       <div className="grid grid-cols-4 sm:grid-cols-8 gap-1">
@@ -713,7 +714,7 @@ export const WelcomeScreen: React.FC = () => {
                               onClick={() => toggleTeacherSemester(sem)}
                               className={`py-1 text-xs font-bold rounded-lg border transition-colors ${
                                 isChecked
-                                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                                   : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                               }`}
                             >
@@ -725,7 +726,7 @@ export const WelcomeScreen: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-[#172554] mb-1">
+                      <label className="block text-xs font-semibold text-text-primary mb-1">
                         Regulation
                       </label>
                       <select
@@ -755,7 +756,7 @@ export const WelcomeScreen: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-[#172554] mb-1">Assigned Shift</label>
+                    <label className="block text-xs font-semibold text-text-primary mb-1">Assigned Shift</label>
                     <select
                       value={teacherShift}
                       onChange={(e) => setTeacherShift(e.target.value as Shift | 'Both')}
@@ -769,7 +770,7 @@ export const WelcomeScreen: React.FC = () => {
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-semibold text-[#172554] mb-1">Security PIN (4-8 digits) *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">Security PIN (4-8 digits) *</label>
                       <input
                         type="password"
                         required
@@ -781,7 +782,7 @@ export const WelcomeScreen: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-[#172554] mb-1">Confirm PIN *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">Confirm PIN *</label>
                       <input
                         type="password"
                         required
@@ -807,7 +808,7 @@ export const WelcomeScreen: React.FC = () => {
               ) : (
                 <>
                   <div>
-                    <label className="block text-xs font-semibold text-[#172554] mb-1">Student Full Name *</label>
+                    <label className="block text-xs font-semibold text-text-primary mb-1">Student Full Name *</label>
                     <input
                       type="text"
                       required
@@ -820,7 +821,7 @@ export const WelcomeScreen: React.FC = () => {
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-semibold text-[#172554] mb-1">Board Roll *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">Board Roll *</label>
                       <input
                         type="text"
                         required
@@ -831,7 +832,7 @@ export const WelcomeScreen: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-[#172554] mb-1">Registration No *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">Registration No *</label>
                       <input
                         type="text"
                         required
@@ -858,7 +859,7 @@ export const WelcomeScreen: React.FC = () => {
                       required
                     />
                     <div>
-                      <label className="block text-xs font-semibold text-[#172554] mb-1.5">Semester</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1.5">Semester</label>
                       <select
                         value={signUpData.semester}
                         onChange={(e) => setSignUpData({ ...signUpData, semester: Number(e.target.value) as SemesterNumber })}
@@ -871,7 +872,7 @@ export const WelcomeScreen: React.FC = () => {
 
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-xs font-semibold text-[#172554] mb-1">Shift</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">Shift</label>
                       <select
                         value={signUpData.shift}
                         onChange={(e) => setSignUpData({ ...signUpData, shift: e.target.value as Shift })}
@@ -882,7 +883,7 @@ export const WelcomeScreen: React.FC = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-[#172554] mb-1">Section</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">Section</label>
                       <select
                         value={signUpData.section}
                         onChange={(e) => setSignUpData({ ...signUpData, section: e.target.value as Section })}
@@ -895,7 +896,7 @@ export const WelcomeScreen: React.FC = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-[#172554] mb-1">Session</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">Session</label>
                       <select
                         value={signUpData.session}
                         onChange={(e) => setSignUpData({ ...signUpData, session: e.target.value })}
@@ -925,7 +926,7 @@ export const WelcomeScreen: React.FC = () => {
                 disabled={isSubmitting}
                 className={`w-full py-2.5 rounded-xl text-xs font-bold text-white shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
                   selectedRole === 'teacher'
-                    ? 'bg-indigo-600 hover:bg-indigo-700'
+                    ? 'bg-blue-600 hover:bg-blue-700'
                     : selectedRole === 'class_captain'
                       ? 'bg-teal-600 hover:bg-teal-700'
                       : 'bg-blue-600 hover:bg-blue-700'
@@ -943,7 +944,7 @@ export const WelcomeScreen: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveScreen('admin_login')}
-              className="font-semibold text-slate-600 hover:text-[#172554] inline-flex items-center gap-1 cursor-pointer"
+              className="font-semibold text-slate-600 hover:text-text-primary inline-flex items-center gap-1 cursor-pointer"
             >
               <Lock className="w-3 h-3" />
               <span>System Administrator Sign In →</span>

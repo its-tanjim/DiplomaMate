@@ -482,19 +482,19 @@ export const ClassRoutineScreen: React.FC = () => {
   return (
     <div className="space-y-4 pb-12">
       {/* Top Header Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#2563EB] flex items-center justify-center font-bold">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center font-bold">
                 <Calendar className="w-4 h-4" />
               </div>
-              <h1 className="text-base sm:text-lg font-bold text-[#172554]">
+              <h1 className="text-base sm:text-lg font-bold text-text-primary">
                 Class Timetable
               </h1>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Official class periods & laboratory schedule · <span className="font-semibold text-[#172554]">{userProfile.college}</span> ({userProfile.department} · Sem {userProfile.semester})
+              Official class periods & laboratory schedule · <span className="font-semibold text-text-primary">{userProfile.college}</span> ({userProfile.department} · Sem {userProfile.semester})
             </p>
           </div>
 
@@ -502,10 +502,10 @@ export const ClassRoutineScreen: React.FC = () => {
           <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
             <button
               onClick={() => setShowScheduleConfigModal(true)}
-              className="bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
               title="Configure First Period Start Time, Default Duration, Breaks & Individual Period Timings"
             >
-              <Sliders className="w-3.5 h-3.5 text-indigo-700" />
+              <Sliders className="w-3.5 h-3.5 text-blue-700" />
               <span>Period & Shift Settings</span>
             </button>
 
@@ -552,7 +552,7 @@ export const ClassRoutineScreen: React.FC = () => {
                     }));
                     setShowAddModal(true);
                   }}
-                  className="bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                  className="bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add Period</span>
@@ -566,7 +566,7 @@ export const ClassRoutineScreen: React.FC = () => {
             ) : (
               <button
                 onClick={() => setActiveScreen('captain_verification')}
-                className="bg-teal-50 hover:bg-teal-100 text-[#0D9488] border border-teal-200 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer"
+                className="bg-teal-50 hover:bg-teal-100 text-brand-teal border border-teal-200 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer"
               >
                 <Lock className="w-3.5 h-3.5" />
                 <span>Captain Verification to Edit</span>
@@ -579,13 +579,13 @@ export const ClassRoutineScreen: React.FC = () => {
         {ocrProcessing && (
           <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900">
             <div className="flex items-center gap-2.5">
-            <Sparkles className="w-4 h-4 text-[#2563EB] shrink-0" />
+            <Sparkles className="w-4 h-4 text-brand-blue shrink-0" />
               <span className="flex-1">{ocrStage || 'Scanning routine locally...'}</span>
               <span className="font-bold tabular-nums">{Math.round(ocrProgress)}%</span>
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-blue-100">
               <div
-                className="h-full rounded-full bg-[#2563EB] transition-[width] duration-300"
+                className="h-full rounded-full bg-brand-blue transition-[width] duration-300"
                 style={{ width: `${Math.min(100, Math.max(0, ocrProgress))}%` }}
               />
             </div>
@@ -601,7 +601,7 @@ export const ClassRoutineScreen: React.FC = () => {
                 onClick={() => handleShiftChange(s)}
                 className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   selectedShift === s
-                    ? 'bg-white text-[#2563EB] shadow-xs'
+                    ? 'bg-surface text-brand-blue shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -617,7 +617,7 @@ export const ClassRoutineScreen: React.FC = () => {
                 onClick={() => setSelectedSection(sec)}
                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   selectedSection === sec
-                    ? 'bg-white text-[#0D9488] shadow-xs font-bold'
+                    ? 'bg-surface text-brand-teal shadow-xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -630,17 +630,17 @@ export const ClassRoutineScreen: React.FC = () => {
         {/* Active Shift Configured Schedule Summary Bar */}
         <div className="mt-2.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-[11px]">
           <div className="flex flex-wrap items-center gap-2 text-slate-700">
-            <span className="font-bold text-indigo-950 flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-indigo-600" />
+            <span className="font-bold text-blue-950 flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5 text-blue-600" />
               {selectedShift} Shift Schedule:
             </span>
-            <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-semibold">
+            <span className="px-2 py-0.5 rounded-md bg-surface border border-slate-200 font-semibold">
               1st Period: <strong>{activeShiftSchedule.firstPeriodStartTime}</strong>
             </span>
-            <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-semibold">
+            <span className="px-2 py-0.5 rounded-md bg-surface border border-slate-200 font-semibold">
               Default Duration: <strong>{activeShiftSchedule.defaultDurationMinutes} min</strong>
             </span>
-            <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-semibold">
+            <span className="px-2 py-0.5 rounded-md bg-surface border border-slate-200 font-semibold">
               {activeShiftSchedule.numberOfPeriods} Periods
             </span>
             {activeShiftSchedule.periods.some(p => p.isManuallyEdited) && (
@@ -652,7 +652,7 @@ export const ClassRoutineScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setShowScheduleConfigModal(true)}
-            className="text-indigo-700 hover:text-indigo-900 font-bold underline cursor-pointer"
+            className="text-blue-700 hover:text-blue-900 font-bold underline cursor-pointer"
           >
             Customize {selectedShift} Timings
           </button>
@@ -672,7 +672,7 @@ export const ClassRoutineScreen: React.FC = () => {
                 onClick={() => setActiveDay(day)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
                   isActive
-                    ? 'bg-[#172554] text-white shadow-xs'
+                    ? 'bg-text-primary text-white shadow-xs'
                     : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60'
                 }`}
               >
@@ -695,21 +695,21 @@ export const ClassRoutineScreen: React.FC = () => {
       {/* Routine Periods List */}
       <div className="space-y-3">
         <div className="flex items-center justify-between px-1">
-          <h2 className="text-sm font-bold text-[#172554] flex items-center gap-1.5">
+          <h2 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
             <span>{activeDay} Schedule</span>
             <span className="text-xs text-slate-400 font-normal">
               ({dayRoutine.length} classes)
             </span>
           </h2>
-          <span className="text-[11px] font-semibold text-[#0D9488]">
+          <span className="text-[11px] font-semibold text-brand-teal">
             {selectedShift} Shift · Sec {selectedSection}
           </span>
         </div>
 
         {dayRoutine.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
             <CalendarCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <h3 className="text-sm font-bold text-[#172554]">
+            <h3 className="text-sm font-bold text-text-primary">
               No classes scheduled on {activeDay}
             </h3>
             <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
@@ -720,11 +720,11 @@ export const ClassRoutineScreen: React.FC = () => {
           dayRoutine.map((period) => (
             <div
               key={period.id}
-              className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-slate-300 transition-all space-y-3"
+              className="bg-surface rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-slate-300 transition-all space-y-3"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2563EB] flex flex-col items-center justify-center font-bold shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex flex-col items-center justify-center font-bold shrink-0">
                     <span className="text-[10px] uppercase font-semibold leading-none text-slate-400">P</span>
                     <span className="text-base leading-none mt-0.5">{period.periodNumber}</span>
                   </div>
@@ -736,7 +736,7 @@ export const ClassRoutineScreen: React.FC = () => {
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
                         period.type === 'Practical / Lab'
                           ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                          : 'bg-blue-50 text-[#2563EB] border border-blue-200'
+                          : 'bg-blue-50 text-brand-blue border border-blue-200'
                       }`}>
                         {period.type}
                       </span>
@@ -746,7 +746,7 @@ export const ClassRoutineScreen: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <h3 className="font-bold text-sm text-[#172554] mt-1">
+                    <h3 className="font-bold text-sm text-text-primary mt-1">
                       {period.subjectName}
                     </h3>
                   </div>
@@ -797,13 +797,13 @@ export const ClassRoutineScreen: React.FC = () => {
       {/* UPLOAD TIMETABLE DOCUMENT MODAL */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-teal-50 text-[#0D9488] flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-lg bg-teal-50 text-brand-teal flex items-center justify-center font-bold">
                   <Sparkles className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold text-sm text-[#172554]">Scan / Upload Class Routine</h3>
+                <h3 className="font-bold text-sm text-text-primary">Scan / Upload Class Routine</h3>
               </div>
               <button
                 onClick={() => !ocrProcessing && setShowUploadModal(false)}
@@ -828,8 +828,8 @@ export const ClassRoutineScreen: React.FC = () => {
                 className="hidden"
               />
               <label htmlFor="routineDocUploadInput" className="cursor-pointer flex flex-col items-center justify-center">
-                <Upload className="w-8 h-8 text-[#0D9488] mb-2" />
-                <span className="text-xs font-bold text-[#172554]">
+                <Upload className="w-8 h-8 text-brand-teal mb-2" />
+                <span className="text-xs font-bold text-text-primary">
                   {ocrProcessing ? (ocrStage || 'Scanning Routine...') : 'Select Timetable Photo or PDF'}
                 </span>
                 <span className="text-[11px] text-slate-500 mt-1">
@@ -855,7 +855,7 @@ export const ClassRoutineScreen: React.FC = () => {
             {pendingDocObject && !ocrProcessing && (
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
                 <div className="truncate pr-2">
-                  <span className="font-semibold text-[#172554]">{pendingDocObject.fileName}</span>
+                  <span className="font-semibold text-text-primary">{pendingDocObject.fileName}</span>
                   <span className="text-[10px] text-slate-500 ml-1.5">({pendingDocObject.fileType})</span>
                 </div>
                 <button
@@ -876,7 +876,7 @@ export const ClassRoutineScreen: React.FC = () => {
                   <span>{ocrError}</span>
                 </div>
                 {(ocrRawText || ocrDiagnostics.length > 0) && (
-                  <details className="rounded-lg border border-red-200 bg-white/70 p-2 text-slate-700">
+                  <details className="rounded-lg border border-red-200 bg-surface/70 p-2 text-slate-700">
                     <summary className="cursor-pointer font-semibold">OCR raw text & diagnostics</summary>
                     {ocrDiagnostics.length > 0 && (
                       <pre className="mt-2 whitespace-pre-wrap break-words text-[10px]">{ocrDiagnostics.join('\n')}</pre>
@@ -903,7 +903,7 @@ export const ClassRoutineScreen: React.FC = () => {
                       setShowUploadModal(false);
                       setShowAddModal(true);
                     }}
-                    className="px-3 py-1 bg-white border border-red-300 text-red-700 rounded-lg font-semibold text-[11px] cursor-pointer"
+                    className="px-3 py-1 bg-surface border border-red-300 text-red-700 rounded-lg font-semibold text-[11px] cursor-pointer"
                   >
                     Enter Period Manually
                   </button>
@@ -927,11 +927,11 @@ export const ClassRoutineScreen: React.FC = () => {
       {/* EDITABLE REVIEW SCREEN FOR EXTRACTED OCR PERIODS */}
       {showReviewModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-5 shadow-2xl border border-slate-200 my-auto animate-in fade-in zoom-in-95 duration-150 space-y-4">
+          <div className="bg-surface rounded-2xl max-w-2xl w-full p-5 shadow-2xl border border-slate-200 my-auto animate-in fade-in zoom-in-95 duration-150 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="font-bold text-sm sm:text-base text-[#172554] flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-[#0D9488]" />
+                <h3 className="font-bold text-sm sm:text-base text-text-primary flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-brand-teal" />
                   <span>Review Extracted Routine ({extractedPeriods.length} Classes)</span>
                 </h3>
                 <p className="text-xs text-slate-500">
@@ -942,8 +942,8 @@ export const ClassRoutineScreen: React.FC = () => {
             </div>
 
             {detectedRoutineMeta && (
-              <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-[#172554] flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-bold text-[#2563EB]">Detected Routine Header:</span>
+              <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-text-primary flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-bold text-brand-blue">Detected Routine Header:</span>
                 {detectedRoutineMeta.college && <span>College: <strong>{detectedRoutineMeta.college}</strong></span>}
                 {detectedRoutineMeta.department && <span>Dept: <strong>{detectedRoutineMeta.department}</strong></span>}
                 {detectedRoutineMeta.semester && <span>Semester: <strong>{detectedRoutineMeta.semester}</strong></span>}
@@ -964,7 +964,7 @@ export const ClassRoutineScreen: React.FC = () => {
             )}
 
             <details className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs">
-              <summary className="cursor-pointer font-semibold text-[#172554]">
+              <summary className="cursor-pointer font-semibold text-text-primary">
                 Raw OCR text & diagnostics
               </summary>
               {ocrDiagnostics.length > 0 && (
@@ -992,7 +992,7 @@ export const ClassRoutineScreen: React.FC = () => {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-[#172554]">
+                        <span className="font-bold text-text-primary">
                           Slot #{idx + 1} · {period.day} (Period {period.periodNumber})
                         </span>
                         {uncertain.length > 0 && (
@@ -1016,7 +1016,7 @@ export const ClassRoutineScreen: React.FC = () => {
                         <select
                           value={uncertain.includes('type') ? '' : period.type}
                           onChange={(e) => handleUpdateExtractedPeriod(idx, 'type', e.target.value)}
-                          className={`w-full px-2 py-1 bg-white border rounded text-xs ${
+                          className={`w-full px-2 py-1 bg-surface border rounded text-xs ${
                             uncertain.includes('type') ? 'border-amber-400 bg-amber-50/30' : 'border-slate-200'
                           }`}
                         >
@@ -1030,7 +1030,7 @@ export const ClassRoutineScreen: React.FC = () => {
                         <select
                           value={period.day}
                           onChange={(e) => handleUpdateExtractedPeriod(idx, 'day', e.target.value)}
-                          className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                          className="w-full px-2 py-1 bg-surface border border-slate-200 rounded text-xs"
                         >
                           {WEEKDAYS.map(d => <option key={d} value={d}>{d}</option>)}
                         </select>
@@ -1044,7 +1044,7 @@ export const ClassRoutineScreen: React.FC = () => {
                           value={period.periodNumber > 0 ? period.periodNumber : ''}
                           placeholder="Not detected"
                           onChange={(e) => handleUpdateExtractedPeriod(idx, 'periodNumber', e.target.value ? Number(e.target.value) : 0)}
-                          className={`w-full px-2 py-1 bg-white border rounded text-xs ${
+                          className={`w-full px-2 py-1 bg-surface border rounded text-xs ${
                             uncertain.includes('periodNumber') ? 'border-amber-400 bg-amber-50/30' : 'border-slate-200'
                           }`}
                         />
@@ -1056,7 +1056,7 @@ export const ClassRoutineScreen: React.FC = () => {
                           type="text"
                           value={period.subjectCode}
                           onChange={(e) => handleUpdateExtractedPeriod(idx, 'subjectCode', e.target.value)}
-                          className={`w-full px-2 py-1 bg-white border rounded text-xs ${
+                          className={`w-full px-2 py-1 bg-surface border rounded text-xs ${
                             uncertain.includes('subjectCode') ? 'border-amber-400 bg-amber-50/30' : 'border-slate-200'
                           }`}
                         />
@@ -1068,7 +1068,7 @@ export const ClassRoutineScreen: React.FC = () => {
                           type="text"
                           value={period.subjectName}
                           onChange={(e) => handleUpdateExtractedPeriod(idx, 'subjectName', e.target.value)}
-                          className={`w-full px-2 py-1 bg-white border rounded text-xs font-semibold ${
+                          className={`w-full px-2 py-1 bg-surface border rounded text-xs font-semibold ${
                             uncertain.includes('subjectName') ? 'border-amber-400 bg-amber-50/30' : 'border-slate-200'
                           }`}
                         />
@@ -1083,7 +1083,7 @@ export const ClassRoutineScreen: React.FC = () => {
                           value={period.startTime}
                           placeholder="Not detected"
                           onChange={(e) => handleUpdateExtractedPeriod(idx, 'startTime', e.target.value)}
-                          className={`w-full px-2 py-1 bg-white border rounded text-xs ${
+                          className={`w-full px-2 py-1 bg-surface border rounded text-xs ${
                             uncertain.includes('time') ? 'border-amber-400 bg-amber-50/30' : 'border-slate-200'
                           }`}
                         />
@@ -1095,7 +1095,7 @@ export const ClassRoutineScreen: React.FC = () => {
                           value={period.endTime}
                           placeholder="Not detected"
                           onChange={(e) => handleUpdateExtractedPeriod(idx, 'endTime', e.target.value)}
-                          className={`w-full px-2 py-1 bg-white border rounded text-xs ${
+                          className={`w-full px-2 py-1 bg-surface border rounded text-xs ${
                             uncertain.includes('time') ? 'border-amber-400 bg-amber-50/30' : 'border-slate-200'
                           }`}
                         />
@@ -1107,7 +1107,7 @@ export const ClassRoutineScreen: React.FC = () => {
                           value={period.teacherName}
                           placeholder="Not detected"
                           onChange={(e) => handleUpdateExtractedPeriod(idx, 'teacherName', e.target.value)}
-                          className={`w-full px-2 py-1 bg-white border rounded text-xs ${
+                          className={`w-full px-2 py-1 bg-surface border rounded text-xs ${
                             uncertain.includes('teacherName') ? 'border-amber-400 bg-amber-50/30' : 'border-slate-200'
                           }`}
                         />
@@ -1119,7 +1119,7 @@ export const ClassRoutineScreen: React.FC = () => {
                           value={period.room}
                           placeholder="Not detected"
                           onChange={(e) => handleUpdateExtractedPeriod(idx, 'room', e.target.value)}
-                          className={`w-full px-2 py-1 bg-white border rounded text-xs ${
+                          className={`w-full px-2 py-1 bg-surface border rounded text-xs ${
                             uncertain.includes('room') ? 'border-amber-400 bg-amber-50/30' : 'border-slate-200'
                           }`}
                         />
@@ -1142,7 +1142,7 @@ export const ClassRoutineScreen: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleAddBlankPeriodToReview}
-                  className="px-3 py-2 rounded-xl border border-teal-200 bg-teal-50 text-[#0D9488] text-xs font-semibold hover:bg-teal-100 cursor-pointer flex items-center gap-1"
+                  className="px-3 py-2 rounded-xl border border-teal-200 bg-teal-50 text-brand-teal text-xs font-semibold hover:bg-teal-100 cursor-pointer flex items-center gap-1"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add Row</span>
@@ -1152,7 +1152,7 @@ export const ClassRoutineScreen: React.FC = () => {
                 type="button"
                 onClick={handleConfirmExtractedRoutine}
                 disabled={isPublishingExtractedRoutine}
-                className="px-5 py-2 rounded-xl bg-[#0D9488] hover:bg-teal-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                className="px-5 py-2 rounded-xl bg-brand-teal hover:bg-teal-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
               >
                 <Save className="w-3.5 h-3.5" />
                 <span>{isPublishingExtractedRoutine ? 'Publishing...' : 'Confirm & Publish Routine'}</span>
@@ -1165,10 +1165,10 @@ export const ClassRoutineScreen: React.FC = () => {
       {/* ORIGINAL PRESERVED ROUTINE DOCUMENT VIEWER MODAL */}
       {selectedOriginalDoc && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div>
-                <h3 className="font-bold text-sm text-[#172554]">{selectedOriginalDoc.fileName}</h3>
+                <h3 className="font-bold text-sm text-text-primary">{selectedOriginalDoc.fileName}</h3>
                 <p className="text-xs text-slate-500">Uploaded {selectedOriginalDoc.uploadedAt.slice(0, 10)} by {selectedOriginalDoc.uploadedBy}</p>
               </div>
               <button onClick={() => setSelectedOriginalDoc(null)} className="text-slate-400 font-bold p-1">✕</button>
@@ -1179,12 +1179,12 @@ export const ClassRoutineScreen: React.FC = () => {
                 <img src={selectedOriginalDoc.dataUrl} alt="Preserved Routine" className="max-w-full h-auto rounded-lg shadow-xs" />
               ) : (
                 <div className="p-8 text-center space-y-2">
-                  <FileText className="w-12 h-12 text-[#2563EB] mx-auto" />
-                  <p className="text-xs font-bold text-[#172554]">Preserved Routine PDF</p>
+                  <FileText className="w-12 h-12 text-brand-blue mx-auto" />
+                  <p className="text-xs font-bold text-text-primary">Preserved Routine PDF</p>
                   <a
                     href={selectedOriginalDoc.dataUrl}
                     download={selectedOriginalDoc.fileName}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#2563EB] text-white rounded-lg text-xs font-semibold"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-blue text-white rounded-lg text-xs font-semibold"
                   >
                     Download Original PDF
                   </a>
@@ -1207,10 +1207,10 @@ export const ClassRoutineScreen: React.FC = () => {
       {/* MANUAL ADD PERIOD MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3 max-h-[92vh] overflow-y-auto">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div>
-                <h3 className="font-bold text-sm text-[#172554]">Add Class Period</h3>
+                <h3 className="font-bold text-sm text-text-primary">Add Class Period</h3>
                 <p className="text-[11px] text-slate-500">
                   {selectedShift} Shift · 1st Period {activeShiftSchedule.firstPeriodStartTime} ({activeShiftSchedule.defaultDurationMinutes}m default)
                 </p>
@@ -1222,22 +1222,22 @@ export const ClassRoutineScreen: React.FC = () => {
               {/* Shift & Weekday Selection */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Shift</label>
+                  <label className="block font-semibold text-text-primary mb-1">Shift</label>
                   <select
                     value={selectedShift}
                     onChange={(e) => handleShiftChange(e.target.value as Shift)}
-                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[#172554] font-semibold"
+                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-text-primary font-semibold"
                   >
                     <option value="Morning">Morning Shift (08:00 AM)</option>
                     <option value="Day">Day Shift (01:30 PM)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Weekday</label>
+                  <label className="block font-semibold text-text-primary mb-1">Weekday</label>
                   <select
                     value={formData.day}
                     onChange={(e) => setFormData({ ...formData, day: e.target.value as WeekDay })}
-                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   >
                     {WEEKDAYS.map(d => <option key={d} value={d}>{d}</option>)}
                   </select>
@@ -1245,15 +1245,15 @@ export const ClassRoutineScreen: React.FC = () => {
               </div>
 
               {/* Manual Period Selection (Requirement D: Never auto-select a period) */}
-              <div className="p-2.5 rounded-xl bg-indigo-50/60 border border-indigo-200 space-y-2">
+              <div className="p-2.5 rounded-xl bg-blue-50/60 border border-blue-200 space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="block font-bold text-[#172554]">
+                  <label className="block font-bold text-text-primary">
                     Select Desired Period *
                   </label>
                   <button
                     type="button"
                     onClick={() => setShowScheduleConfigModal(true)}
-                    className="text-[11px] font-bold text-indigo-700 hover:underline flex items-center gap-1"
+                    className="text-[11px] font-bold text-blue-700 hover:underline flex items-center gap-1"
                   >
                     <Sliders className="w-3 h-3" />
                     <span>Configure Shift Periods</span>
@@ -1263,7 +1263,7 @@ export const ClassRoutineScreen: React.FC = () => {
                   required
                   value={selectedPeriodSlotNumber}
                   onChange={(e) => handleSelectPeriodSlot(e.target.value)}
-                  className="w-full px-2.5 py-2 bg-white border border-indigo-200 rounded-lg text-[#172554] font-semibold"
+                  className="w-full px-2.5 py-2 bg-surface border border-blue-200 rounded-lg text-text-primary font-semibold"
                 >
                   <option value="">-- Select Desired Period --</option>
                   {activeShiftSchedule.periods.map((slot) => (
@@ -1274,7 +1274,7 @@ export const ClassRoutineScreen: React.FC = () => {
                   ))}
                 </select>
                 {selectedPeriodSlotNumber === '' && (
-                  <p className="text-[10px] text-indigo-800">
+                  <p className="text-[10px] text-blue-800">
                     Periods are not auto-selected. Please choose a period slot above.
                   </p>
                 )}
@@ -1289,22 +1289,22 @@ export const ClassRoutineScreen: React.FC = () => {
                 />
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block font-semibold text-[#172554] mb-1">Regulation</label>
+                    <label className="block font-semibold text-text-primary mb-1">Regulation</label>
                     <select
                       value={routineRegulation}
                       onChange={(e) => setRoutineRegulation(e.target.value as CatalogRegulation)}
-                      className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[#172554] font-semibold"
+                      className="w-full px-2 py-1.5 bg-surface border border-slate-200 rounded-lg text-text-primary font-semibold"
                     >
                       <option value="2022">2022 Regulation</option>
                       <option value="2016">2016 Regulation</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block font-semibold text-[#172554] mb-1">Semester (1-8)</label>
+                    <label className="block font-semibold text-text-primary mb-1">Semester (1-8)</label>
                     <select
                       value={routineSemester}
                       onChange={(e) => setRoutineSemester(Number(e.target.value) as SemesterNumber)}
-                      className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[#172554] font-semibold"
+                      className="w-full px-2 py-1.5 bg-surface border border-slate-200 rounded-lg text-text-primary font-semibold"
                     >
                       {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
                         <option key={s} value={s}>Semester {s}</option>
@@ -1342,11 +1342,11 @@ export const ClassRoutineScreen: React.FC = () => {
               />
 
               <div>
-                <label className="block font-semibold text-[#172554] mb-1">Class Type</label>
+                <label className="block font-semibold text-text-primary mb-1">Class Type</label>
                 <select
                   value={formData.type}
                   onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-                  className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                  className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 >
                   <option value="Theory">Theory</option>
                   <option value="Practical / Lab">Practical / Lab</option>
@@ -1390,31 +1390,31 @@ export const ClassRoutineScreen: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Instructor / Teacher *</label>
+                  <label className="block font-semibold text-text-primary mb-1">Instructor / Teacher *</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Engr. Tanvir Ahmed"
                     value={formData.teacherName}
                     onChange={(e) => setFormData({ ...formData, teacherName: e.target.value })}
-                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#172554] mb-1">Room / Lab</label>
+                  <label className="block font-semibold text-text-primary mb-1">Room / Lab</label>
                   <input
                     type="text"
                     placeholder="Room 304, Lab 2"
                     value={formData.room}
                     onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[#172554]"
+                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                   />
                 </div>
               </div>
 
               <div className="p-2.5 rounded-xl bg-teal-50/70 border border-teal-200 flex items-center justify-between gap-2">
                 <div>
-                  <span className="block font-bold text-[#172554] text-[11px]">Publication Status</span>
+                  <span className="block font-bold text-text-primary text-[11px]">Publication Status</span>
                   <span className="text-[10px] text-teal-800">
                     Target Group: {userProfile.college} · {routineTechnology} · Sem {routineSemester} ({selectedShift} · Sec {selectedSection})
                   </span>
@@ -1422,7 +1422,7 @@ export const ClassRoutineScreen: React.FC = () => {
                 <select
                   value={formData.publication_status || 'published'}
                   onChange={(e) => setFormData({ ...formData, publication_status: e.target.value as any })}
-                  className="px-2 py-1.5 bg-white border border-teal-300 rounded-lg text-xs font-bold text-[#172554]"
+                  className="px-2 py-1.5 bg-surface border border-teal-300 rounded-lg text-xs font-bold text-text-primary"
                 >
                   <option value="published">Publish Now</option>
                   <option value="draft">Save as Draft</option>
@@ -1439,7 +1439,7 @@ export const ClassRoutineScreen: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-xl bg-[#2563EB] text-white font-semibold shadow-xs"
+                  className="flex-1 py-2 rounded-xl bg-brand-blue text-white font-semibold shadow-xs"
                 >
                   {formData.publication_status === 'draft' ? 'Save Draft' : 'Publish Period'}
                 </button>

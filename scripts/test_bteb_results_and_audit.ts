@@ -89,6 +89,9 @@ async function runTests() {
     const hyphenRoll = encodeURIComponent('750-102');
     const res2 = await fetch(`${BASE_URL}/api/results/lookup?roll=${hyphenRoll}&curriculum=diploma_in_engineering&regulation=all`);
     const data2 = await res2.json();
+    const individualParams = new URLSearchParams({ roll: '542-880' });
+    const individualRes = await fetch(`${BASE_URL}/api/results/individual?${individualParams.toString()}`);
+    const individualData = await individualRes.json();
 
     const passed =
       res1.status === 200 &&
@@ -96,12 +99,15 @@ async function runTests() {
       data1.statement?.rollNumber === '542880' &&
       res2.status === 200 &&
       data2.found === true &&
-      data2.statement?.rollNumber === '750102';
+      data2.statement?.rollNumber === '750102' &&
+      individualRes.status === 200 &&
+      individualData.found === true &&
+      individualData.records?.length >= 5;
 
     recordTest(
-      '3. Bangla Numerals & Hyphen/Whitespace Roll Sanitization (" ৫৪২৮৮০ ", "750-102")',
+      '3. Roll Normalization Across Statement and Individual Lookup',
       Boolean(passed),
-      `Bangla->${data1.statement?.rollNumber} (found=${data1.found}), Hyphen->${data2.statement?.rollNumber} (found=${data2.found})`
+      `Bangla->${data1.statement?.rollNumber} (found=${data1.found}), hyphen->${data2.statement?.rollNumber} (found=${data2.found}), individualRecords=${individualData.records?.length}`
     );
   } catch (err: any) {
     recordTest('3. Bangla Numerals & Whitespace Sanitization', false, err.message);
@@ -148,11 +154,16 @@ async function runTests() {
   try {
     const res = await fetch(`${BASE_URL}/api/results/lookup?roll=999999&curriculum=diploma_in_engineering&regulation=all`);
     const data = await res.json();
-    // Must either be found:false (verified empty upstream) OR externalUnavailable:true (if upstream rate-limited/timed out), NEVER fabricated data
+    // Missing local records are not proof that BTEB has no result when no authorized API is configured.
     const passed =
-      res.status === 200 &&
+      res.status === 503 &&
       data.statement == null &&
-      (data.found === false || data.externalUnavailable === true);
+      data.success === false &&
+      data.found === false &&
+      data.externalUnavailable === true &&
+      data.manualVerificationRequired === true &&
+      data.officialPortalUrl === 'https://result.bteb.gov.bd/result-search' &&
+      typeof data.error === 'string';
 
     recordTest(
       '6. Non-Existent Roll Integrity (999999 — Zero Fabricated Data & Honest Upstream Status)',

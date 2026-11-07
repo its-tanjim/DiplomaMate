@@ -1,3 +1,4 @@
+import { apiFetch } from '../../services/apiClient';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search,
@@ -132,7 +133,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
           regulation: activeRegulation,
           semesters: semesterKey
         });
-        const res = await fetch(`/api/catalog/subjects?${params.toString()}`);
+        const res = await apiFetch(`/api/catalog/subjects?${params.toString()}`);
         const data = await res.json();
         if (!cancelled && res.ok && Array.isArray(data.records)) {
           setRecords(data.records);
@@ -307,7 +308,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
       {/* Header Row with Label + Regulation Toggle */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-          <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+          <BookOpen className="w-3.5 h-3.5 text-blue-600" />
           <span>{label}</span>
           {required && <span className="text-rose-500">*</span>}
         </label>
@@ -322,7 +323,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                 onClick={() => handleRegulationChange(reg)}
                 className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all ${
                   activeRegulation === reg
-                    ? 'bg-indigo-600 text-white shadow-xs'
+                    ? 'bg-blue-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -335,17 +336,17 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
 
       {/* Criteria Banner */}
       {resolvedTech && normalizedSemesters.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50/70 border border-indigo-100 text-[11px] text-indigo-900">
+        <div className="flex flex-wrap items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-50/70 border border-blue-100 text-[11px] text-blue-900">
           <div className="flex items-center gap-1.5 font-medium truncate">
-            <span className="font-bold text-indigo-700">{resolvedTech.shortCode}</span>
-            <span className="text-indigo-300">•</span>
+            <span className="font-bold text-blue-700">{resolvedTech.shortCode}</span>
+            <span className="text-blue-300">•</span>
             <span>Reg {activeRegulation}</span>
-            <span className="text-indigo-300">•</span>
+            <span className="text-blue-300">•</span>
             <span>
               Sem {normalizedSemesters.join(', ')}
             </span>
           </div>
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white text-indigo-700 border border-indigo-200/70 shrink-0">
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-surface text-blue-700 border border-blue-200/70 shrink-0">
             {loading ? 'Loading...' : `${records.length} catalog subject${records.length === 1 ? '' : 's'}`}
           </span>
         </div>
@@ -372,9 +373,9 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                 <button
                   type="button"
                   onClick={() => setManualMode(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 text-[11px] font-bold hover:bg-slate-100 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface border border-slate-300 text-slate-700 text-[11px] font-bold hover:bg-slate-100 transition-colors"
                 >
-                  <Edit3 className="w-3.5 h-3.5 text-indigo-600" />
+                  <Edit3 className="w-3.5 h-3.5 text-blue-600" />
                   Use Exceptional Manual Subject Entry
                 </button>
               )}
@@ -389,15 +390,15 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                     onClick={() => setIsOpen(!isOpen)}
                     className={`w-full flex items-center justify-between gap-2 px-3 ${
                       compact ? 'py-2' : 'py-2.5'
-                    } bg-white border rounded-xl text-left transition-all ${
+                    } bg-surface border rounded-xl text-left transition-all ${
                       selectedCode && selectedName
-                        ? 'border-indigo-300 bg-indigo-50/20'
+                        ? 'border-blue-300 bg-blue-50/20'
                         : 'border-slate-200 hover:border-slate-300'
                     }`}
                   >
                     {selectedCode && selectedName ? (
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="px-2 py-0.5 rounded-md bg-indigo-600 text-white font-mono text-xs font-bold shrink-0">
+                        <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white font-mono text-xs font-bold shrink-0">
                           {selectedCode}
                         </span>
                         <span className="text-xs sm:text-sm font-bold text-slate-900 truncate">
@@ -413,7 +414,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                   </button>
 
                   {isOpen && (
-                    <div className="absolute z-40 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+                    <div className="absolute z-40 left-0 right-0 mt-1.5 bg-surface border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
                       <div className="p-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
                         <Search className="w-4 h-4 text-slate-400 ml-1 shrink-0" />
                         <input
@@ -456,12 +457,12 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                                 type="button"
                                 onClick={() => handleSinglePick(rec)}
                                 className={`w-full px-3 py-2.5 text-left flex items-start justify-between gap-2 transition-colors ${
-                                  isSelected ? 'bg-indigo-50/80' : 'hover:bg-slate-50'
+                                  isSelected ? 'bg-blue-50/80' : 'hover:bg-slate-50'
                                 }`}
                               >
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                    <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
                                       {rec.subject_code}
                                     </span>
                                     <span className="text-xs sm:text-sm font-bold text-slate-900">
@@ -494,7 +495,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                                   <span
                                     className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
                                       rec.verification_status === 'verified'
-                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                        ? 'bg-green-50 text-green-700 border border-green-200'
                                         : 'bg-amber-50 text-amber-700 border border-amber-200'
                                     }`}
                                   >
@@ -505,7 +506,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                                     )}
                                     {rec.verification_status}
                                   </span>
-                                  {isSelected && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
+                                  {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
                                 </div>
                               </button>
                             );
@@ -519,7 +520,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
 
               {/* Multi-Select Mode */}
               {isMulti && (
-                <div className="border border-slate-200 rounded-xl bg-white overflow-hidden">
+                <div className="border border-slate-200 rounded-xl bg-surface overflow-hidden">
                   <div className="p-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
                     <Search className="w-4 h-4 text-slate-400 ml-1 shrink-0" />
                     <input
@@ -542,11 +543,11 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
 
                   {/* Selected Multi Tags */}
                   {selectedSubjects.length > 0 && (
-                    <div className="p-2 bg-indigo-50/40 border-b border-slate-100 flex flex-wrap gap-1.5">
+                    <div className="p-2 bg-blue-50/40 border-b border-slate-100 flex flex-wrap gap-1.5">
                       {selectedSubjects.map((subj) => (
                         <span
                           key={subj}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-bold"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-600 text-white text-[11px] font-bold"
                         >
                           <span>{subj}</span>
                           <button
@@ -559,7 +560,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                               );
                               onMultiSelect(next, nextRecs);
                             }}
-                            className="hover:text-indigo-200"
+                            className="hover:text-blue-200"
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -584,12 +585,12 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                             type="button"
                             onClick={() => handleToggleMulti(rec)}
                             className={`w-full px-3 py-2 text-left flex items-center justify-between gap-2 transition-colors ${
-                              checked ? 'bg-indigo-50/70' : 'hover:bg-slate-50'
+                              checked ? 'bg-blue-50/70' : 'hover:bg-slate-50'
                             }`}
                           >
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono text-[11px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
                                   {rec.subject_code}
                                 </span>
                                 <span className="text-xs font-bold text-slate-900">
@@ -602,7 +603,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                               <span
                                 className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
                                   rec.verification_status === 'verified'
-                                    ? 'bg-emerald-50 text-emerald-700'
+                                    ? 'bg-green-50 text-green-700'
                                     : 'bg-amber-50 text-amber-700'
                                 }`}
                               >
@@ -611,8 +612,8 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                               <div
                                 className={`w-4 h-4 rounded flex items-center justify-center border ${
                                   checked
-                                    ? 'bg-indigo-600 border-indigo-600 text-white'
-                                    : 'border-slate-300 bg-white'
+                                    ? 'bg-blue-600 border-blue-600 text-white'
+                                    : 'border-slate-300 bg-surface'
                                 }`}
                               >
                                 {checked && <CheckCircle2 className="w-3 h-3" />}
@@ -639,7 +640,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                       setManualCode(selectedCode || '');
                       setManualName(selectedName || '');
                     }}
-                    className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 underline"
+                    className="text-[10px] font-bold text-slate-500 hover:text-blue-600 underline"
                   >
                     Exceptional Manual Entry
                   </button>
@@ -662,7 +663,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
               <button
                 type="button"
                 onClick={() => setManualMode(false)}
-                className="text-[10px] font-bold text-indigo-700 hover:underline"
+                className="text-[10px] font-bold text-blue-700 hover:underline"
               >
                 Back to Central Catalog ({records.length})
               </button>
@@ -682,7 +683,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                   }
                 }}
                 placeholder="e.g. 66661"
-                className="w-full px-2.5 py-2 bg-white border border-amber-300 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:border-indigo-500"
+                className="w-full px-2.5 py-2 bg-surface border border-amber-300 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:border-blue-500"
               />
             </div>
             <div className="sm:col-span-2">
@@ -699,7 +700,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
                     }
                   }}
                   placeholder="Enter official subject title"
-                  className="w-full px-2.5 py-2 bg-white border border-amber-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                  className="w-full px-2.5 py-2 bg-surface border border-amber-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-500"
                 />
                 {isMulti && (
                   <button

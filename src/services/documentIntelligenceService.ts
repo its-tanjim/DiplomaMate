@@ -1,3 +1,4 @@
+import { apiFetch } from './apiClient';
 import type {
   DocumentScanFeature,
   DocumentScanResult,
@@ -356,7 +357,7 @@ export async function scanDocumentOnServer(params: {
       headers['Authorization'] = `Bearer ${params.authToken}`;
     }
 
-    const res = await fetch('/api/documents/scan', {
+    const res = await apiFetch('/api/documents/scan', {
       method: 'POST',
       headers,
       body: JSON.stringify({

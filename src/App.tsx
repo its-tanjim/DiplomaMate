@@ -66,10 +66,10 @@ const AppContent: React.FC = () => {
 
   if (activeScreen === 'admin_login') {
     return (
-      <div className="min-h-screen bg-[#F8FAFC]">
+      <div className="min-h-screen bg-app-bg">
         <AdminLoginScreen />
         {toastMessage && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#172554] text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-text-primary text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-150">
             <CheckCircle2 className="w-4 h-4 text-teal-400" />
             <span>{toastMessage}</span>
           </div>
@@ -82,10 +82,10 @@ const AppContent: React.FC = () => {
   // (Unless user navigated directly to admin_portal to verify 403 guard)
   if ((!isLoggedIn || activeScreen === 'welcome') && activeScreen !== 'admin_portal') {
     return (
-      <div className="min-h-screen bg-[#F8FAFC]">
+      <div className="min-h-screen bg-app-bg">
         <WelcomeScreen />
         {toastMessage && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#172554] text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-text-primary text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-150">
             <CheckCircle2 className="w-4 h-4 text-teal-400" />
             <span>{toastMessage}</span>
           </div>
@@ -97,7 +97,7 @@ const AppContent: React.FC = () => {
   const isWideScreen = activeScreen === 'notes' || activeScreen === 'bteb_results' || activeScreen === 'book_list' || activeScreen === 'admin_portal' || activeScreen === 'teacher_portal' || activeScreen === 'community' || (activeScreen === 'home' && accountType === 'system_admin');
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-[#172554] flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
+    <div className="min-h-screen bg-app-bg text-text-primary flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
       {/* Top Mobile Bar */}
       <MobileHeader />
 
@@ -133,7 +133,7 @@ const AppContent: React.FC = () => {
 
       {/* Toast Notification Banner */}
       {toastMessage && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-[#172554] text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xl flex items-center gap-2 border border-slate-700/80 max-w-sm text-center animate-in fade-in slide-in-from-bottom-2 duration-150">
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-text-primary text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xl flex items-center gap-2 border border-slate-700/80 max-w-sm text-center animate-in fade-in slide-in-from-bottom-2 duration-150">
           <CheckCircle2 className="w-4 h-4 text-teal-400 shrink-0" />
           <span>{toastMessage}</span>
         </div>
