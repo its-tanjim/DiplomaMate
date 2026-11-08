@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { apiFetch } from '../../services/apiClient';
 import { 
   CalendarDays, 
   FileText, 
@@ -22,7 +23,9 @@ import {
   PhoneCall,
   Briefcase
 } from 'lucide-react';
-import { ScreenType, WeekDay } from '../../types';
+import { BtebOfficialNotice, ScreenType, WeekDay } from '../../types';
+
+const BTEB_HOME_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
 export const HomeScreen: React.FC = () => {
   const { 
@@ -47,6 +50,70 @@ export const HomeScreen: React.FC = () => {
   const [noticeTitle, setNoticeTitle] = useState('');
   const [noticeContent, setNoticeContent] = useState('');
   const [noticePriority, setNoticePriority] = useState<'Important' | 'Normal'>('Important');
+  const [btebNotices, setBtebNotices] = useState<BtebOfficialNotice[]>([]);
+  const [isLoadingBtebNotices, setIsLoadingBtebNotices] = useState(true);
+  const [btebNoticeError, setBtebNoticeError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+    let isFetching = false;
+    let lastRequestedAt = 0;
+
+    const fetchLatestBtebNotices = async (ignoreThrottle = false) => {
+      if (isFetching || (!ignoreThrottle && Date.now() - lastRequestedAt < 60_000)) return;
+      isFetching = true;
+      lastRequestedAt = Date.now();
+
+      try {
+        const response = await apiFetch('/api/notices/bteb?page=1&pageSize=2');
+        const data: {
+          success?: boolean;
+          error?: string;
+          syncError?: string | null;
+          notices?: BtebOfficialNotice[];
+        } = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to load official BTEB notices.');
+        }
+
+        if (isActive) {
+          setBtebNotices(Array.isArray(data.notices) ? data.notices.slice(0, 2) : []);
+          setBtebNoticeError(data.syncError ? 'Showing saved notices while the BTEB source is unavailable.' : null);
+        }
+      } catch {
+        if (isActive) {
+          setBtebNoticeError('Official BTEB notices could not be refreshed. Please try again later.');
+        }
+      } finally {
+        isFetching = false;
+        if (isActive) {
+          setIsLoadingBtebNotices(false);
+        }
+      }
+    };
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchLatestBtebNotices();
+      }
+    };
+
+    void fetchLatestBtebNotices(true);
+    const refreshInterval = window.setInterval(
+      () => void fetchLatestBtebNotices(true),
+      BTEB_HOME_REFRESH_INTERVAL_MS
+    );
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(refreshInterval);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, []);
 
   // Find next class or today's classes strictly for the student's academic group (never use an unfiltered global fallback)
   const todayName: WeekDay = 'Saturday'; // Default realistic academic day in polytechnic
@@ -78,9 +145,9 @@ export const HomeScreen: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5 pb-6">
+    <div className="space-y-6 pb-6">
       {/* Student Profile Hero Card */}
-      <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-text-primary rounded-2xl p-4 sm:p-5 text-white shadow-md shadow-blue-900/10 relative overflow-hidden">
+      <div className="bg-brand-blue rounded-2xl p-5 sm:p-6 text-white shadow-md shadow-blue-900/10 relative overflow-hidden">
         {/* Soft decorative accent */}
         <div className="absolute -right-8 -bottom-8 w-40 h-40 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
         
@@ -175,7 +242,7 @@ export const HomeScreen: React.FC = () => {
 
       {/* Up Next Class Alert Banner */}
       {nextClass && (
-        <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
+        <div className="dm-card p-4 sm:p-5">
           <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
             <div className="flex items-center gap-1.5 font-medium text-brand-blue">
               <Clock className="w-3.5 h-3.5" />
@@ -212,7 +279,7 @@ export const HomeScreen: React.FC = () => {
       )}
 
       {/* Announcements / Notice Board */}
-      {announcements.length > 0 && (
+      {(announcements.length > 0 || btebNotices.length > 0 || isLoadingBtebNotices || btebNoticeError) && (
         <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
             <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider">
@@ -226,7 +293,7 @@ export const HomeScreen: React.FC = () => {
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="bg-surface rounded-2xl border border-slate-200 p-3.5 space-y-2.5 shadow-xs">
+          <div className="dm-card p-4 space-y-3">
             {announcements.slice(0, 2).map((ann) => (
               <div key={ann.id} className="border-b border-slate-100 last:border-0 pb-2.5 last:pb-0">
                 <div className="flex items-center justify-between gap-2 mb-1">
@@ -241,6 +308,41 @@ export const HomeScreen: React.FC = () => {
                 </div>
               </div>
             ))}
+            {btebNotices.map((notice) => (
+              <div key={notice.id} className="border-b border-slate-100 last:border-0 pb-2.5 last:pb-0">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <a
+                    href={notice.noticeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-bold text-text-primary hover:text-brand-blue"
+                  >
+                    {notice.title}
+                  </a>
+                  <span className="text-[10px] text-slate-400 font-medium shrink-0">{notice.publishedDateDisplay}</span>
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">
+                  {notice.sourceLabel} · {notice.category}
+                  {notice.pdfUrl && (
+                    <>
+                      {' · '}
+                      <a href={notice.pdfUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-blue hover:underline">
+                        View PDF
+                      </a>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+            {isLoadingBtebNotices && btebNotices.length === 0 && (
+              <p className="text-xs text-slate-500">Loading official BTEB notices...</p>
+            )}
+            {btebNoticeError && (
+              <p className="text-xs text-amber-700">{btebNoticeError}</p>
+            )}
+            {!isLoadingBtebNotices && btebNotices.length === 0 && !btebNoticeError && (
+              <p className="text-xs text-slate-500">No official BTEB notices are currently available.</p>
+            )}
           </div>
         </div>
       )}
@@ -258,7 +360,7 @@ export const HomeScreen: React.FC = () => {
           {/* Card 1: Class Routine */}
           <button
             onClick={() => setActiveScreen('routine')}
-            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-blue hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+            className="dm-card group p-4 sm:p-5 text-left hover:border-brand-blue hover:shadow-md hover:-translate-y-0.5 transition-all relative overflow-hidden cursor-pointer"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center group-hover:bg-brand-blue group-hover:text-white transition-colors">
@@ -284,7 +386,7 @@ export const HomeScreen: React.FC = () => {
           {/* Card 2: BTEB & Campus Notices */}
           <button
             onClick={() => openNotesSection('notices')}
-            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-blue hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+            className="dm-card group p-4 sm:p-5 text-left hover:border-brand-blue hover:shadow-md hover:-translate-y-0.5 transition-all relative overflow-hidden cursor-pointer"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center group-hover:bg-brand-blue group-hover:text-white transition-colors">
@@ -310,7 +412,7 @@ export const HomeScreen: React.FC = () => {
           {/* Card 3: Diploma Job Circulars */}
           <button
             onClick={() => openNotesSection('jobs')}
-            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-teal hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+            className="dm-card group p-4 sm:p-5 text-left hover:border-brand-teal hover:shadow-md hover:-translate-y-0.5 transition-all relative overflow-hidden cursor-pointer"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-teal-50 text-brand-teal flex items-center justify-center group-hover:bg-brand-teal group-hover:text-white transition-colors">
@@ -336,7 +438,7 @@ export const HomeScreen: React.FC = () => {
           {/* Card 4: Assignments & Lecture Notes */}
           <button
             onClick={() => openNotesSection('assignments')}
-            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-teal hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+            className="dm-card group p-4 sm:p-5 text-left hover:border-brand-teal hover:shadow-md hover:-translate-y-0.5 transition-all relative overflow-hidden cursor-pointer"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-teal-50 text-brand-teal flex items-center justify-center group-hover:bg-brand-teal group-hover:text-white transition-colors">
@@ -362,7 +464,7 @@ export const HomeScreen: React.FC = () => {
           {/* Card: Academic Community */}
           <button
             onClick={() => setActiveScreen('community')}
-            className="group bg-surface rounded-2xl border border-slate-200/90 p-4 text-left shadow-xs hover:border-brand-blue hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+            className="dm-card group p-4 sm:p-5 text-left hover:border-brand-blue hover:shadow-md hover:-translate-y-0.5 transition-all relative overflow-hidden cursor-pointer"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center group-hover:bg-brand-blue group-hover:text-white transition-colors">

@@ -102,7 +102,7 @@ const AppContent: React.FC = () => {
       <MobileHeader />
 
       {/* Main Content Viewport */}
-      <main className={`flex-1 ${isWideScreen ? 'max-w-3xl' : 'max-w-xl'} mx-auto w-full px-3.5 sm:px-4 pt-3.5 pb-20`}>
+      <main className={`dm-app-content flex-1 ${isWideScreen ? 'max-w-6xl' : 'max-w-4xl'} mx-auto w-full px-4 sm:px-6 lg:px-8 pt-5`}>
         {activeScreen === 'home' && (
           accountType === 'system_admin' && isServerVerifiedAdmin ? (
             <AdminPortalScreen />

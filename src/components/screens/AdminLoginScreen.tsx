@@ -102,9 +102,9 @@ export const AdminLoginScreen: React.FC = () => {
         </button>
 
         {/* Main Card */}
-        <div className="bg-surface rounded-2xl border border-slate-200/90 shadow-lg overflow-hidden">
+        <div className="dm-card overflow-hidden">
           {/* Header Banner */}
-          <div className="bg-gradient-to-br from-text-primary via-slate-900 to-blue-950 p-5 text-white">
+          <div className="bg-blue-950 p-5 sm:p-6 text-white">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-300 shrink-0">
                 <ShieldCheck className="w-5 h-5" />
@@ -180,7 +180,7 @@ export const AdminLoginScreen: React.FC = () => {
                       placeholder="admin@bteb-authority.edu.bd"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                      className="dm-field w-full pl-9 pr-3 py-2.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                     />
                   </div>
                 </div>
@@ -198,7 +198,7 @@ export const AdminLoginScreen: React.FC = () => {
                       placeholder="Enter administrator password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                      className="dm-field w-full pl-9 pr-3 py-2.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                     />
                   </div>
                 </div>
@@ -206,7 +206,7 @@ export const AdminLoginScreen: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-text-primary hover:bg-blue-950 text-white text-xs font-bold shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  className="dm-primary-action w-full py-2.5 px-4 text-sm font-bold shadow-sm flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <ShieldCheck className="w-4 h-4 text-teal-400" />
                   <span>{isSubmitting ? 'Verifying Server Session...' : 'Sign In as System Administrator'}</span>

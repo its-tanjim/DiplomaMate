@@ -529,9 +529,9 @@ export const BTEBResultsScreen: React.FC = () => {
         </div>
 
         {/* Official Academic Transcript Card / Statement */}
-        <div className="bg-surface rounded-3xl border border-slate-200/90 shadow-md overflow-hidden print-card">
+        <div className="dm-card overflow-hidden print-card">
           {/* Official BTEB Header Header Strip */}
-          <div className="bg-gradient-to-r from-text-primary via-blue-950 to-slate-900 text-white p-5 sm:p-6 relative">
+          <div className="bg-blue-950 text-white p-5 sm:p-6 relative">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -999,7 +999,7 @@ export const BTEBResultsScreen: React.FC = () => {
   return (
     <div className="space-y-4 pb-12">
       {/* Top Banner Card */}
-      <div className="bg-gradient-to-br from-text-primary via-blue-950 to-slate-900 rounded-2xl p-4 sm:p-5 text-white shadow-md relative overflow-hidden">
+      <div className="bg-blue-950 rounded-2xl p-5 sm:p-6 text-white shadow-md relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
           <div className="flex items-start gap-2.5">
             <button
@@ -1096,7 +1096,7 @@ export const BTEBResultsScreen: React.FC = () => {
       {activeTab === 'individual' && (
         <div className="space-y-4">
           {/* Main Search Card */}
-          <div className="bg-surface rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
+          <div className="dm-card p-5 sm:p-6 space-y-5">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-text-primary flex items-center gap-2">
@@ -1139,7 +1139,7 @@ export const BTEBResultsScreen: React.FC = () => {
                   <select
                     value={selectedCurriculum}
                     onChange={(e) => setSelectedCurriculum(e.target.value as BtebCurriculumId)}
-                    className="w-full px-3.5 py-2.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                    className="dm-field w-full px-3.5 py-2.5 text-sm font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                   >
                     {CURRICULUM_OPTIONS.map(c => (
                       <option key={c.id} value={c.id}>
@@ -1157,7 +1157,7 @@ export const BTEBResultsScreen: React.FC = () => {
                   <select
                     value={selectedRegulation}
                     onChange={(e) => setSelectedRegulation(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                    className="dm-field w-full px-3.5 py-2.5 text-sm font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                   >
                     <option value="all">All Regulations (Auto-Detect)</option>
                     <option value="2022">2022 Probidhan (Current Standard)</option>
@@ -1184,7 +1184,7 @@ export const BTEBResultsScreen: React.FC = () => {
                       setRollInput(e.target.value);
                       if (errorMessage) setErrorMessage('');
                     }}
-                    className="w-full pl-10 pr-4 py-2.5 text-sm font-mono bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                    className="dm-field w-full pl-10 pr-4 py-2.5 text-sm font-mono text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                   />
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">
@@ -1245,7 +1245,7 @@ export const BTEBResultsScreen: React.FC = () => {
               <button
                 type="submit"
                 disabled={searchStatus === 'loading'}
-                className="w-full min-h-[46px] py-3 px-4 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-sm font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70"
+                className="dm-primary-action w-full py-3 px-4 text-sm font-bold shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70"
               >
                 {searchStatus === 'loading' ? (
                   <>
@@ -1433,7 +1433,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 placeholder="Example: 542880, 542891, 542915, 750102, 750104"
                 value={groupRollInput}
                 onChange={(e) => setGroupRollInput(e.target.value)}
-                className="w-full px-3 py-2.5 text-xs sm:text-sm font-mono bg-slate-50 border border-slate-200 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-teal"
+                className="dm-field w-full px-3 py-2.5 text-xs sm:text-sm font-mono text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-teal"
               />
             </div>
 

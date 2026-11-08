@@ -658,7 +658,7 @@ export const AdminPortalScreen: React.FC = () => {
   return (
     <div className="space-y-4 pb-12">
       {/* Top Header Card */}
-      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
+      <div className="dm-card p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
             <button
@@ -672,8 +672,8 @@ export const AdminPortalScreen: React.FC = () => {
               <ShieldCheck className="w-4 h-4" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-bold text-text-primary">
+              <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
+                <h1 className="text-base sm:text-lg font-bold leading-tight text-text-primary">
                   Administrator Verification Portal
                 </h1>
                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-teal-50 text-brand-teal border border-teal-200">
@@ -700,7 +700,7 @@ export const AdminPortalScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setActivePortalTab('management')}
-            className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`min-h-11 py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activePortalTab === 'management'
                 ? 'bg-surface text-teal-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -712,7 +712,7 @@ export const AdminPortalScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setActivePortalTab('captains')}
-            className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`min-h-11 py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activePortalTab === 'captains'
                 ? 'bg-surface text-blue-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -725,7 +725,7 @@ export const AdminPortalScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setActivePortalTab('teachers')}
-            className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`min-h-11 py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activePortalTab === 'teachers'
                 ? 'bg-surface text-blue-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -738,7 +738,7 @@ export const AdminPortalScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setActivePortalTab('results')}
-            className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`min-h-11 py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activePortalTab === 'results'
                 ? 'bg-surface text-brand-teal shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -751,7 +751,7 @@ export const AdminPortalScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setActivePortalTab('catalog')}
-            className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`min-h-11 py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activePortalTab === 'catalog'
                 ? 'bg-surface text-blue-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'

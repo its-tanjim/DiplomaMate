@@ -271,16 +271,6 @@ export const INITIAL_ANNOUNCEMENTS: ClassAnnouncement[] = [
     postedAt: 'Today, 07:45 AM',
     priority: 'Important',
     isPinned: true
-  },
-  {
-    id: 'ann_2',
-    authorName: 'Department Office',
-    authorRole: 'Chief Instructor Desk',
-    title: '📋 BTEB 6th Semester Mid-Term Exam Routine Published',
-    content: 'The board approved Mid-Term examination for session 2021-22 will commence from next Sunday. Collect admit clearance slips from Section Office by Thursday.',
-    postedAt: 'Yesterday, 04:30 PM',
-    priority: 'Important',
-    isPinned: false
   }
 ];
 

@@ -38,6 +38,8 @@
   }
 
   body {
+    min-width: 320px;
+    min-height: 100vh;
     background-color: var(--dm-app-bg);
     color: var(--dm-text-primary);
     font-family: var(--font-sans);
@@ -63,6 +65,26 @@
     accent-color: var(--dm-brand-teal);
   }
 
+  button {
+    touch-action: manipulation;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  input,
+  select,
+  textarea {
+    border-color: var(--dm-border);
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    min-height: 44px;
+  }
+
   /* Prevent text zoom on input focus in iOS */
   input, select, textarea, button {
     font-size: 16px;
@@ -81,6 +103,46 @@
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+@layer components {
+  .dm-card {
+    background-color: var(--dm-surface);
+    border: 1px solid var(--dm-border);
+    border-radius: 1.25rem;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 16px 32px -24px rgb(15 23 42 / 0.24);
+  }
+
+  .dm-field {
+    min-height: 48px;
+    border: 1px solid var(--dm-border);
+    border-radius: 0.875rem;
+    background-color: var(--dm-surface);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .dm-field:focus {
+    border-color: var(--dm-brand-blue);
+    box-shadow: 0 0 0 3px rgb(37 99 235 / 0.14);
+    outline: none;
+  }
+
+  .dm-primary-action {
+    min-height: 48px;
+    border-radius: 0.875rem;
+    background-color: var(--dm-brand-blue);
+    color: #ffffff;
+    transition: background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  }
+
+  .dm-primary-action:hover:not(:disabled) {
+    background-color: #1d4ed8;
+    box-shadow: 0 8px 20px -12px rgb(37 99 235 / 0.65);
+  }
+
+  .dm-app-content {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
 }
 
 @media print {

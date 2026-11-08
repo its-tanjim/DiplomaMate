@@ -3333,9 +3333,11 @@ app.post('/api/admin/results/import', requireSystemAdmin, async (req: Request, r
       ? `${adminSession.name} (${adminSession.email})`
       : 'System Administrator';
 
-    let contentToParse = String(rawText || '').trim();
-    if (!contentToParse && fileDataUrl) {
+    let contentToParse = '';
+    if (fileDataUrl) {
       contentToParse = await extractTextFromUploadedResultPdf(fileDataUrl, mimeType);
+    } else {
+      contentToParse = String(rawText || '').trim();
     }
 
     if (!contentToParse) {
@@ -10309,6 +10311,12 @@ interface BtebNoticesCacheStore {
 const BTEB_NOTICES_CACHE_FILE = path.join(DATA_DIR, 'bteb-notices-cache.json');
 const BTEB_SYNC_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes automatic refresh
 
+function isBtebNoticesSyncDue(nowMs = Date.now()): boolean {
+  const lastSyncedMs = btebNoticesCache.lastSyncedAt ? new Date(btebNoticesCache.lastSyncedAt).getTime() : 0;
+  const lastAttemptMs = btebNoticesCache.lastSyncAttemptAt ? new Date(btebNoticesCache.lastSyncAttemptAt).getTime() : 0;
+  return nowMs - Math.max(lastSyncedMs, lastAttemptMs) >= BTEB_SYNC_INTERVAL_MS;
+}
+
 function loadBtebNoticesCache(): BtebNoticesCacheStore {
   try {
     if (fs.existsSync(BTEB_NOTICES_CACHE_FILE)) {
@@ -10589,13 +10597,7 @@ async function syncBtebOfficialNotices(options?: {
   }
 
   const nowMs = Date.now();
-  const lastSyncedMs = btebNoticesCache.lastSyncedAt ? new Date(btebNoticesCache.lastSyncedAt).getTime() : 0;
-  if (
-    !options?.force &&
-    !options?.simulateOutage &&
-    btebNoticesCache.notices.length > 0 &&
-    nowMs - lastSyncedMs < BTEB_SYNC_INTERVAL_MS
-  ) {
+  if (!options?.force && !options?.simulateOutage && !isBtebNoticesSyncDue(nowMs)) {
     return {
       success: true,
       insertedCount: 0,
@@ -10792,14 +10794,8 @@ app.get('/api/notices/bteb', async (req: Request, res: Response) => {
     const simulateOutage = req.query.simulateOutage === 'true';
 
     let syncResult = null;
-    if (btebNoticesCache.notices.length === 0 || forceRefresh || simulateOutage) {
+    if (forceRefresh || simulateOutage || isBtebNoticesSyncDue()) {
       syncResult = await syncBtebOfficialNotices({ force: forceRefresh, simulateOutage });
-    } else {
-      // Check if background refresh is due
-      const lastMs = btebNoticesCache.lastSyncedAt ? new Date(btebNoticesCache.lastSyncedAt).getTime() : 0;
-      if (Date.now() - lastMs >= BTEB_SYNC_INTERVAL_MS) {
-        syncBtebOfficialNotices({ force: true }).catch(() => {});
-      }
     }
 
     const q = String(req.query.q || '').trim().toLowerCase();

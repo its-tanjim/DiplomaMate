@@ -349,7 +349,7 @@ export const WelcomeScreen: React.FC = () => {
     return (
       <div className="min-h-screen bg-app-bg flex flex-col justify-center py-8 px-4 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-lg">
-          <div className="bg-surface rounded-2xl shadow-xl border border-slate-200/90 p-5 sm:p-6 space-y-4">
+          <div className="dm-card p-5 sm:p-6 space-y-5">
             <div className="text-center">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 mb-2">
                 <Users className="w-6 h-6" />
@@ -444,7 +444,7 @@ export const WelcomeScreen: React.FC = () => {
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* App Logo & Header */}
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-blue text-white shadow-md shadow-blue-500/20 mb-3">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-blue text-white shadow-lg shadow-blue-500/20 mb-3">
             <GraduationCap className="w-8 h-8" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
@@ -456,13 +456,13 @@ export const WelcomeScreen: React.FC = () => {
         </div>
 
         {/* Main Card */}
-        <div className="mt-5 bg-surface rounded-2xl border border-slate-200/90 shadow-sm p-5 sm:p-6">
+        <div className="dm-card mt-6 p-5 sm:p-6">
           {/* Sign In vs Sign Up Tabs */}
-          <div className="flex rounded-lg bg-slate-100 p-1 mb-4">
+          <div className="flex rounded-xl bg-slate-100 p-1 mb-5">
             <button
               type="button"
               onClick={() => { setTab('signin'); setSignInError(''); }}
-              className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
+              className={`flex-1 min-h-11 py-2 text-sm font-bold rounded-lg transition-all ${
                 tab === 'signin'
                   ? 'bg-surface text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -473,7 +473,7 @@ export const WelcomeScreen: React.FC = () => {
             <button
               type="button"
               onClick={() => { setTab('signup'); setSignInError(''); }}
-              className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${
+              className={`flex-1 min-h-11 py-2 text-sm font-bold rounded-lg transition-all ${
                 tab === 'signup'
                   ? 'bg-surface text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -492,7 +492,7 @@ export const WelcomeScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { setSelectedRole('student'); setSignInError(''); }}
-                className={`py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
+                className={`min-h-11 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
                   selectedRole === 'student'
                     ? 'bg-surface text-blue-700 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -505,7 +505,7 @@ export const WelcomeScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { setSelectedRole('class_captain'); setSignInError(''); }}
-                className={`py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
+                className={`min-h-11 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
                   selectedRole === 'class_captain'
                     ? 'bg-surface text-teal-700 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -518,7 +518,7 @@ export const WelcomeScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { setSelectedRole('teacher'); setSignInError(''); }}
-                className={`py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
+                className={`min-h-11 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
                   selectedRole === 'teacher'
                     ? 'bg-surface text-blue-700 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -552,7 +552,7 @@ export const WelcomeScreen: React.FC = () => {
                       placeholder="+880 1819-334455 or teacher@dpi.gov.bd"
                       value={teacherPhoneOrEmail}
                       onChange={(e) => setTeacherPhoneOrEmail(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
@@ -567,7 +567,7 @@ export const WelcomeScreen: React.FC = () => {
                       placeholder="Enter 4-8 digit PIN"
                       value={teacherPin}
                       onChange={(e) => setTeacherPin(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
@@ -587,7 +587,7 @@ export const WelcomeScreen: React.FC = () => {
                       placeholder="Enter your Board Roll Number"
                       value={signInRoll}
                       onChange={(e) => setSignInRoll(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
@@ -601,7 +601,7 @@ export const WelcomeScreen: React.FC = () => {
                       placeholder="Enter your Registration Number"
                       value={signInReg}
                       onChange={(e) => setSignInReg(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
@@ -616,13 +616,7 @@ export const WelcomeScreen: React.FC = () => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className={`w-full py-2.5 rounded-xl text-xs font-bold text-white shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
-                  selectedRole === 'teacher'
-                    ? 'bg-blue-600 hover:bg-blue-700'
-                    : selectedRole === 'class_captain'
-                      ? 'bg-teal-600 hover:bg-teal-700'
-                      : 'bg-blue-600 hover:bg-blue-700'
-                }`}
+                className="dm-primary-action w-full py-3 px-4 text-sm font-bold shadow-sm flex items-center justify-center gap-2"
               >
                 <span>{isSubmitting ? 'Authenticating...' : `Sign In as ${selectedRole === 'teacher' ? 'Teacher' : selectedRole === 'class_captain' ? 'Class Captain' : 'Student'}`}</span>
                 <ArrowRight className="w-3.5 h-3.5" />

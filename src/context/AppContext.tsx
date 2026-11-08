@@ -364,7 +364,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [announcements, setAnnouncements] = useState<ClassAnnouncement[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}announcements`);
-    return saved ? JSON.parse(saved) : INITIAL_ANNOUNCEMENTS;
+    return saved
+      ? (JSON.parse(saved) as ClassAnnouncement[]).filter(announcement => announcement.id !== 'ann_2')
+      : INITIAL_ANNOUNCEMENTS;
   });
 
   const [notifications, setNotifications] = useState<NotificationPreferences>(() => {
