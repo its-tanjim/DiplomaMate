@@ -1669,5 +1669,6 @@
       "reportsCount": 0
     }
   ],
-  "campusNoticeReports": []
+  "campusNoticeReports": [],
+  "teacherContactAccessLocked": false
 }

@@ -22,9 +22,11 @@ export const MobileHeader: React.FC = () => {
           onClick={() => setActiveScreen('home')}
           className="flex items-center gap-2.5 text-left focus:outline-none group"
         >
-          <div className="w-8 h-8 rounded-lg bg-brand-blue flex items-center justify-center text-white shadow-xs group-hover:bg-blue-700 transition-colors">
-            <span className="font-bold text-sm tracking-tighter">DM</span>
-          </div>
+          <img
+            src="/diploma-mate-logo.png"
+            alt=""
+            className="w-8 h-8 rounded-lg object-contain shadow-xs"
+          />
           <div>
             <div className="flex items-center gap-1.5">
               <span className="font-bold text-base tracking-tight text-text-primary whitespace-nowrap">

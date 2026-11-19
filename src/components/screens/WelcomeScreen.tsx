@@ -444,8 +444,8 @@ export const WelcomeScreen: React.FC = () => {
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* App Logo & Header */}
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-blue text-white shadow-lg shadow-blue-500/20 mb-3">
-            <GraduationCap className="w-8 h-8" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white shadow-lg shadow-blue-500/20 mb-3 overflow-hidden">
+            <img src="/diploma-mate-logo.png" alt="" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
             DiplomaMate
