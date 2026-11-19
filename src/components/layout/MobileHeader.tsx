@@ -15,7 +15,7 @@ export const MobileHeader: React.FC = () => {
   const pendingRemindersCount = reminders.filter(r => !r.isCompleted).length;
 
   return (
-    <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-md border-b border-slate-200/80 shadow-sm no-print">
+    <header className="dm-header sticky top-0 z-30 border-b shadow-sm no-print">
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-2 sm:gap-4">
         {/* Brand Zone */}
         <button 
@@ -29,11 +29,11 @@ export const MobileHeader: React.FC = () => {
           />
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-base tracking-tight text-text-primary whitespace-nowrap">
+              <span className="font-bold text-base tracking-tight text-white whitespace-nowrap">
                 DiplomaMate
               </span>
             </div>
-            <p className="hidden sm:block text-[10px] text-slate-500 font-medium leading-none -mt-0.5">
+            <p className="hidden sm:block text-[10px] text-blue-100 font-medium leading-none -mt-0.5">
               BTEB Polytechnic Hub
             </p>
           </div>
@@ -41,11 +41,11 @@ export const MobileHeader: React.FC = () => {
 
         {/* Center: Shift & Section Badge */}
         {accountType !== 'system_admin' && (
-          <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-slate-600 bg-slate-100/80 px-3 py-1 rounded-md border border-slate-200/60">
-            <span className="text-brand-blue font-semibold">{userProfile.shift} Shift</span>
-            <span className="text-slate-300">·</span>
+          <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-blue-100 bg-white/10 px-3 py-1 rounded-md border border-white/15">
+            <span className="text-white font-semibold">{userProfile.shift} Shift</span>
+            <span className="text-blue-200">·</span>
             <span>Sec {userProfile.section}</span>
-            <span className="text-slate-300">·</span>
+            <span className="text-blue-200">·</span>
             <span>Sem {userProfile.semester}</span>
           </div>
         )}
@@ -57,36 +57,36 @@ export const MobileHeader: React.FC = () => {
             <button 
               onClick={() => setActiveScreen('admin_portal')}
               title="System Administrator Account"
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-text-primary border border-blue-800 text-white text-xs font-semibold whitespace-nowrap hover:bg-slate-800 transition-colors"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-100" />
               <span>System Admin</span>
             </button>
           ) : accountType === 'teacher' ? (
             <button 
               onClick={() => setActiveScreen('profile')}
               title="Teacher Account"
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-50 border border-blue-200/70 text-blue-700 text-xs font-semibold whitespace-nowrap hover:bg-blue-100 transition-colors"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
             >
-              <GraduationCap className="w-3.5 h-3.5 text-blue-700" />
+              <GraduationCap className="w-3.5 h-3.5 text-blue-100" />
               <span>Teacher</span>
             </button>
           ) : accountType === 'class_captain' ? (
             <button 
               onClick={() => setActiveScreen('profile')}
               title="Class Captain Account"
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-teal-50 border border-teal-200/70 text-brand-teal text-xs font-semibold whitespace-nowrap hover:bg-teal-100 transition-colors"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-brand-teal" />
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-100" />
               <span>Class Captain</span>
             </button>
           ) : (
             <button 
               onClick={() => setActiveScreen('profile')}
               title="Student Account"
-              className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-xl bg-blue-50 border border-blue-200/70 text-brand-blue text-xs font-semibold whitespace-nowrap hover:bg-blue-100 transition-colors"
+              className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
             >
-              <UserCheck className="w-3.5 h-3.5 text-brand-blue" />
+              <UserCheck className="w-3.5 h-3.5 text-blue-100" />
               <span>Student</span>
             </button>
           )}
@@ -97,8 +97,8 @@ export const MobileHeader: React.FC = () => {
             aria-label="Community"
             className={`min-h-10 min-w-9 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 border transition-colors ${
               activeScreen === 'community'
-                ? 'bg-brand-blue text-white border-brand-blue'
-                : 'bg-slate-100 text-slate-700 border-slate-200/80 hover:bg-blue-50 hover:text-brand-blue'
+                ? 'bg-white text-brand-navy border-white'
+                : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
             }`}
             title="Academic Community Hub & Peer Discussions"
           >
@@ -112,8 +112,8 @@ export const MobileHeader: React.FC = () => {
             aria-label="Book List"
             className={`min-h-10 min-w-9 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 border transition-colors ${
               activeScreen === 'book_list'
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-slate-100 text-slate-700 border-slate-200/80 hover:bg-blue-50 hover:text-blue-700'
+                ? 'bg-white text-brand-navy border-white'
+                : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
             }`}
             title="Book List & Central Subject Catalog"
           >
@@ -124,7 +124,7 @@ export const MobileHeader: React.FC = () => {
           {/* Quick Reminders Bell */}
           <button
             onClick={() => setActiveScreen('reminders')}
-            className={`min-h-10 min-w-9 p-2 rounded-xl text-slate-600 hover:text-brand-blue hover:bg-slate-100 transition-colors relative flex items-center justify-center ${activeScreen === 'reminders' ? 'text-brand-blue bg-blue-50' : ''}`}
+            className={`min-h-10 min-w-9 p-2 rounded-xl text-white hover:text-white hover:bg-white/15 transition-colors relative flex items-center justify-center ${activeScreen === 'reminders' ? 'bg-white text-brand-navy' : ''}`}
             aria-label="View Reminders"
           >
             <Bell className="w-4 h-4" />

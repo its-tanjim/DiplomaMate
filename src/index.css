@@ -1,36 +1,126 @@
 @import "tailwindcss";
 
 @theme inline {
+  --color-brand-navy: var(--dm-brand-navy);
   --color-brand-blue: var(--dm-brand-blue);
   --color-brand-teal: var(--dm-brand-teal);
+  --color-brand-orange: var(--dm-brand-orange);
   --color-success-green: var(--dm-success-green);
+  --color-success-light: var(--dm-success-light);
   --color-app-bg: var(--dm-app-bg);
   --color-surface: var(--dm-surface);
   --color-border-app: var(--dm-border);
   --color-text-primary: var(--dm-text-primary);
   --color-text-secondary: var(--dm-text-secondary);
   --color-text-muted: var(--dm-text-muted);
+  --color-navy: var(--dm-brand-navy);
+  --color-orange: var(--dm-brand-orange);
   --color-blue-600: var(--dm-brand-blue);
-  --color-teal-600: var(--dm-brand-teal);
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-700: #1d4ed8;
+  --color-blue-800: #1e40af;
+  --color-blue-900: #1e3a8a;
+  --color-blue-950: var(--dm-brand-navy);
+  --color-teal-50: #eff6ff;
+  --color-teal-100: #dbeafe;
+  --color-teal-200: #bfdbfe;
+  --color-teal-300: #93c5fd;
+  --color-teal-400: #60a5fa;
+  --color-teal-500: #3b82f6;
+  --color-teal-600: var(--dm-brand-blue);
+  --color-teal-700: #1d4ed8;
+  --color-teal-800: #1e40af;
+  --color-teal-900: #1e3a8a;
+  --color-teal-950: var(--dm-brand-navy);
+  --color-amber-50: #fff7ed;
+  --color-amber-100: #ffedd5;
+  --color-amber-200: #fed7aa;
+  --color-amber-300: #fdba74;
+  --color-amber-400: #fb923c;
+  --color-amber-500: var(--dm-brand-orange);
+  --color-amber-600: #ea580c;
+  --color-amber-700: #c2410c;
+  --color-amber-800: #9a3412;
+  --color-amber-900: #7c2d12;
+  --color-amber-950: #7c2d12;
+  --color-orange-50: #fff7ed;
+  --color-orange-100: #ffedd5;
+  --color-orange-200: #fed7aa;
+  --color-orange-300: #fdba74;
+  --color-orange-400: #fb923c;
+  --color-orange-500: var(--dm-brand-orange);
+  --color-orange-600: #ea580c;
+  --color-orange-700: #c2410c;
+  --color-orange-800: #9a3412;
+  --color-orange-900: #7c2d12;
+  --color-orange-950: #7c2d12;
   --color-green-600: var(--dm-success-green);
+  --color-green-50: var(--dm-success-light);
+  --color-green-100: var(--dm-success-light);
+  --color-green-200: #bbf7d0;
+  --color-green-300: #86efac;
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+  --color-green-700: #15803d;
+  --color-green-800: #166534;
+  --color-green-900: #14532d;
+  --color-green-950: #052e16;
+  --color-rose-50: #fef2f2;
+  --color-rose-100: #fee2e2;
+  --color-rose-200: #fecaca;
+  --color-rose-300: #fca5a5;
+  --color-rose-400: #f87171;
+  --color-rose-500: #ef4444;
+  --color-rose-600: #dc2626;
+  --color-rose-700: #b91c1c;
+  --color-rose-800: #991b1b;
+  --color-rose-900: #7f1d1d;
+  --color-rose-950: #450a0a;
   --color-slate-50: var(--dm-app-bg);
+  --color-slate-100: #f1f5f9;
   --color-slate-200: var(--dm-border);
-  --color-slate-400: var(--dm-text-muted);
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: var(--dm-text-secondary);
+  --color-slate-500: var(--dm-text-secondary);
   --color-slate-600: var(--dm-text-secondary);
+  --color-slate-700: var(--dm-brand-navy);
+  --color-slate-800: var(--dm-text-primary);
   --color-slate-900: var(--dm-text-primary);
+  --color-slate-950: var(--dm-brand-navy);
+  --color-sky-50: #eff6ff;
+  --color-sky-600: var(--dm-brand-blue);
+  --color-sky-700: #1d4ed8;
+  --color-pink-50: #eff6ff;
+  --color-pink-100: #dbeafe;
+  --color-pink-200: #bfdbfe;
+  --color-pink-700: #1d4ed8;
+  --color-purple-50: #eff6ff;
+  --color-purple-100: #dbeafe;
+  --color-purple-600: var(--dm-brand-blue);
+  --color-purple-700: #1d4ed8;
+  --color-violet-50: #eff6ff;
+  --color-violet-700: #1d4ed8;
 }
 
 @layer base {
   :root {
+    --dm-brand-navy: #12355b;
     --dm-brand-blue: #2563eb;
-    --dm-brand-teal: #0d9488;
+    --dm-brand-teal: var(--dm-brand-navy);
+    --dm-brand-orange: #f97316;
     --dm-success-green: #16a34a;
+    --dm-success-light: #dcfce7;
     --dm-app-bg: #f8fafc;
     --dm-surface: #ffffff;
     --dm-border: #e2e8f0;
-    --dm-text-primary: #0f172a;
-    --dm-text-secondary: #475569;
-    --dm-text-muted: #94a3b8;
+    --dm-text-primary: #172033;
+    --dm-text-secondary: #64748b;
+    --dm-text-muted: #64748b;
     --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
 
@@ -62,7 +152,7 @@
   input,
   select,
   textarea {
-    accent-color: var(--dm-brand-teal);
+    accent-color: var(--dm-brand-blue);
   }
 
   button {
@@ -110,7 +200,7 @@
     background-color: var(--dm-surface);
     border: 1px solid var(--dm-border);
     border-radius: 1.25rem;
-    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 16px 32px -24px rgb(15 23 42 / 0.24);
+    box-shadow: 0 1px 2px rgb(18 53 91 / 0.04), 0 12px 24px -24px rgb(18 53 91 / 0.16);
   }
 
   .dm-field {
@@ -138,6 +228,15 @@
   .dm-primary-action:hover:not(:disabled) {
     background-color: #1d4ed8;
     box-shadow: 0 8px 20px -12px rgb(37 99 235 / 0.65);
+  }
+
+  .dm-header :focus-visible {
+    outline-color: #ffffff;
+  }
+
+  .dm-header {
+    background-color: var(--dm-brand-navy);
+    border-color: rgb(255 255 255 / 0.15);
   }
 
   .dm-app-content {

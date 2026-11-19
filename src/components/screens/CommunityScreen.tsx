@@ -541,7 +541,7 @@ export const CommunityScreen: React.FC = () => {
       {selectedCommunity ? (
         <div className="bg-surface rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col min-h-[640px]">
           {/* Room Header */}
-          <div className="bg-gradient-to-r from-text-primary via-blue-900 to-[#1e3a8a] text-white p-3.5 sm:p-4 flex items-center justify-between gap-3 border-b border-blue-950">
+          <div className="bg-brand-navy text-white p-3.5 sm:p-4 flex items-center justify-between gap-3 border-b border-blue-950">
             <div className="flex items-center gap-2.5 min-w-0">
               <button
                 onClick={() => {
