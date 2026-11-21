@@ -90,7 +90,6 @@ function normalizeRollInput(raw: string): string {
 
 export const BTEBResultsScreen: React.FC = () => {
   const { userProfile, accountType, isServerVerifiedAdmin, setActiveScreen, showToast } = useApp();
-  const canAccessAdminImport = accountType === 'system_admin' && isServerVerifiedAdmin;
 
   // View state: 'search' or 'statement' (Native results page)
   const [viewMode, setViewMode] = useState<MainViewMode>('search');
@@ -1288,15 +1287,6 @@ export const BTEBResultsScreen: React.FC = () => {
                 {batches.length} Batch{batches.length !== 1 ? 'es' : ''} · {totalRecordsInDb} Verified Rolls
               </span>
             </div>
-            {canAccessAdminImport && (
-              <button
-                onClick={() => setActiveScreen('admin_portal')}
-                className="text-[11px] font-semibold bg-surface/10 hover:bg-surface/20 text-white px-3 py-1.5 rounded-xl border border-white/15 transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <Database className="w-3.5 h-3.5 text-teal-300" />
-                <span>Admin Result Import</span>
-              </button>
-            )}
           </div>
         </div>
       </div>

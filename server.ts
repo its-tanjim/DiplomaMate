@@ -12164,6 +12164,16 @@ async function startServer() {
       }
     });
   } else {
+    // Serve the separate System Administrator app (built into dist-admin)
+    // at /admin-app. The main student app no longer contains any admin
+    // sign-in; this is the only web entry point for administration.
+    const adminDistPath = path.join(__dirname, 'dist-admin');
+    if (fs.existsSync(adminDistPath)) {
+      app.use('/admin-app', express.static(adminDistPath));
+      app.get('/admin-app/*', (_req: Request, res: Response) => {
+        res.sendFile(path.join(adminDistPath, 'index.html'));
+      });
+    }
     // Serve static files in production
     app.use(express.static(path.join(__dirname, 'dist')));
     app.get('*', (_req: Request, res: Response) => {

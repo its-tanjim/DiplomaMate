@@ -6,7 +6,6 @@ export const MobileHeader: React.FC = () => {
   const { 
     userProfile, 
     accountType, 
-    isServerVerifiedAdmin,
     activeScreen, 
     setActiveScreen,
     reminders
@@ -40,29 +39,18 @@ export const MobileHeader: React.FC = () => {
         </button>
 
         {/* Center: Shift & Section Badge */}
-        {accountType !== 'system_admin' && (
-          <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-blue-100 bg-white/10 px-3 py-1 rounded-md border border-white/15">
-            <span className="text-white font-semibold">{userProfile.shift} Shift</span>
-            <span className="text-blue-200">·</span>
-            <span>Sec {userProfile.section}</span>
-            <span className="text-blue-200">·</span>
-            <span>Sem {userProfile.semester}</span>
-          </div>
-        )}
+        <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-blue-100 bg-white/10 px-3 py-1 rounded-md border border-white/15">
+          <span className="text-white font-semibold">{userProfile.shift} Shift</span>
+          <span className="text-blue-200">·</span>
+          <span>Sec {userProfile.section}</span>
+          <span className="text-blue-200">·</span>
+          <span>Sem {userProfile.semester}</span>
+        </div>
 
         {/* Action Zone: Reminders & Profile / CR Status */}
         <div className="flex items-center gap-1 sm:gap-2">
           {/* Role Status Indicator */}
-          {accountType === 'system_admin' && isServerVerifiedAdmin ? (
-            <button 
-              onClick={() => setActiveScreen('admin_portal')}
-              title="System Administrator Account"
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-100" />
-              <span>System Admin</span>
-            </button>
-          ) : accountType === 'teacher' ? (
+          {accountType === 'teacher' ? (
             <button 
               onClick={() => setActiveScreen('profile')}
               title="Teacher Account"
