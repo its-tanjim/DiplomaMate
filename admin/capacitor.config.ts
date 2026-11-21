@@ -22,8 +22,8 @@ if (
 const config: CapacitorConfig = {
   appId: 'bd.gov.bteb.diplomamate.admin',
   appName: 'DiplomaMate Admin',
-  // dist-admin lives at the repo root, next to admin/ (not inside it).
-  webDir: '../dist-admin',
+  // The admin build output lives inside the main app's dist/ (dist/admin-app).
+  webDir: '../dist/admin-app',
   server: {
     androidScheme: 'https'
   },

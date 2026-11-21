@@ -12164,18 +12164,28 @@ async function startServer() {
       }
     });
   } else {
-    // Serve the separate System Administrator app (built into dist-admin)
+    // Serve the separate System Administrator app (built into dist/admin-app)
     // at /admin-app. The main student app no longer contains any admin
     // sign-in; this is the only web entry point for administration.
-    const adminDistPath = path.join(__dirname, 'dist-admin');
-    if (fs.existsSync(adminDistPath)) {
-      app.use('/admin-app', express.static(adminDistPath));
+    // The admin files live inside dist/ so they ship with the main build
+    // output, and HTML is served no-cache so a stale cached page can never
+    // point at a deleted bundle (which renders a blank white page).
+    const noCacheHtml = {
+      setHeaders: (res: Response, filePath: string) => {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      }
+    };
+    const adminAppPath = path.join(__dirname, 'dist', 'admin-app');
+    if (fs.existsSync(path.join(adminAppPath, 'index.html'))) {
+      app.use('/admin-app', express.static(adminAppPath, noCacheHtml));
       app.get('/admin-app/*', (_req: Request, res: Response) => {
-        res.sendFile(path.join(adminDistPath, 'index.html'));
+        res.sendFile(path.join(adminAppPath, 'index.html'));
       });
     }
     // Serve static files in production
-    app.use(express.static(path.join(__dirname, 'dist')));
+    app.use(express.static(path.join(__dirname, 'dist'), noCacheHtml));
     app.get('*', (_req: Request, res: Response) => {
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });

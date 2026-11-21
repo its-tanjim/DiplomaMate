@@ -49,8 +49,13 @@ export default defineConfig(({ mode }) => {
       }
     },
     build: {
-      outDir: path.resolve(repoRoot, 'dist-admin'),
-      emptyOutDir: true
+      // Build INTO the main app's dist/ (dist/admin-app) instead of a
+      // separate dist-admin/ folder: on Render only dist/ provably reaches
+      // the runtime intact, so the admin assets must live inside it.
+      // NOTE: a main-only `vite build` wipes dist/, so always build with
+      // the repo's `npm run build` (main + admin) before deploying.
+      outDir: path.resolve(repoRoot, 'dist', 'admin-app'),
+      emptyOutDir: false
     }
   };
 });
