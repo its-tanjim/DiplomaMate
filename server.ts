@@ -3947,13 +3947,114 @@ function saveAcademicStore(store: PersistentAcademicStore): void {
     const tempFile = `${ACADEMIC_STORE_FILE}.tmp`;
     fs.writeFileSync(tempFile, JSON.stringify(store, null, 2), 'utf-8');
     fs.renameSync(tempFile, ACADEMIC_STORE_FILE);
+    // The store file is the only copy of all accounts — back it up to
+    // GitHub (debounced) so the next Render deploy starts from it.
+    scheduleAcademicStoreBackup();
   } catch (err) {
     console.error('[Academic Store] Failed to persist academic-store.json:', err);
     throw new Error('Failed to persist academic-store.json.');
   }
 }
 
+// ---------------------------------------------------------------------------
+// GitHub auto-backup of the academic store.
+//
+// Render's free tier has an ephemeral filesystem: every deploy or restart
+// resets data/academic-store.json to the version committed in GitHub, so
+// student/teacher/captain accounts registered and approvals granted at
+// runtime were lost on each deploy. The server therefore commits the store
+// file back to the repo (main branch) shortly after every save, so the
+// next deploy starts from the latest data instead of the old seed.
+//
+// Requires env GITHUB_STORE_BACKUP_TOKEN — a fine-grained PAT with
+// Contents read/write on this repo. Without it, backups are skipped and a
+// warning is logged at startup; the server otherwise works normally.
+// GITHUB_BACKUP_DEBOUNCE_MS (default 60000) caps backup frequency, and a
+// backup is only sent when the file actually changed since the last one.
+// The backup never blocks a request: it runs on a timer, logs failures,
+// and retries once on a GitHub sha conflict (409).
+// ---------------------------------------------------------------------------
+const GITHUB_STORE_BACKUP_TOKEN = process.env.GITHUB_STORE_BACKUP_TOKEN || '';
+const GITHUB_API_BASE_URL = (process.env.GITHUB_API_BASE_URL || 'https://api.github.com').replace(/\/$/, '');
+const GITHUB_BACKUP_REPO = 'its-tanjim/DiplomaMate';
+const GITHUB_BACKUP_BRANCH = 'main';
+const GITHUB_BACKUP_PATH = 'data/academic-store.json';
+const GITHUB_BACKUP_DEBOUNCE_MS = Number(process.env.GITHUB_BACKUP_DEBOUNCE_MS || 60000) || 60000;
+let githubBackupTimer: ReturnType<typeof setTimeout> | null = null;
+let githubBackupLastContent: string | null = null;
+
+if (!GITHUB_STORE_BACKUP_TOKEN) {
+  console.warn('[Store Backup] GITHUB_STORE_BACKUP_TOKEN is not set — automatic GitHub backup of academic-store.json is DISABLED. Accounts changed at runtime will be lost on the next Render deploy.');
+}
+
+function scheduleAcademicStoreBackup(): void {
+  if (!GITHUB_STORE_BACKUP_TOKEN || githubBackupTimer) return;
+  githubBackupTimer = setTimeout(() => {
+    githubBackupTimer = null;
+    void pushAcademicStoreBackup();
+  }, GITHUB_BACKUP_DEBOUNCE_MS);
+  githubBackupTimer.unref?.();
+}
+
+async function pushAcademicStoreBackup(): Promise<void> {
+  if (!GITHUB_STORE_BACKUP_TOKEN) return;
+  try {
+    const content = fs.readFileSync(ACADEMIC_STORE_FILE, 'utf-8');
+    if (content === githubBackupLastContent) return;
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${GITHUB_STORE_BACKUP_TOKEN}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'DiplomaMate-Server'
+    };
+    const url = `${GITHUB_API_BASE_URL}/repos/${GITHUB_BACKUP_REPO}/contents/${GITHUB_BACKUP_PATH}`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const getRes = await fetch(url, { headers });
+      if (!getRes.ok) {
+        console.error('[Store Backup] GitHub read failed:', getRes.status);
+        return;
+      }
+      const current = (await getRes.json()) as { sha?: string };
+      if (!current.sha) {
+        console.error('[Store Backup] GitHub read returned no sha.');
+        return;
+      }
+      const putRes = await fetch(url, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: 'chore: auto-backup academic store [skip ci]',
+          content: Buffer.from(content, 'utf-8').toString('base64'),
+          sha: current.sha,
+          branch: GITHUB_BACKUP_BRANCH
+        })
+      });
+      if (putRes.ok) {
+        githubBackupLastContent = content;
+        console.log('[Store Backup] academic-store.json backed up to GitHub.');
+        return;
+      }
+      if (putRes.status === 409 && attempt === 0) {
+        console.warn('[Store Backup] Conflict (file changed on GitHub), retrying with fresh sha.');
+        continue;
+      }
+      console.error('[Store Backup] GitHub write failed:', putRes.status);
+      return;
+    }
+  } catch (err) {
+    console.error('[Store Backup] failed:', err);
+  }
+}
+
 const academicStore: PersistentAcademicStore = loadAcademicStore();
+
+// Seed the "last backed up" snapshot so the first backup only fires when
+// the data actually changes after startup.
+try {
+  githubBackupLastContent = fs.readFileSync(ACADEMIC_STORE_FILE, 'utf-8');
+} catch {
+  // ignore — the next save will trigger a backup attempt instead
+}
 
 app.get('/api/teacher-contacts/access', (_req: Request, res: Response) => {
   return res.status(200).json({
