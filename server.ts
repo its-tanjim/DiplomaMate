@@ -1792,6 +1792,31 @@ app.post('/api/verification/teacher-approve', (req: Request, res: Response) => {
     const now = new Date();
     const endorsedAt = `${now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
+    const endorsement = {
+      teacherId: teacher.id,
+      teacherName: teacher.name,
+      teacherDesignation: teacher.designation,
+      endorsedAt,
+      comments: comments || 'Endorsed as authorized student Class Captain for this section cohort.'
+    };
+
+    // Persist the endorsement on the server's captain record. Previously the
+    // endorsement was only returned to the browser that entered the PIN, so
+    // it lived in that device's local state only — the Admin Portal reads
+    // the server record, still saw no endorsement, and its approve guard
+    // ("A teacher endorsement is required before approving a class
+    // captain.") blocked the admin even though the teacher had endorsed.
+    const serverRecord = academicStore.captainRecords.find(item => item.id === applicationId);
+    if (serverRecord) {
+      if (action === 'reject') {
+        serverRecord.status = 'Rejected';
+        serverRecord.rejectionReason = comments || 'Rejected by Guide Teacher.';
+      } else {
+        serverRecord.teacherEndorsement = endorsement;
+      }
+      saveAcademicStore(academicStore);
+    }
+
     if (action === 'reject') {
       return res.status(200).json({
         success: true,
@@ -1805,13 +1830,7 @@ app.post('/api/verification/teacher-approve', (req: Request, res: Response) => {
       success: true,
       action: 'approved',
       message: `Application successfully endorsed & verified by authorized faculty ${teacher.name}`,
-      endorsement: {
-        teacherId: teacher.id,
-        teacherName: teacher.name,
-        teacherDesignation: teacher.designation,
-        endorsedAt,
-        comments: comments || 'Endorsed as authorized student Class Captain for this section cohort.'
-      },
+      endorsement,
       teacher: sanitizeTeacher(teacher)
     });
   } catch (error) {

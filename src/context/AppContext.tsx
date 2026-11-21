@@ -739,6 +739,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(`${STORAGE_KEY_PREFIX}applications`, JSON.stringify(applications));
   }, [applications]);
 
+  // Heal captain records whose teacher endorsement only exists on this
+  // device (endorsed before the server sync existed): push each endorsed
+  // record to the server once, so the admin approval guard can see the
+  // endorsement and approve. Without this, an already-endorsed application
+  // stays stuck — the teacher cannot re-endorse it (it is no longer
+  // Pending) and the admin cannot approve it (the server has no
+  // endorsement on file).
+  const syncedEndorsementKeys = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    applications.forEach(app => {
+      if (!app.teacherEndorsement) return;
+      const key = `${app.id}:${app.teacherEndorsement.endorsedAt || ''}`;
+      if (syncedEndorsementKeys.current.has(key)) return;
+      syncedEndorsementKeys.current.add(key);
+      void syncCaptainRecordToServer(app);
+    });
+    // syncCaptainRecordToServer is defined below; the effect callback only
+    // runs after the render completes, so the reference is initialized.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applications]);
+
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}announcements`, JSON.stringify(announcements));
   }, [announcements]);
@@ -1220,6 +1241,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ).length;
   };
 
+  // Push one captain record to the server (`POST /api/captains/sync`).
+  // Captain applications used to live in this device's local state only, so
+  // the Guide Teacher and the Admin — on their own devices — never saw
+  // them, and a teacher endorsement never reached the server record that
+  // the admin approval guard reads. Best-effort: a failed sync never
+  // blocks the local action; the healing effect below retries it.
+  const syncCaptainRecordToServer = async (record: CaptainApplication): Promise<boolean> => {
+    try {
+      const res = await apiFetch('/api/captains/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ captainRecord: record })
+      });
+      if (!res.ok) {
+        console.warn('Captain record sync failed:', res.status);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.warn('Captain record sync failed:', err);
+      return false;
+    }
+  };
+
   const submitCaptainApplication = async (data: Partial<CaptainApplication>): Promise<boolean> => {
     // Check if already applied
     const existing = applications.find(a => a.studentId === userProfile.id && a.status === 'Pending');
@@ -1255,6 +1300,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       captainVerificationStatus: 'Pending'
     }));
     showToast('Approval request sent to your Guide Teacher and Admin.');
+    // So the Guide Teacher and the Admin can see and act on this request
+    // from any device, not just this one.
+    void syncCaptainRecordToServer(newApp);
     return true;
   };
 
@@ -1328,6 +1376,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return a;
       }));
+
+      // Push the endorsement to the server record as well, so the admin
+      // approval guard (which reads the server record) sees it.
+      void syncCaptainRecordToServer({
+        ...targetApp,
+        status: 'Approved',
+        teacherEndorsement: data.endorsement
+      });
 
       // If applicant is currently logged in, update their account
       if (userProfile.id === targetApp.studentId) {
