@@ -231,6 +231,14 @@ export const CaptainVerificationScreen: React.FC = () => {
               </p>
             </div>
           </div>
+
+          <button
+            onClick={() => setActiveScreen('admin_portal')}
+            className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1"
+          >
+            <span>Admin Review</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
         </div>
 
         {/* Navigation Tabs */}

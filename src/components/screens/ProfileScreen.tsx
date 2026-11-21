@@ -188,6 +188,15 @@ export const ProfileScreen: React.FC = () => {
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>{userProfile.captainVerificationStatus === 'Approved' ? 'View Captain Accreditation' : 'Apply / Check Captain Status'}</span>
           </button>
+
+          {accountType === 'system_admin' && isServerVerifiedAdmin && (
+            <button
+              onClick={() => setActiveScreen('admin_portal')}
+              className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span>Admin Review Portal</span>
+            </button>
+          )}
         </div>
       </div>
 

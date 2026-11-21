@@ -6,7 +6,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && npm run build:admin",
+    "build": "vite build",
     "start": "tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
@@ -16,8 +16,7 @@
     "cap:build": "npm run build && cap sync android && cap sync ios",
     "electron:start": "npm run build && electron .",
     "electron:build:win": "npm run build && electron-builder --win",
-    "electron:build:linux": "npm run build && electron-builder --linux",
-    "build:admin": "vite build --config admin/vite.config.ts"
+    "electron:build:linux": "npm run build && electron-builder --linux"
   },
   "build": {
     "appId": "bd.gov.bteb.diplomamate",

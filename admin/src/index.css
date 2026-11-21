@@ -1,4 +1,0 @@
-/* Reuse the main app's full stylesheet (Tailwind theme + dm-* component
-   classes) so the admin screens look identical to how they looked inside
-   the main app. */
-@import "../../src/index.css";

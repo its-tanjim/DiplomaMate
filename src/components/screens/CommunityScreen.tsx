@@ -1021,6 +1021,20 @@ export const CommunityScreen: React.FC = () => {
                 <Globe className="w-3.5 h-3.5" />
                 <span>Discover Cohort Groups ({discoverableCommunities.length})</span>
               </button>
+
+              {accountType === 'system_admin' && isServerVerifiedAdmin && (
+                <button
+                  onClick={() => setActiveTab('admin')}
+                  className={`px-3 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'admin'
+                      ? 'bg-text-primary text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Admin Moderation</span>
+                </button>
+              )}
             </div>
 
             <button
