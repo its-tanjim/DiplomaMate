@@ -55,6 +55,14 @@ export const CommunityScreen: React.FC = () => {
     isServerVerifiedAdmin 
   } = useApp();
 
+  // Community creation: server-verified admins, verified teachers, and
+  // verified Class Captains can all create academic communities. Plain
+  // students cannot. (The server enforces the same rule.)
+  const canCreateCommunity =
+    (accountType === 'system_admin' && isServerVerifiedAdmin) ||
+    accountType === 'teacher' ||
+    accountType === 'class_captain';
+
   // Active view state
   const [activeTab, setActiveTab] = useState<'my_groups' | 'discover' | 'admin'>('my_groups');
   const [selectedCommunity, setSelectedCommunity] = useState<AcademicCommunity | null>(null);
@@ -979,8 +987,8 @@ export const CommunityScreen: React.FC = () => {
                 </div>
               </div>
 
-              {/* Community creation is restricted to server-verified administrators. */}
-              {accountType === 'system_admin' && isServerVerifiedAdmin && (
+              {/* Community creation is open to server-verified administrators, verified teachers, and verified Class Captains. */}
+              {canCreateCommunity && (
                 <button
                   onClick={() => {
                     setCreateName(suggestGroupName());
@@ -1059,7 +1067,7 @@ export const CommunityScreen: React.FC = () => {
                   </h3>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
                     {communities.length === 0
-                      ? accountType === 'system_admin' && isServerVerifiedAdmin
+                      ? canCreateCommunity
                         ? 'Create an academic community for students to collaborate.'
                         : 'No academic communities have been created yet. Check back later.'
                       : 'You have not joined any academic groups. Check the "Discover Cohort Groups" tab to find and join study groups for your polytechnic department.'}

@@ -436,6 +436,25 @@ function requireSystemAdmin(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
+/**
+ * Community creation gate: allows authenticated `system_admin`, verified
+ * `teacher`, and verified `class_captain` sessions to create academic
+ * communities. Plain students cannot create communities. Never trusts
+ * client-supplied `requesterRole` in body or query parameters.
+ * (Teacher login already requires a Verified faculty account, and a
+ * `class_captain` session only exists for an approved captain.)
+ */
+function requireCommunityCreator(req: Request, res: Response, next: NextFunction) {
+  const session = getAuthenticatedSession(req);
+  if (!session || (session.role !== 'system_admin' && session.role !== 'teacher' && session.role !== 'class_captain')) {
+    return res.status(403).json({
+      success: false,
+      error: 'Forbidden: Only a System Administrator, a verified Teacher, or a verified Class Captain can create an academic community.'
+    });
+  }
+  return next();
+}
+
 
 
 
@@ -9103,7 +9122,7 @@ app.get('/api/communities/:id', (req: Request, res: Response) => {
 });
 
 // 15D. CREATE ACADEMIC COMMUNITY
-app.post('/api/communities', requireSystemAdmin, (req: Request, res: Response) => {
+app.post('/api/communities', requireCommunityCreator, (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -9164,7 +9183,8 @@ app.post('/api/communities', requireSystemAdmin, (req: Request, res: Response) =
       visibility: visibilityVal,
       created_by: session.userId,
       created_by_name: session.name,
-      created_by_role: 'system_admin',
+      // requireCommunityCreator already guarantees one of these three roles.
+      created_by_role: session.role === 'teacher' ? 'teacher' : session.role === 'class_captain' ? 'class_captain' : 'system_admin',
       moderators: [session.userId],
       member_count: 1,
       is_active: true,
@@ -9203,7 +9223,7 @@ app.post('/api/communities', requireSystemAdmin, (req: Request, res: Response) =
       sender_id: session.userId,
       sender_name: session.name,
       sender_role: session.role,
-      sender_designation: 'System Administrator',
+      sender_designation: session.role === 'teacher' ? 'Teacher' : session.role === 'class_captain' ? 'Class Captain' : 'System Administrator',
       is_moderator: true,
       content: `Welcome to the ${communityName}! This group is created for academic collaboration, routine updates, lecture notes, and study discussions. Please adhere to respectful academic conduct.`,
       attachments: [],
