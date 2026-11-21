@@ -44,7 +44,7 @@ import {
 } from '../../types';
 import { MOCK_ENROLLED_STUDENTS } from '../../data/mockData';
 
-type MainViewMode = 'search' | 'statement' | 'result-zone';
+type MainViewMode = 'search' | 'statement' | 'result-zone' | 'official-bteb';
 type WorkspaceTab = 'individual' | 'group' | 'batches';
 type GroupSortField = 'roll_asc' | 'roll_desc' | 'gpa_desc' | 'gpa_asc' | 'status';
 type GroupStatusFilter = 'ALL' | 'PASSED' | 'REFERRED' | 'NOT_FOUND';
@@ -124,6 +124,9 @@ export const BTEBResultsScreen: React.FC = () => {
   const [zoneRollInput, setZoneRollInput] = useState<string>(userProfile.boardRoll || '');
   const [zoneUrl, setZoneUrl] = useState<string>(BTEB_RESULTS_ZONE_URL);
   const [isZoneFrameLoading, setIsZoneFrameLoading] = useState<boolean>(true);
+
+  // In-app official BTEB portal viewer state
+  const [isOfficialFrameLoading, setIsOfficialFrameLoading] = useState<boolean>(true);
 
   // Statement page filters & navigation
   const [selectedSemesterTab, setSelectedSemesterTab] = useState<'all' | number>('all');
@@ -1130,6 +1133,116 @@ export const BTEBResultsScreen: React.FC = () => {
     );
   }
 
+  // Open the official BTEB result portal inside the app. The portal asks for
+  // exam, semester, year, roll, registration number and a small captcha that
+  // only the student can solve on the portal itself, so the embedded page
+  // shows the portal's own form — the student fills it without leaving the app.
+  const openOfficialBteb = () => {
+    setIsOfficialFrameLoading(true);
+    setViewMode('official-bteb');
+  };
+
+  // ============================================================================
+  // VIEW MODE: OFFICIAL BTEB RESULT — PORTAL SHOWN INSIDE DIPLOMAMATE
+  // ============================================================================
+  if (viewMode === 'official-bteb') {
+    return (
+      <div className="space-y-4 pb-12">
+        {/* Navigation & Action Bar */}
+        <div className="bg-surface rounded-2xl border border-slate-200/90 p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setViewMode('search')}
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center font-bold text-xs gap-1.5 cursor-pointer"
+              title="Return to Result Search"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Search</span>
+            </button>
+            <span className="text-xs font-semibold text-slate-500 hidden sm:inline">
+              Official result, shown inside DiplomaMate
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={openOfficialResultPortal}
+            className="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Open in Browser</span>
+          </button>
+        </div>
+
+        {/* Source attribution — the result below comes from BTEB's own portal */}
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-xs space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-950 text-white text-[11px] font-extrabold tracking-wide">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              BTEB OFFICIAL
+            </span>
+            <span className="text-[11px] font-semibold text-blue-900">
+              Result source: Bangladesh Technical Education Board — result.bteb.gov.bd
+            </span>
+          </div>
+          <p className="text-xs text-blue-900/90 leading-relaxed">
+            The result shown below comes live from <strong>BTEB&apos;s official result portal</strong> and is displayed here inside DiplomaMate, so you never have to leave the app.
+          </p>
+          <p className="text-xs text-blue-900/90 leading-relaxed" lang="bn">
+            নিচের ফলাফলটি BTEB-এর অফিসিয়াল পোর্টাল থেকে নেওয়া — DiplomaMate এখানেই দেখাচ্ছে।
+          </p>
+        </div>
+
+        {/* How to use the portal, inside the app */}
+        <div className="dm-card p-4 sm:p-5 space-y-2.5">
+          <h2 className="text-sm font-bold text-text-primary flex items-center gap-2">
+            <BookOpen className="w-4 h-4 text-brand-blue" />
+            <span>How to check your result here</span>
+          </h2>
+          <ol className="text-xs text-slate-600 leading-relaxed space-y-1 list-decimal list-inside">
+            <li>Select your examination, semester and exam year on the portal below.</li>
+            <li>Enter your Board Roll and Registration Number.</li>
+            <li>Solve the small captcha (a simple sum) shown on the portal and press Search.</li>
+            <li>Your official result will appear right here, inside the app.</li>
+          </ol>
+          {(userProfile.boardRoll || userProfile.regNumber) && (
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-600 space-y-1">
+              <span className="font-bold text-slate-700 block">Your saved details (type these into the portal):</span>
+              {userProfile.boardRoll && (
+                <p>Board Roll: <strong className="font-mono text-text-primary">{userProfile.boardRoll}</strong></p>
+              )}
+              {userProfile.regNumber && (
+                <p>Registration No: <strong className="font-mono text-text-primary">{userProfile.regNumber}</strong></p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Official BTEB portal */}
+        <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-surface shadow-xs">
+          {isOfficialFrameLoading && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-surface p-6 text-center">
+              <div className="w-10 h-10 rounded-full bg-blue-50 border-2 border-brand-blue border-t-transparent animate-spin" />
+              <p className="text-xs text-slate-500 font-semibold">
+                Loading the official BTEB result portal...
+              </p>
+            </div>
+          )}
+          <iframe
+            src={OFFICIAL_BTEB_RESULTS_URL}
+            title="BTEB Official Result Portal — Board Result Search"
+            className="w-full block bg-white"
+            style={{ height: '72vh' }}
+            onLoad={() => setIsOfficialFrameLoading(false)}
+          />
+        </div>
+        <p className="text-[11px] text-slate-500 text-center">
+          Result source: <strong className="text-slate-700">Bangladesh Technical Education Board (Official)</strong> (result.bteb.gov.bd) · If the portal does not load here, use “Open in Browser” above.
+        </p>
+      </div>
+    );
+  }
+
   // ============================================================================
   // VIEW MODE: RESULT SEARCH PAGE
   // ============================================================================
@@ -1426,6 +1539,33 @@ export const BTEBResultsScreen: React.FC = () => {
             </p>
           </div>
 
+          {/* Official BTEB portal — live result shown inside the app */}
+          <div className="dm-card p-5 sm:p-6 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base font-bold text-text-primary flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-brand-blue" />
+                <span>Official BTEB Result</span>
+              </h2>
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-950 text-white text-[11px] font-extrabold tracking-wide">
+                BTEB OFFICIAL
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Check your result on BTEB&apos;s official portal without leaving the app — enter your roll, registration number and the small captcha on the portal below, and the official result appears right here.
+            </p>
+            <button
+              type="button"
+              onClick={openOfficialBteb}
+              className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-sm font-bold shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Check Official BTEB Result</span>
+            </button>
+            <p className="text-[11px] text-slate-500">
+              Result source: <strong className="text-slate-700">Bangladesh Technical Education Board (Official)</strong> (result.bteb.gov.bd).
+            </p>
+          </div>
+
           {/* Loading State Banner */}
           {searchStatus === 'loading' && (
             <div className="p-6 bg-surface rounded-2xl border border-blue-100 text-center space-y-3 shadow-xs">
@@ -1459,7 +1599,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 </p>
                 <button
                   type="button"
-                  onClick={openOfficialResultPortal}
+                  onClick={openOfficialBteb}
                   className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-sm font-bold shadow-xs transition-colors cursor-pointer"
                 >
                   Official BTEB Result দেখুন
@@ -1549,7 +1689,7 @@ export const BTEBResultsScreen: React.FC = () => {
               <span>How Results Are Retrieved and Protected</span>
             </h3>
             <p className="text-slate-600 leading-relaxed">
-              DiplomaMate searches its locally imported official BTEB Gazette records. For results not yet imported, use BTEB’s official portal, which requires a manual security check, or check the live result on BTEB Result Zone inside the app — results shown from BTEB Result Zone are credited to BTEB Result Zone (btebresultszone.com). We do not store or track students&apos; private searches, nor do we fabricate academic results.
+              DiplomaMate searches its locally imported official BTEB Gazette records. For results not yet imported, check the live result on BTEB Result Zone inside the app — results shown from BTEB Result Zone are credited to BTEB Result Zone (btebresultszone.com) — or use BTEB’s official portal inside the app, credited to the Bangladesh Technical Education Board (result.bteb.gov.bd). We do not store or track students&apos; private searches, nor do we fabricate academic results.
             </p>
           </div>
         </div>
