@@ -1,30 +1,17 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { 
-  ShieldCheck, 
-  Download, 
-  Upload, 
-  FileCheck, 
-  Clock, 
-  CheckCircle2, 
-  XCircle, 
-  AlertTriangle, 
-  UserCheck, 
-  Building2, 
-  FileText, 
-  Key, 
-  Printer, 
+import {
+  ShieldCheck,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Building2,
+  FileText,
+  Key,
   ArrowLeft,
   ChevronRight,
-  ExternalLink
+  Send
 } from 'lucide-react';
-import { Shift, Section, CaptainApplication, DocumentScanResult } from '../../types';
-import { SearchableCollegeSelect } from '../common/SearchableCollegeSelect';
-import { SearchableDepartmentSelect } from '../common/SearchableDepartmentSelect';
-import {
-  prepareFileForDocumentIntelligence,
-  scanDocumentOnServer
-} from '../../services/documentIntelligenceService';
 
 export const CaptainVerificationScreen: React.FC = () => {
   const { 
@@ -35,38 +22,14 @@ export const CaptainVerificationScreen: React.FC = () => {
     teacherEndorseApplication, 
     getVerifiedCaptainsCount,
     setActiveScreen,
-    showToast,
-    authToken
+    showToast
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'apply' | 'teacher_endorse' | 'status'>('apply');
-  const [showPrintableForm, setShowPrintableForm] = useState(false);
-
-  // Form state
-  const [formData, setFormData] = useState({
-    studentName: userProfile.name,
-    college: userProfile.college,
-    department: userProfile.department,
-    semester: userProfile.semester,
-    shift: userProfile.shift,
-    section: userProfile.section,
-    boardRoll: userProfile.boardRoll,
-    regNumber: userProfile.regNumber,
-    phone: userProfile.phone || '+880 1712-345678',
-    session: userProfile.session,
-  });
-
-  const [uploadedFile, setUploadedFile] = useState<{
-    name: string;
-    type: string;
-    dataUrl: string;
-    size: number;
-  } | null>(null);
-
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  // Direct approval request — no form. The student's profile details are
+  // sent straight to the semester's Guide Teacher and the Institute Admin.
+  const [applyError, setApplyError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isScanningForm, setIsScanningForm] = useState(false);
-  const [formScanResult, setFormScanResult] = useState<DocumentScanResult | null>(null);
 
   // Teacher Endorsement form state
   const [teacherSelectedAppId, setTeacherSelectedAppId] = useState<string>('');
@@ -81,89 +44,31 @@ export const CaptainVerificationScreen: React.FC = () => {
   );
 
   const currentQuotaCount = getVerifiedCaptainsCount(
-    formData.college,
-    formData.department,
-    formData.semester,
-    formData.shift,
-    formData.section
+    userProfile.college,
+    userProfile.department,
+    userProfile.semester,
+    userProfile.shift,
+    userProfile.section
   );
 
-  // File change handler with shared Document Intelligence verification scan
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    setUploadError(null);
-    setFormScanResult(null);
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadError('File size exceeds 10MB limit. Please compress your document.');
-      return;
-    }
-
-    setIsScanningForm(true);
-    try {
-      const prepared = await prepareFileForDocumentIntelligence(file);
-      if (!prepared.valid || !prepared.dataUrl) {
-        setUploadError(prepared.error || 'Only valid PDF, JPG, PNG, or WebP files are supported.');
-        return;
-      }
-
-      setUploadedFile({
-        name: prepared.fileName,
-        type: prepared.mimeType,
-        dataUrl: prepared.dataUrl,
-        size: file.size
-      });
-      showToast('Signed form document attached! Scanning fields...');
-
-      const scanRes = await scanDocumentOnServer({
-        feature: 'captain_form',
-        fileName: prepared.fileName,
-        mimeType: prepared.mimeType,
-        fileDataUrl: prepared.dataUrl,
-        authToken
-      });
-      setFormScanResult(scanRes);
-
-      if (scanRes.captainFormData) {
-        const cd = scanRes.captainFormData;
-        setFormData(prev => ({
-          ...prev,
-          studentName: cd.studentName || prev.studentName,
-          boardRoll: cd.boardRoll || prev.boardRoll,
-          regNumber: cd.regNumber || prev.regNumber,
-          college: cd.college || prev.college,
-          department: cd.department || prev.department,
-          semester: cd.semester || prev.semester,
-          shift: cd.shift || prev.shift,
-          section: cd.section || prev.section
-        }));
-      }
-    } finally {
-      setIsScanningForm(false);
-    }
-  };
-
-  const handleApplicationSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!uploadedFile) {
-      setUploadError('Please upload your signed verification form (image or PDF).');
-      return;
-    }
+  // Direct apply: no form fields, no upload. submitCaptainApplication
+  // fills every detail from the student profile and creates the Pending
+  // request, which appears on the Guide Teacher's dashboard (cohort match)
+  // and in the Admin Portal's captain review queue.
+  const handleDirectApply = async () => {
+    setApplyError(null);
 
     if (currentQuotaCount >= 2 && (!myApplication || myApplication.status !== 'Approved')) {
-      setUploadError('Section quota reached! This section already has 2 verified Class Captains.');
+      setApplyError('Section quota reached! This section already has 2 verified Class Captains.');
       return;
     }
 
     setIsSubmitting(true);
     try {
       const success = await submitCaptainApplication({
-        ...formData,
         studentId: userProfile.id,
-        verificationFormUrl: uploadedFile.dataUrl,
-        verificationFormName: uploadedFile.name,
+        verificationFormUrl: '',
+        verificationFormName: '',
       });
 
       if (success) {
@@ -251,8 +156,8 @@ export const CaptainVerificationScreen: React.FC = () => {
                 : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <FileText className="w-3.5 h-3.5" />
-            <span>1. Apply & Upload</span>
+            <Send className="w-3.5 h-3.5" />
+            <span>1. Apply Directly</span>
           </button>
 
           <button
@@ -292,244 +197,113 @@ export const CaptainVerificationScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* TAB 1: APPLY & FORM DOWNLOAD */}
+      {/* TAB 1: APPLY DIRECTLY — NO FORM. The request goes straight to the
+          semester's Guide Teacher and the Institute Admin, using the
+          student's profile details. */}
       {activeTab === 'apply' && (
         <div className="space-y-4">
-          {/* Printable Verification Form Modal Trigger Card */}
-          <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="bg-surface rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+            <div className="flex items-start gap-3 border-b border-slate-100 pb-3">
+              <div className="w-10 h-10 rounded-xl bg-teal-50 text-brand-teal flex items-center justify-center shrink-0">
+                <Send className="w-5 h-5" />
+              </div>
               <div>
-                <h3 className="font-bold text-sm text-text-primary flex items-center gap-1.5">
-                  <Printer className="w-4 h-4 text-brand-teal" />
-                  Download Official BTEB Verification Form
-                </h3>
+                <h2 className="text-sm font-bold text-text-primary">
+                  Send Captain Approval Request
+                </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Download or print this formatted form to obtain physical signature & recommendation from your Guide / Class Teacher.
+                  No form to fill. Your profile details below are sent directly to your semester&apos;s Guide Teacher and the Institute Admin for approval.
                 </p>
               </div>
-
-              <button
-                onClick={() => setShowPrintableForm(true)}
-                className="px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-brand-teal border border-teal-200 font-semibold text-xs flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>View & Print Form</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Application Form */}
-          <form onSubmit={handleApplicationSubmit} className="bg-surface rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-              <h2 className="text-sm font-bold text-text-primary">
-                Class Captain Application Details
-              </h2>
-              <span className="text-[11px] text-slate-500">Auto-filled from profile</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            {/* Details that will be sent — read-only, taken from the student profile */}
+            <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
               <div>
-                <label className="block font-semibold text-text-primary mb-1">Student Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.studentName}
-                  onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
-                />
+                <span className="text-slate-400 block text-[10px]">Student Name</span>
+                <span className="font-semibold text-text-primary">{userProfile.name}</span>
               </div>
-
-              <div className="sm:col-span-2">
-                <SearchableCollegeSelect
-                  value={formData.college}
-                  onChange={(name) => setFormData({ ...formData, college: name })}
-                  label="Institute / Polytechnic"
-                  required
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <SearchableDepartmentSelect
-                  value={formData.department}
-                  onChange={(name) => setFormData({ ...formData, department: name })}
-                  label="Department / Technology"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block font-semibold text-text-primary mb-1">Semester</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="8"
-                    value={formData.semester}
-                    onChange={(e) => setFormData({ ...formData, semester: Number(e.target.value) as any })}
-                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-text-primary mb-1">Shift</label>
-                  <select
-                    value={formData.shift}
-                    onChange={(e) => setFormData({ ...formData, shift: e.target.value as Shift })}
-                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
-                  >
-                    <option value="Morning">Morning</option>
-                    <option value="Day">Day</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold text-text-primary mb-1">Section</label>
-                  <select
-                    value={formData.section}
-                    onChange={(e) => setFormData({ ...formData, section: e.target.value as Section })}
-                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
-                  >
-                    <option value="A1">A1</option>
-                    <option value="B1">B1</option>
-                    <option value="A2">A2</option>
-                    <option value="B2">B2</option>
-                  </select>
-                </div>
-              </div>
-
               <div>
-                <label className="block font-semibold text-text-primary mb-1">BTEB Board Roll</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.boardRoll}
-                  onChange={(e) => setFormData({ ...formData, boardRoll: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
-                />
+                <span className="text-slate-400 block text-[10px]">Board Roll</span>
+                <span className="font-mono font-semibold text-text-primary">{userProfile.boardRoll}</span>
               </div>
-
               <div>
-                <label className="block font-semibold text-text-primary mb-1">Registration Number</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.regNumber}
-                  onChange={(e) => setFormData({ ...formData, regNumber: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
-                />
+                <span className="text-slate-400 block text-[10px]">Institute</span>
+                <span className="font-semibold text-text-primary">{userProfile.college}</span>
               </div>
-
               <div>
-                <label className="block font-semibold text-text-primary mb-1">Applicant Contact Phone</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
-                />
+                <span className="text-slate-400 block text-[10px]">Department</span>
+                <span className="font-semibold text-text-primary">{userProfile.department}</span>
               </div>
-
               <div>
-                <label className="block font-semibold text-text-primary mb-1">Academic Session</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.session}
-                  onChange={(e) => setFormData({ ...formData, session: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
-                />
+                <span className="text-slate-400 block text-[10px]">Semester</span>
+                <span className="font-semibold text-text-primary">{userProfile.semester}th · {userProfile.shift} Shift · Sec {userProfile.section}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px]">Registration No</span>
+                <span className="font-mono font-semibold text-text-primary">{userProfile.regNumber}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px]">Phone</span>
+                <span className="font-semibold text-text-primary">{userProfile.phone || '—'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px]">Session</span>
+                <span className="font-semibold text-text-primary">{userProfile.session}</span>
               </div>
             </div>
+            <p className="text-[11px] text-slate-400">
+              Details wrong? Update them from your Profile first, then send the request.
+            </p>
 
-            {/* Document Upload Zone */}
-            <div className="pt-2">
-              <label className="block font-bold text-xs text-text-primary mb-1.5">
-                Upload Signed Verification Form Document (PDF or Photo) *
-              </label>
-              <div className="border-2 border-dashed border-slate-300 rounded-2xl p-5 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors">
-                <input
-                  type="file"
-                  id="verificationDocInput"
-                  accept=".pdf,image/png,image/jpeg,image/webp"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                <label
-                  htmlFor="verificationDocInput"
-                  className="cursor-pointer flex flex-col items-center justify-center"
-                >
-                  <Upload className="w-8 h-8 text-brand-teal mb-2" />
-                  <span className="text-xs font-semibold text-text-primary">
-                    Tap to upload signed form photo or PDF
-                  </span>
-                  <span className="text-[11px] text-slate-500 mt-1">
-                    Max size: 5MB (JPG, PNG, PDF accepted)
-                  </span>
-                </label>
+            {applyError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-1.5">
+                <XCircle className="w-4 h-4 shrink-0 text-red-600" />
+                <span>{applyError}</span>
               </div>
+            )}
 
-              {isScanningForm && (
-                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 flex items-center gap-2">
-                  <Clock className="w-4 h-4 animate-spin text-brand-blue shrink-0" />
-                  <span>Scanning uploaded verification form for roll, registration & signature...</span>
-                </div>
-              )}
-
-              {uploadedFile && (
-                <div className="mt-3 p-3 bg-teal-50 border border-teal-200 rounded-xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FileCheck className="w-4 h-4 text-brand-teal" />
-                      <span className="text-xs font-semibold text-teal-900 truncate max-w-[200px]">
-                        {uploadedFile.name}
-                      </span>
-                      <span className="text-[10px] text-teal-700">
-                        ({(uploadedFile.size / 1024).toFixed(0)} KB)
-                      </span>
-                    </div>
-                    <span className="text-[11px] font-semibold text-brand-teal bg-surface px-2 py-0.5 rounded border border-teal-200">
-                      Ready
-                    </span>
+            {myApplication?.status === 'Pending' ? (
+              <div className="space-y-2.5">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
+                  <Clock className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                  <div>
+                    <span className="font-semibold">Request already sent. </span>
+                    Your approval request is waiting with your Guide Teacher and the Admin.
                   </div>
-
-                  {formScanResult && (
-                    <div className="p-2.5 bg-surface rounded-lg border border-teal-200/80 text-[11px] space-y-1 text-slate-700">
-                      <div className="flex items-center justify-between font-bold text-text-primary">
-                        <span>Document Scan Confidence: {formScanResult.confidence}</span>
-                        {formScanResult.captainFormData?.hasSignatureOrSeal && (
-                          <span className="text-green-700">✓ Signature/Seal Mention Detected</span>
-                        )}
-                      </div>
-                      {formScanResult.uncertainFields.length > 0 && (
-                        <p className="text-amber-700">
-                          Please verify fields above: {formScanResult.uncertainFields.join(', ')}
-                        </p>
-                      )}
-                    </div>
-                  )}
                 </div>
-              )}
-
-              {uploadError && (
-                <div className="mt-2 p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
-                  <span>{uploadError}</span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('status')}
+                  className="w-full py-3 rounded-xl font-bold text-xs text-white bg-brand-blue hover:bg-blue-700 shadow-xs transition-colors cursor-pointer"
+                >
+                  Check Request Status
+                </button>
+              </div>
+            ) : myApplication?.status === 'Approved' ? (
+              <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl text-xs text-teal-900 flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-teal-600 mt-0.5" />
+                <div>
+                  <span className="font-semibold">You are already a verified Class Captain. </span>
+                  No new request needed.
                 </div>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSubmitting || currentQuotaCount >= 2}
-              className={`w-full py-3 rounded-xl font-bold text-xs text-white shadow-xs transition-colors flex items-center justify-center gap-2 ${
-                currentQuotaCount >= 2
-                  ? 'bg-slate-400 cursor-not-allowed'
-                  : 'bg-brand-blue hover:bg-blue-700 cursor-pointer'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>{isSubmitting ? 'Submitting Application...' : 'Submit Class Captain Application'}</span>
-            </button>
-          </form>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleDirectApply}
+                disabled={isSubmitting || currentQuotaCount >= 2}
+                className={`w-full py-3 rounded-xl font-bold text-xs text-white shadow-xs transition-colors flex items-center justify-center gap-2 ${
+                  currentQuotaCount >= 2
+                    ? 'bg-slate-400 cursor-not-allowed'
+                    : 'bg-brand-blue hover:bg-blue-700 cursor-pointer'
+                }`}
+              >
+                <Send className="w-4 h-4" />
+                <span>{isSubmitting ? 'Sending Request...' : 'Send Approval Request to Guide Teacher & Admin'}</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -719,104 +493,13 @@ export const CaptainVerificationScreen: React.FC = () => {
               <ShieldCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
               <h3 className="text-sm font-bold text-text-primary">No Application Found</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                You haven't submitted a Class Captain verification request yet. Click "Apply & Upload" to begin.
+                You haven't sent a Class Captain approval request yet. Click "Apply Directly" to send one — no form needed.
               </p>
             </div>
           )}
         </div>
       )}
 
-      {/* PRINTABLE OFFICIAL VERIFICATION FORM MODAL */}
-      {showPrintableForm && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-          <div className="bg-surface rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-300 my-auto animate-in fade-in zoom-in-95 duration-150">
-            {/* Modal Actions */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <div className="flex items-center gap-2">
-                <Printer className="w-5 h-5 text-brand-blue" />
-                <h3 className="font-bold text-sm sm:text-base text-text-primary">
-                  BTEB Class Captain Verification Form
-                </h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-brand-blue text-white hover:bg-blue-700 flex items-center gap-1"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Print</span>
-                </button>
-                <button
-                  onClick={() => setShowPrintableForm(false)}
-                  className="text-slate-400 hover:text-slate-600 p-1 text-sm font-bold"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* Official Document Layout */}
-            <div className="mt-4 p-5 bg-slate-50 border border-slate-300 rounded-xl font-serif text-slate-800 text-xs space-y-4">
-              <div className="text-center border-b border-slate-300 pb-3">
-                <h2 className="font-bold text-sm tracking-wide uppercase text-text-primary">
-                  Bangladesh Technical Education Board (BTEB)
-                </h2>
-                <h3 className="text-xs font-semibold text-slate-700">
-                  {userProfile.college}
-                </h3>
-                <p className="text-[11px] font-sans text-slate-500 mt-0.5">
-                  Class Representative (CR) Accreditation & Verification Certificate
-                </p>
-              </div>
-
-              <div className="space-y-1.5 font-sans text-xs">
-                <div><span className="font-semibold">Student Name:</span> {formData.studentName}</div>
-                <div><span className="font-semibold">Technology / Department:</span> {formData.department}</div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div><span className="font-semibold">Semester:</span> {formData.semester}th</div>
-                  <div><span className="font-semibold">Shift:</span> {formData.shift} Shift</div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div><span className="font-semibold">Section:</span> Section {formData.section}</div>
-                  <div><span className="font-semibold">Session:</span> {formData.session}</div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div><span className="font-semibold">Board Roll:</span> {formData.boardRoll}</div>
-                  <div><span className="font-semibold">Reg Number:</span> {formData.regNumber}</div>
-                </div>
-              </div>
-
-              {/* Guide Teacher Recommendation Section */}
-              <div className="pt-3 border-t border-slate-300 font-sans space-y-3">
-                <h4 className="font-bold text-[11px] uppercase tracking-wider text-text-primary">
-                  Recommendation of Guide / Class Teacher
-                </h4>
-                <p className="text-[11px] text-slate-600 leading-relaxed italic">
-                  "I hereby certify that the above student possesses satisfactory attendance, academic standing, and disciplinary conduct. I recommend them for the position of Class Captain for the designated semester & section."
-                </p>
-
-                <div className="grid grid-cols-2 gap-6 pt-6">
-                  <div className="border-t border-slate-400 pt-1 text-center text-[10px] text-slate-600">
-                    Signature of Guide Teacher<br/>Name & Designation
-                  </div>
-                  <div className="border-t border-slate-400 pt-1 text-center text-[10px] text-slate-600">
-                    Official College Seal / Stamp<br/>Head of Department
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={() => setShowPrintableForm(false)}
-                className="px-4 py-2 rounded-xl bg-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-300 cursor-pointer"
-              >
-                Close Preview
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

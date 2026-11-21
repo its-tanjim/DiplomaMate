@@ -29,7 +29,8 @@ import {
   Award,
   BookOpen,
   Plus,
-  Edit3
+  Edit3,
+  Send
 } from 'lucide-react';
 import {
   CaptainApplication,
@@ -911,13 +912,20 @@ export const AdminPortalScreen: React.FC = () => {
 
                     {/* Actions bar */}
                     <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 flex-wrap">
-                      <button
-                        onClick={() => setSelectedAppForDoc(app)}
-                        className="text-xs font-semibold text-brand-blue hover:text-blue-700 flex items-center gap-1 py-1 cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Review Signed Form</span>
-                      </button>
+                      {app.verificationFormUrl || app.verificationFormName ? (
+                        <button
+                          onClick={() => setSelectedAppForDoc(app)}
+                          className="text-xs font-semibold text-brand-blue hover:text-blue-700 flex items-center gap-1 py-1 cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Review Signed Form</span>
+                        </button>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1 py-1">
+                          <Send className="w-3.5 h-3.5 text-teal-600" />
+                          <span>Direct request — no form attached</span>
+                        </span>
+                      )}
 
                       <div className="flex items-center gap-2">
                         {app.status === 'Pending' && (

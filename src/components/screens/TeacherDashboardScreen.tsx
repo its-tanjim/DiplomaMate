@@ -655,15 +655,21 @@ export const TeacherDashboardScreen: React.FC = () => {
                       </p>
                     </div>
 
-                    {/* View Uploaded Form */}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedFormApp(app)}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200 flex items-center gap-1 cursor-pointer shrink-0"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-blue-600" />
-                      <span>View Form</span>
-                    </button>
+                    {/* View Uploaded Form — direct requests have no form attached */}
+                    {app.verificationFormUrl || app.verificationFormName ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFormApp(app)}
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200 flex items-center gap-1 cursor-pointer shrink-0"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-blue-600" />
+                        <span>View Form</span>
+                      </button>
+                    ) : (
+                      <span className="px-2.5 py-1.5 rounded-lg bg-teal-50 text-teal-700 text-[11px] font-bold border border-teal-200 shrink-0">
+                        Direct request
+                      </span>
+                    )}
                   </div>
 
                   {/* Endorsement information if already endorsed */}

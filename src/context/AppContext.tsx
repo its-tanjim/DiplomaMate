@@ -1243,8 +1243,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       session: data.session || userProfile.session,
       status: 'Pending',
       appliedAt: `${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-      verificationFormUrl: data.verificationFormUrl || '/sample_signed_form.pdf',
-      verificationFormName: data.verificationFormName || 'Signed_Class_Teacher_Form.pdf'
+      // Direct approval requests attach no form — leave these empty instead
+      // of pointing at a sample PDF that was never uploaded.
+      verificationFormUrl: data.verificationFormUrl || '',
+      verificationFormName: data.verificationFormName || ''
     };
 
     setApplications(prev => [newApp, ...prev]);
@@ -1252,7 +1254,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       captainVerificationStatus: 'Pending'
     }));
-    showToast('Class Captain application submitted! Forwarding to Guide Teacher for verification.');
+    showToast('Approval request sent to your Guide Teacher and Admin.');
     return true;
   };
 
