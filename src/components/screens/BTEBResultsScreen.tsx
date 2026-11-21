@@ -124,6 +124,9 @@ export const BTEBResultsScreen: React.FC = () => {
   const [zoneRollInput, setZoneRollInput] = useState<string>(userProfile.boardRoll || '');
   const [zoneUrl, setZoneUrl] = useState<string>(BTEB_RESULTS_ZONE_URL);
   const [isZoneFrameLoading, setIsZoneFrameLoading] = useState<boolean>(true);
+  // Roll that was auto-sent to Result Zone after a DiplomaMate gazette miss.
+  // Shown in the viewer so the student knows why they are seeing Result Zone.
+  const [zoneFallbackRoll, setZoneFallbackRoll] = useState<string | null>(null);
 
   // In-app official BTEB portal viewer state
   const [isOfficialFrameLoading, setIsOfficialFrameLoading] = useState<boolean>(true);
@@ -180,9 +183,12 @@ export const BTEBResultsScreen: React.FC = () => {
   // Open the BTEB Result Zone viewer inside the app. A valid roll deep-links
   // straight to that roll's result page (btebresultszone.com/results/<roll>);
   // without a roll it opens the site's own roll search form.
-  const openResultZone = (roll?: string) => {
+  // `fromGazetteMiss` marks the unified-flow step 2: View Result found
+  // nothing in DiplomaMate's own gazette, so the viewer opens automatically.
+  const openResultZone = (roll?: string, fromGazetteMiss = false) => {
     const targetRoll = normalizeRollInput(roll !== undefined ? roll : zoneRollInput);
     setZoneRollInput(targetRoll);
+    setZoneFallbackRoll(fromGazetteMiss ? targetRoll : null);
     setZoneUrl(
       targetRoll && /^\d{4,8}$/.test(targetRoll)
         ? `${BTEB_RESULTS_ZONE_URL}/${targetRoll}`
@@ -190,6 +196,18 @@ export const BTEBResultsScreen: React.FC = () => {
     );
     setIsZoneFrameLoading(true);
     setViewMode('result-zone');
+  };
+
+  // Open the official BTEB result portal inside the app. The portal asks for
+  // exam, curriculum, semester, year, roll, registration number and an image
+  // captcha that only the student can solve on the portal itself, so the
+  // embedded page shows the portal's own form — the student fills it without
+  // leaving the app. Defined here (before the view returns) because the
+  // Result Zone viewer links to it as the unified flow's step 3.
+  const openOfficialBteb = () => {
+    setZoneFallbackRoll(null);
+    setIsOfficialFrameLoading(true);
+    setViewMode('official-bteb');
   };
 
   const requestResultLookup = async (url: string): Promise<{ response: Response; data: any }> => {
@@ -343,6 +361,9 @@ export const BTEBResultsScreen: React.FC = () => {
         setSearchStatus('not_found');
         setNotFoundRoll(targetRoll);
         setErrorMessage('');
+        // Unified flow, step 2: not in our gazette, so open BTEB Result
+        // Zone automatically inside the app with this roll.
+        openResultZone(targetRoll, true);
         return;
       }
 
@@ -382,6 +403,9 @@ export const BTEBResultsScreen: React.FC = () => {
         setSearchStatus('not_found');
         setNotFoundRoll(targetRoll);
         setAlternateCurricula(Array.isArray(data.alternateCurricula) ? data.alternateCurricula : []);
+        // Unified flow, step 2: not in our gazette, so open BTEB Result
+        // Zone automatically inside the app with this roll.
+        openResultZone(targetRoll, true);
         return;
       }
 
@@ -1028,7 +1052,10 @@ export const BTEBResultsScreen: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setViewMode('search')}
+              onClick={() => {
+                setZoneFallbackRoll(null);
+                setViewMode('search');
+              }}
               className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center font-bold text-xs gap-1.5 cursor-pointer"
               title="Return to Result Search"
             >
@@ -1067,6 +1094,26 @@ export const BTEBResultsScreen: React.FC = () => {
             নিচের ফলাফলটি BTEB Result Zone থেকে নেওয়া — DiplomaMate এখানেই দেখাচ্ছে।
           </p>
         </div>
+
+        {/* Unified-flow step 2 notice: opened automatically after a gazette miss */}
+        {zoneFallbackRoll && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-xs space-y-2.5">
+            <p className="text-xs text-amber-900 leading-relaxed">
+              DiplomaMate&apos;s gazette did not have a record for Board Roll <strong className="font-mono">{zoneFallbackRoll}</strong>, so the live result from <strong>BTEB Result Zone</strong> is shown here instead — still inside the app.
+            </p>
+            <p className="text-xs text-amber-900 leading-relaxed" lang="bn">
+              এই রোলের ফলাফল DiplomaMate-এর গেজেটে পাওয়া যায়নি, তাই BTEB Result Zone থেকে দেখানো হচ্ছে।
+            </p>
+            <button
+              type="button"
+              onClick={openOfficialBteb}
+              className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-sm font-bold shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Not here either? Check Official BTEB Result →</span>
+            </button>
+          </div>
+        )}
 
         {/* Roll input inside the app */}
         <form
@@ -1132,16 +1179,6 @@ export const BTEBResultsScreen: React.FC = () => {
       </div>
     );
   }
-
-  // Open the official BTEB result portal inside the app. The portal asks for
-  // exam, curriculum, semester, year, roll, registration number and an image
-  // captcha that only the student can solve on the portal itself, so the
-  // embedded page shows the portal's own form — the student fills it without
-  // leaving the app.
-  const openOfficialBteb = () => {
-    setIsOfficialFrameLoading(true);
-    setViewMode('official-bteb');
-  };
 
   // ============================================================================
   // VIEW MODE: OFFICIAL BTEB RESULT — PORTAL SHOWN INSIDE DIPLOMAMATE
@@ -1513,57 +1550,17 @@ export const BTEBResultsScreen: React.FC = () => {
             </form>
           </div>
 
-          {/* BTEB Result Zone — live result shown inside the app */}
-          <div className="dm-card p-5 sm:p-6 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-base font-bold text-text-primary flex items-center gap-2">
-                <Award className="w-5 h-5 text-teal-600" />
-                <span>BTEB Result Zone — Live Result</span>
-              </h2>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-teal-600 text-white text-[11px] font-extrabold tracking-wide">
-                BTEB RESULT ZONE
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Result not in DiplomaMate&apos;s gazette yet? Check it live on BTEB Result Zone without leaving the app — enter your roll and the result appears right here.
+          {/* How the single View Result button works — one tap checks every source */}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-xs space-y-1.5">
+            <h2 className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+              <Info className="w-4 h-4 text-brand-blue" />
+              <span>One View Result — every source, inside the app</span>
+            </h2>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Pressing <strong>View Result</strong> first checks DiplomaMate&apos;s own gazette. If the roll is not there, it automatically shows the live result from <strong>BTEB Result Zone</strong> (btebresultszone.com), and from there you can open <strong>BTEB&apos;s official portal</strong> (result.bteb.gov.bd) — all inside DiplomaMate, without leaving the app. Every result shows which source it came from.
             </p>
-            <button
-              type="button"
-              onClick={() => openResultZone(rollInput)}
-              className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Search className="w-4 h-4" />
-              <span>Check Result on BTEB Result Zone</span>
-            </button>
-            <p className="text-[11px] text-slate-500">
-              Result source: <strong className="text-slate-700">BTEB Result Zone</strong> (btebresultszone.com). Results shown there belong to BTEB Result Zone, not DiplomaMate.
-            </p>
-          </div>
-
-          {/* Official BTEB portal — live result shown inside the app */}
-          <div className="dm-card p-5 sm:p-6 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-base font-bold text-text-primary flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-brand-blue" />
-                <span>Official BTEB Result</span>
-              </h2>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-950 text-white text-[11px] font-extrabold tracking-wide">
-                BTEB OFFICIAL
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Check your result on BTEB&apos;s official portal without leaving the app — enter your roll, registration number and the small captcha on the portal below, and the official result appears right here.
-            </p>
-            <button
-              type="button"
-              onClick={openOfficialBteb}
-              className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-sm font-bold shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Check Official BTEB Result</span>
-            </button>
-            <p className="text-[11px] text-slate-500">
-              Result source: <strong className="text-slate-700">Bangladesh Technical Education Board (Official)</strong> (result.bteb.gov.bd).
+            <p className="text-xs text-slate-600 leading-relaxed" lang="bn">
+              View Result চাপলেই প্রথমে DiplomaMate-এর গেজেটে খুঁজবে — না পেলে BTEB Result Zone, তারপর Official BTEB পোর্টাল — সব অ্যাপের ভিতরেই দেখাবে।
             </p>
           </div>
 
@@ -1598,6 +1595,9 @@ export const BTEBResultsScreen: React.FC = () => {
                 <p className="text-sm font-semibold text-amber-900" lang="bn">
                   এই রোল নম্বরের ফলাফল বর্তমানে DiplomaMate-এ পাওয়া যায়নি।
                 </p>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  BTEB Result Zone was already shown automatically — if the result was not there either, try BTEB&apos;s official portal below.
+                </p>
                 <button
                   type="button"
                   onClick={openOfficialBteb}
@@ -1610,7 +1610,7 @@ export const BTEBResultsScreen: React.FC = () => {
                   onClick={() => openResultZone(notFoundRoll || rollInput)}
                   className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-800 text-white text-sm font-bold shadow-xs transition-colors cursor-pointer"
                 >
-                  BTEB Results Zone থেকে দেখুন
+                  BTEB Results Zone থেকে আবার দেখুন
                 </button>
                 <p className="text-[11px] text-slate-500">
                   BTEB Results Zone is a third-party portal. Results viewed there are not verified or provided by DiplomaMate.
@@ -1690,7 +1690,7 @@ export const BTEBResultsScreen: React.FC = () => {
               <span>How Results Are Retrieved and Protected</span>
             </h3>
             <p className="text-slate-600 leading-relaxed">
-              DiplomaMate searches its locally imported official BTEB Gazette records. For results not yet imported, check the live result on BTEB Result Zone inside the app — results shown from BTEB Result Zone are credited to BTEB Result Zone (btebresultszone.com) — or use BTEB’s official portal inside the app, credited to the Bangladesh Technical Education Board (result.bteb.gov.bd). We do not store or track students&apos; private searches, nor do we fabricate academic results.
+              One <strong>View Result</strong> tap checks every source in order: first DiplomaMate&apos;s locally imported official BTEB Gazette records; if the roll is not there, the live result from BTEB Result Zone (btebresultszone.com) opens automatically inside the app; and from there BTEB&apos;s official portal (result.bteb.gov.bd) is one tap away. Results shown from BTEB Result Zone are credited to BTEB Result Zone, and results from the official portal are credited to the Bangladesh Technical Education Board. We do not store or track students&apos; private searches, nor do we fabricate academic results.
             </p>
           </div>
         </div>
