@@ -16,7 +16,26 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Debug signing uses a fixed keystore kept at ~/workspace/android-debug.keystore
+    // (NOT the default ~/.android/debug.keystore). The default lives under /root,
+    // which is wiped when the VM is replaced — a regenerated debug key then
+    // changes the APK signature, so Android refuses to install the new APK
+    // over the old one and the user must uninstall, wiping all app data
+    // (login, local captain applications). This copy is in the persistent
+    // home directory, so the signature stays the same across rebuilds.
+    // NEVER commit this keystore to the repo.
+    signingConfigs {
+        debug {
+            storeFile file('/home/hatch/workspace/android-debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
