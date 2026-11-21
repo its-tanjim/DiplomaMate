@@ -243,6 +243,24 @@
       "attendanceRate": "",
       "createdAt": "2026-10-31T08:39:56.264Z",
       "isRegisteredAccount": true
+    },
+    {
+      "id": "std_ca19c255-ffb4-4502-a389-015c37aa21b3",
+      "name": "Tanjim Khan",
+      "classRoll": "00",
+      "boardRoll": "843900",
+      "regNumber": "1502342900",
+      "college": "Barishal Polytechnic Institute",
+      "department": "Computer Science and Technology (CST)",
+      "semester": 4,
+      "shift": "Day",
+      "section": "B2",
+      "phone": "+880 1700-000000",
+      "accountType": "class_captain",
+      "captainVerificationStatus": "Approved",
+      "attendanceRate": "",
+      "createdAt": "21 Nov 2026, 11:55 PM",
+      "isRegisteredAccount": true
     }
   ],
   "teacherAccounts": [
@@ -1335,6 +1353,36 @@
       "session": "2023-2024",
       "status": "Approved",
       "appliedAt": "2026-10-24T15:18:52.236Z"
+    },
+    {
+      "id": "app_1795283709269",
+      "studentId": "std_ca19c255-ffb4-4502-a389-015c37aa21b3",
+      "studentName": "Tanjim Khan",
+      "college": "Barishal Polytechnic Institute",
+      "department": "Computer Science and Technology (CST)",
+      "semester": 4,
+      "shift": "Day",
+      "section": "B2",
+      "boardRoll": "843900",
+      "regNumber": "1502342900",
+      "phone": "+880 1700-000000",
+      "session": "2021-2022",
+      "status": "Approved",
+      "appliedAt": "21 Nov 2026, 11:55 PM",
+      "verificationFormUrl": "",
+      "verificationFormName": "",
+      "teacherEndorsement": {
+        "teacherId": "tch_1795283541612",
+        "teacherName": "Sakib rahman",
+        "teacherDesignation": "Instructor (Tech)",
+        "endorsedAt": "21 Nov 2026, 05:55 PM",
+        "comments": "Endorsed as official student Class Captain."
+      },
+      "adminDecision": {
+        "decidedBy": "Academic System Administrator (its.tanjim.06@gmail.com)",
+        "decidedAt": "2026-11-21T18:47:03.534Z"
+      },
+      "isRegisteredAccount": true
     }
   ],
   "communities": [],
@@ -1345,6 +1393,14 @@
     "std_01"
   ],
   "adminAuditLogs": [
+    {
+      "id": "audit_b162b5a5-5fd3-4de0-a09d-806cc2455d6b",
+      "adminId": "sysadmin_1792821774886",
+      "action": "account_approved",
+      "targetId": "std_ca19c255-ffb4-4502-a389-015c37aa21b3",
+      "targetName": "Tanjim Khan",
+      "timestamp": "2026-11-21T18:47:03.535Z"
+    },
     {
       "id": "audit_a669ad98-903a-4603-a0cc-60240c83cf91",
       "adminId": "sysadmin_1792821774886",
