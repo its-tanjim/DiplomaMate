@@ -1134,9 +1134,10 @@ export const BTEBResultsScreen: React.FC = () => {
   }
 
   // Open the official BTEB result portal inside the app. The portal asks for
-  // exam, semester, year, roll, registration number and a small captcha that
-  // only the student can solve on the portal itself, so the embedded page
-  // shows the portal's own form — the student fills it without leaving the app.
+  // exam, curriculum, semester, year, roll, registration number and an image
+  // captcha that only the student can solve on the portal itself, so the
+  // embedded page shows the portal's own form — the student fills it without
+  // leaving the app.
   const openOfficialBteb = () => {
     setIsOfficialFrameLoading(true);
     setViewMode('official-bteb');
@@ -1200,9 +1201,9 @@ export const BTEBResultsScreen: React.FC = () => {
             <span>How to check your result here</span>
           </h2>
           <ol className="text-xs text-slate-600 leading-relaxed space-y-1 list-decimal list-inside">
-            <li>Select your examination, semester and exam year on the portal below.</li>
+            <li>Select your examination, curriculum, semester and exam year on the portal below.</li>
             <li>Enter your Board Roll and Registration Number.</li>
-            <li>Solve the small captcha (a simple sum) shown on the portal and press Search.</li>
+            <li>Type the characters shown in the portal&apos;s security-check image into the Code box and press Search.</li>
             <li>Your official result will appear right here, inside the app.</li>
           </ol>
           {(userProfile.boardRoll || userProfile.regNumber) && (
