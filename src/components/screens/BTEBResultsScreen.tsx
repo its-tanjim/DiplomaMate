@@ -27,7 +27,8 @@ import {
   GraduationCap,
   Sparkles,
   HelpCircle,
-  Clock
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 import {
   BtebResultBatch,
@@ -43,7 +44,7 @@ import {
 } from '../../types';
 import { MOCK_ENROLLED_STUDENTS } from '../../data/mockData';
 
-type MainViewMode = 'search' | 'statement';
+type MainViewMode = 'search' | 'statement' | 'result-zone';
 type WorkspaceTab = 'individual' | 'group' | 'batches';
 type GroupSortField = 'roll_asc' | 'roll_desc' | 'gpa_desc' | 'gpa_asc' | 'status';
 type GroupStatusFilter = 'ALL' | 'PASSED' | 'REFERRED' | 'NOT_FOUND';
@@ -119,6 +120,11 @@ export const BTEBResultsScreen: React.FC = () => {
   const [statementSourceNotice, setStatementSourceNotice] = useState<string | null>(null);
   const [activeStatement, setActiveStatement] = useState<BtebStudentResultStatement | null>(null);
 
+  // In-app BTEB Result Zone viewer state (live result shown inside DiplomaMate)
+  const [zoneRollInput, setZoneRollInput] = useState<string>(userProfile.boardRoll || '');
+  const [zoneUrl, setZoneUrl] = useState<string>(BTEB_RESULTS_ZONE_URL);
+  const [isZoneFrameLoading, setIsZoneFrameLoading] = useState<boolean>(true);
+
   // Statement page filters & navigation
   const [selectedSemesterTab, setSelectedSemesterTab] = useState<'all' | number>('all');
 
@@ -166,6 +172,21 @@ export const BTEBResultsScreen: React.FC = () => {
       console.error('Failed to open BTEB Results Zone:', error);
       showToast('Could not open BTEB Results Zone.');
     }
+  };
+
+  // Open the BTEB Result Zone viewer inside the app. A valid roll deep-links
+  // straight to that roll's result page (btebresultszone.com/results/<roll>);
+  // without a roll it opens the site's own roll search form.
+  const openResultZone = (roll?: string) => {
+    const targetRoll = normalizeRollInput(roll !== undefined ? roll : zoneRollInput);
+    setZoneRollInput(targetRoll);
+    setZoneUrl(
+      targetRoll && /^\d{4,8}$/.test(targetRoll)
+        ? `${BTEB_RESULTS_ZONE_URL}/${targetRoll}`
+        : BTEB_RESULTS_ZONE_URL
+    );
+    setIsZoneFrameLoading(true);
+    setViewMode('result-zone');
   };
 
   const requestResultLookup = async (url: string): Promise<{ response: Response; data: any }> => {
@@ -994,6 +1015,122 @@ export const BTEBResultsScreen: React.FC = () => {
   }
 
   // ============================================================================
+  // VIEW MODE: BTEB RESULT ZONE — LIVE RESULT SHOWN INSIDE DIPLOMAMATE
+  // ============================================================================
+  if (viewMode === 'result-zone') {
+    return (
+      <div className="space-y-4 pb-12">
+        {/* Navigation & Action Bar */}
+        <div className="bg-surface rounded-2xl border border-slate-200/90 p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setViewMode('search')}
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center font-bold text-xs gap-1.5 cursor-pointer"
+              title="Return to Result Search"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Search</span>
+            </button>
+            <span className="text-xs font-semibold text-slate-500 hidden sm:inline">
+              Live result, shown inside DiplomaMate
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={openBtebResultsZone}
+            className="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Open in Browser</span>
+          </button>
+        </div>
+
+        {/* Source attribution — the result below comes from BTEB Result Zone */}
+        <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4 shadow-xs space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-600 text-white text-[11px] font-extrabold tracking-wide">
+              <Award className="w-3.5 h-3.5" />
+              BTEB RESULT ZONE
+            </span>
+            <span className="text-[11px] font-semibold text-teal-800">
+              Result source: btebresultszone.com
+            </span>
+          </div>
+          <p className="text-xs text-teal-900/90 leading-relaxed">
+            The result shown below is fetched live from <strong>BTEB Result Zone</strong> and displayed here inside DiplomaMate, so you never have to leave the app.
+          </p>
+          <p className="text-xs text-teal-900/90 leading-relaxed" lang="bn">
+            নিচের ফলাফলটি BTEB Result Zone থেকে নেওয়া — DiplomaMate এখানেই দেখাচ্ছে।
+          </p>
+        </div>
+
+        {/* Roll input inside the app */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            openResultZone();
+          }}
+          className="dm-card p-4 sm:p-5 space-y-3"
+        >
+          <div>
+            <label className="block text-xs font-bold text-text-primary mb-1.5">
+              BTEB Board Roll Number *
+            </label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Hash className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  required
+                  inputMode="numeric"
+                  placeholder="Enter Board Roll (e.g. 750102)"
+                  value={zoneRollInput}
+                  onChange={(e) => setZoneRollInput(e.target.value)}
+                  className="dm-field w-full pl-10 pr-4 py-2.5 text-sm font-mono text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                />
+              </div>
+              <button
+                type="submit"
+                className="dm-primary-action px-4 py-2.5 text-sm font-bold shadow-sm flex items-center justify-center gap-2 cursor-pointer shrink-0"
+              >
+                <Search className="w-4 h-4" />
+                <span>View Result</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Enter your roll above and the result will appear below, inside the app.
+            </p>
+          </div>
+        </form>
+
+        {/* Live result from BTEB Result Zone */}
+        <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-surface shadow-xs">
+          {isZoneFrameLoading && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-surface p-6 text-center">
+              <div className="w-10 h-10 rounded-full bg-blue-50 border-2 border-brand-blue border-t-transparent animate-spin" />
+              <p className="text-xs text-slate-500 font-semibold">
+                Loading result from BTEB Result Zone...
+              </p>
+            </div>
+          )}
+          <iframe
+            key={zoneUrl}
+            src={zoneUrl}
+            title="BTEB Result Zone — Board Result"
+            className="w-full block bg-white"
+            style={{ height: '72vh' }}
+            onLoad={() => setIsZoneFrameLoading(false)}
+          />
+        </div>
+        <p className="text-[11px] text-slate-500 text-center">
+          Result source: <strong className="text-slate-700">BTEB Result Zone</strong> (btebresultszone.com) · If the result does not load here, use “Open in Browser” above.
+        </p>
+      </div>
+    );
+  }
+
+  // ============================================================================
   // VIEW MODE: RESULT SEARCH PAGE
   // ============================================================================
   return (
@@ -1262,6 +1399,33 @@ export const BTEBResultsScreen: React.FC = () => {
             </form>
           </div>
 
+          {/* BTEB Result Zone — live result shown inside the app */}
+          <div className="dm-card p-5 sm:p-6 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base font-bold text-text-primary flex items-center gap-2">
+                <Award className="w-5 h-5 text-teal-600" />
+                <span>BTEB Result Zone — Live Result</span>
+              </h2>
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-teal-600 text-white text-[11px] font-extrabold tracking-wide">
+                BTEB RESULT ZONE
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Result not in DiplomaMate&apos;s gazette yet? Check it live on BTEB Result Zone without leaving the app — enter your roll and the result appears right here.
+            </p>
+            <button
+              type="button"
+              onClick={() => openResultZone(rollInput)}
+              className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Search className="w-4 h-4" />
+              <span>Check Result on BTEB Result Zone</span>
+            </button>
+            <p className="text-[11px] text-slate-500">
+              Result source: <strong className="text-slate-700">BTEB Result Zone</strong> (btebresultszone.com). Results shown there belong to BTEB Result Zone, not DiplomaMate.
+            </p>
+          </div>
+
           {/* Loading State Banner */}
           {searchStatus === 'loading' && (
             <div className="p-6 bg-surface rounded-2xl border border-blue-100 text-center space-y-3 shadow-xs">
@@ -1302,7 +1466,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={openBtebResultsZone}
+                  onClick={() => openResultZone(notFoundRoll || rollInput)}
                   className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-800 text-white text-sm font-bold shadow-xs transition-colors cursor-pointer"
                 >
                   BTEB Results Zone থেকে দেখুন
@@ -1385,7 +1549,7 @@ export const BTEBResultsScreen: React.FC = () => {
               <span>How Results Are Retrieved and Protected</span>
             </h3>
             <p className="text-slate-600 leading-relaxed">
-              DiplomaMate searches its locally imported official BTEB Gazette records. For results not yet imported, use BTEB’s official portal, which requires a manual security check. We do not store or track students&apos; private searches, nor do we fabricate academic results.
+              DiplomaMate searches its locally imported official BTEB Gazette records. For results not yet imported, use BTEB’s official portal, which requires a manual security check, or check the live result on BTEB Result Zone inside the app — results shown from BTEB Result Zone are credited to BTEB Result Zone (btebresultszone.com). We do not store or track students&apos; private searches, nor do we fabricate academic results.
             </p>
           </div>
         </div>
