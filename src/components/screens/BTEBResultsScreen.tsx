@@ -66,6 +66,12 @@ const CURRICULUM_OPTIONS: CurriculumOption[] = [
 
 const OFFICIAL_BTEB_RESULTS_URL = 'https://result.bteb.gov.bd/result-search';
 const BTEB_RESULTS_ZONE_URL = 'https://btebresultszone.com/results';
+// BTEB Result Zone lists every exam that shares a roll (Diploma, HSC BMT,
+// SSC Vocational...). DiplomaMate is a diploma app, so the viewer always
+// filters to Diploma in Engineering — verified live: the site honours
+// ?curriculumId=diploma_in_engineering on /results/<roll> and shows only
+// that exam's result.
+const RESULT_ZONE_DIPLOMA_FILTER = 'curriculumId=diploma_in_engineering';
 const RESULT_LOOKUP_TIMEOUT_MS = 15_000;
 
 type ResultLookupTransportFailure = 'timeout' | 'network' | 'request';
@@ -173,7 +179,8 @@ export const BTEBResultsScreen: React.FC = () => {
 
   const openBtebResultsZone = async () => {
     try {
-      await nativeService.openExternalUrl(BTEB_RESULTS_ZONE_URL);
+      // Open the same Diploma-filtered result the viewer is showing.
+      await nativeService.openExternalUrl(zoneUrl);
     } catch (error) {
       console.error('Failed to open BTEB Results Zone:', error);
       showToast('Could not open BTEB Results Zone.');
@@ -191,7 +198,7 @@ export const BTEBResultsScreen: React.FC = () => {
     setZoneFallbackRoll(fromGazetteMiss ? targetRoll : null);
     setZoneUrl(
       targetRoll && /^\d{4,8}$/.test(targetRoll)
-        ? `${BTEB_RESULTS_ZONE_URL}/${targetRoll}`
+        ? `${BTEB_RESULTS_ZONE_URL}/${targetRoll}?${RESULT_ZONE_DIPLOMA_FILTER}`
         : BTEB_RESULTS_ZONE_URL
     );
     setIsZoneFrameLoading(true);
@@ -1088,10 +1095,10 @@ export const BTEBResultsScreen: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-teal-900/90 leading-relaxed">
-            The result shown below is fetched live from <strong>BTEB Result Zone</strong> and displayed here inside DiplomaMate, so you never have to leave the app.
+            The result shown below is fetched live from <strong>BTEB Result Zone</strong> and displayed here inside DiplomaMate, so you never have to leave the app. Only the <strong>Diploma in Engineering</strong> result is shown — the same roll can also have HSC or SSC results on the site, which are hidden here.
           </p>
           <p className="text-xs text-teal-900/90 leading-relaxed" lang="bn">
-            নিচের ফলাফলটি BTEB Result Zone থেকে নেওয়া — DiplomaMate এখানেই দেখাচ্ছে।
+            নিচের ফলাফলটি BTEB Result Zone থেকে নেওয়া — DiplomaMate এখানেই দেখাচ্ছে। শুধু Diploma in Engineering এর ফলাফল দেখানো হয়।
           </p>
         </div>
 
