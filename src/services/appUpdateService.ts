@@ -46,11 +46,19 @@ export async function fetchLatestRelease(): Promise<AppUpdateInfo | null> {
             typeof asset?.name === 'string' && asset.name.endsWith('.apk')
         )
       : null;
+    // Download source: the attached release asset when there is one,
+    // otherwise the APK file committed to the repo under releases/
+    // (release assets need uploads.github.com, which the GitHub token
+    // used for publishing does not cover — the repo file is the reliable
+    // path, and the release tag is the version marker).
+    const downloadUrl =
+      apk?.browser_download_url ||
+      `https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.${latestCode}-debug.apk`;
     return {
       available: latestCode > APP_VERSION_CODE,
       latestCode,
       tag: String(data.tag_name || ''),
-      downloadUrl: apk?.browser_download_url || null,
+      downloadUrl,
       notes: String(data.body || '')
     };
   } catch {
