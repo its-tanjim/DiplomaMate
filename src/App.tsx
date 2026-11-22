@@ -26,6 +26,7 @@ import { BookListScreen } from './components/screens/BookListScreen';
 import { CommunityScreen } from './components/screens/CommunityScreen';
 import { CheckCircle2 } from 'lucide-react';
 import { nativeService } from './services/nativeService';
+import { AppUpdateBanner } from './components/AppUpdateBanner';
 
 const AppContent: React.FC = () => {
   const { isLoggedIn, activeScreen, setActiveScreen, toastMessage, accountType, isServerVerifiedAdmin, openNotesSection } = useApp();
@@ -100,6 +101,9 @@ const AppContent: React.FC = () => {
     <div className="min-h-screen bg-app-bg text-text-primary flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
       {/* Top Mobile Bar */}
       <MobileHeader />
+
+      {/* New APK available — the app checks GitHub Releases itself */}
+      <AppUpdateBanner />
 
       {/* Main Content Viewport */}
       <main className={`dm-app-content flex-1 ${isWideScreen ? 'max-w-6xl' : 'max-w-4xl'} mx-auto w-full px-4 sm:px-6 lg:px-8 pt-5`}>

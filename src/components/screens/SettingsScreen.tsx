@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Settings as SettingsIcon, 
@@ -8,6 +8,7 @@ import {
   ShieldCheck, 
   UserCheck, 
   RotateCcw, 
+  RefreshCw,
   HelpCircle, 
   Sparkles,
   Layers,
@@ -21,6 +22,11 @@ import {
 import { Shift, Section, AccountType } from '../../types';
 import { nativeService } from '../../services/nativeService';
 import { ReminderLeadTimeSlider } from '../common/ReminderLeadTimeSlider';
+import {
+  clearDismissedTag,
+  currentVersionLabel,
+  fetchLatestRelease
+} from '../../services/appUpdateService';
 
 export const SettingsScreen: React.FC = () => {
   const { 
@@ -36,6 +42,34 @@ export const SettingsScreen: React.FC = () => {
   } = useApp();
 
   const platformInfo = nativeService.getPlatformInfo();
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  // Manual update check (Android app only — the web version updates itself
+  // through the Render deploy). Opens the new APK download when one exists.
+  const handleManualUpdateCheck = async () => {
+    if (checkingUpdate) return;
+    setCheckingUpdate(true);
+    try {
+      const info = await fetchLatestRelease();
+      if (!info) {
+        showToast('Could not check for updates. Please try again later.');
+      } else if (!info.available) {
+        showToast(`You are on the latest version (${currentVersionLabel()}).`);
+      } else if (info.downloadUrl) {
+        clearDismissedTag();
+        showToast(`Update ${info.tag} available — opening download…`);
+        try {
+          await nativeService.openExternalUrl(info.downloadUrl);
+        } catch {
+          window.open(info.downloadUrl, '_blank', 'noopener,noreferrer');
+        }
+      } else {
+        showToast(`Update ${info.tag} is available.`);
+      }
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   return (
     <div className="space-y-4 pb-8">
@@ -335,9 +369,27 @@ export const SettingsScreen: React.FC = () => {
         </button>
       </div>
 
+      {/* App Update (Android app only) */}
+      {platformInfo.isNative && (
+        <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs flex items-center justify-between">
+          <div>
+            <h3 className="text-xs font-bold text-text-primary">App Update</h3>
+            <p className="text-[11px] text-slate-500">Current version {currentVersionLabel()} — check for a newer build</p>
+          </div>
+          <button
+            onClick={() => void handleManualUpdateCheck()}
+            disabled={checkingUpdate}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>{checkingUpdate ? 'Checking…' : 'Check'}</span>
+          </button>
+        </div>
+      )}
+
       {/* About Applet */}
       <div className="p-4 bg-slate-100/70 rounded-2xl text-center space-y-1 text-slate-500 text-xs">
-        <div className="font-bold text-text-primary">DiplomaMate v1.0</div>
+        <div className="font-bold text-text-primary">DiplomaMate {currentVersionLabel()}</div>
         <p className="text-[11px]">
           Dedicated companion for 4-Year Diploma in Engineering students under Bangladesh Technical Education Board (BTEB).
         </p>
