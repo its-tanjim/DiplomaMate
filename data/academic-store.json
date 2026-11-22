@@ -1385,14 +1385,100 @@
       "isRegisteredAccount": true
     }
   ],
-  "communities": [],
-  "communityMemberships": [],
-  "communityMessages": [],
+  "communities": [
+    {
+      "id": "comm_1795326482012_eneua",
+      "name": "CST 4th Semester Study Group",
+      "description": "Only  for  Study",
+      "college_id": "clg_barishal",
+      "college": "Barishal Polytechnic Institute",
+      "department_id": "tech_cst",
+      "department": "Computer Science and Technology (CST)",
+      "semester": 4,
+      "regulation": "2022",
+      "shift": "Day",
+      "section": "B2",
+      "visibility": "public",
+      "created_by": "std_ca19c255-ffb4-4502-a389-015c37aa21b3",
+      "created_by_name": "Tanjim Khan",
+      "created_by_role": "class_captain",
+      "moderators": [
+        "std_ca19c255-ffb4-4502-a389-015c37aa21b3"
+      ],
+      "member_count": 1,
+      "is_active": true,
+      "avatar_emoji": "📚",
+      "created_at": "2026-11-22T05:48:02.012Z",
+      "updated_at": "2026-11-22T05:48:07.839Z",
+      "pinned_notice_id": "msg_1795326482012_welcome"
+    }
+  ],
+  "communityMemberships": [
+    {
+      "id": "mem_comm_1795326482012_eneua_std_ca19c255-ffb4-4502-a389-015c37aa21b3",
+      "community_id": "comm_1795326482012_eneua",
+      "user_id": "std_ca19c255-ffb4-4502-a389-015c37aa21b3",
+      "user_name": "Tanjim Khan",
+      "user_role": "class_captain",
+      "college_id": "clg_barishal",
+      "department_id": "tech_cst",
+      "semester": 4,
+      "shift": "Day",
+      "section": "B2",
+      "membership_role": "owner",
+      "status": "active",
+      "is_muted": false,
+      "joined_at": "2026-11-22T05:48:02.012Z",
+      "updated_at": "2026-11-22T05:48:02.012Z"
+    }
+  ],
+  "communityMessages": [
+    {
+      "id": "msg_1795326482012_welcome",
+      "community_id": "comm_1795326482012_eneua",
+      "sender_id": "std_ca19c255-ffb4-4502-a389-015c37aa21b3",
+      "sender_name": "Tanjim Khan",
+      "sender_role": "class_captain",
+      "sender_designation": "Class Captain",
+      "is_moderator": true,
+      "content": "Welcome to the CST 4th Semester Study Group! This group is created for academic collaboration, routine updates, lecture notes, and study discussions. Please adhere to respectful academic conduct.",
+      "attachments": [],
+      "is_pinned": true,
+      "pinned_by": "std_ca19c255-ffb4-4502-a389-015c37aa21b3",
+      "pinned_at": "2026-11-22T05:48:02.012Z",
+      "is_deleted": false,
+      "reports_count": 0,
+      "created_at": "2026-11-22T05:48:02.012Z"
+    },
+    {
+      "id": "msg_1795326487839_66le1",
+      "community_id": "comm_1795326482012_eneua",
+      "sender_id": "std_ca19c255-ffb4-4502-a389-015c37aa21b3",
+      "sender_name": "Tanjim Khan",
+      "sender_role": "class_captain",
+      "sender_designation": "Class Captain",
+      "is_moderator": true,
+      "content": "hi",
+      "attachments": [],
+      "is_pinned": false,
+      "is_deleted": false,
+      "reports_count": 0,
+      "created_at": "2026-11-22T05:48:07.839Z"
+    }
+  ],
   "communityReports": [],
   "deletedAccountIds": [
     "std_01"
   ],
   "adminAuditLogs": [
+    {
+      "id": "audit_c7db2755-d667-4a98-ba0d-d7b7c42dd506",
+      "adminId": "std_ca19c255-ffb4-4502-a389-015c37aa21b3",
+      "action": "community_created",
+      "targetId": "comm_1795326482012_eneua",
+      "targetName": "CST 4th Semester Study Group",
+      "timestamp": "2026-11-22T05:48:02.012Z"
+    },
     {
       "id": "audit_b162b5a5-5fd3-4de0-a09d-806cc2455d6b",
       "adminId": "sysadmin_1792821774886",
