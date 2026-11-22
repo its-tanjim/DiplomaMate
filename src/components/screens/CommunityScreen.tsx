@@ -183,9 +183,16 @@ export const CommunityScreen: React.FC = () => {
       const data = await res.json();
       if (data.success) {
         setCommunities(data.communities || []);
-        if (data.userMemberships && Array.isArray(data.userMemberships)) {
+        // The server returns the field as `memberships` (GET /api/communities).
+        // Accept `userMemberships` too so either shape works — reading the
+        // wrong field left the map empty, so joined groups never showed
+        // under "My Groups" and kept reappearing in Discover.
+        const membershipList = (data.memberships || data.userMemberships) as
+          | CommunityMembershipRecord[]
+          | undefined;
+        if (Array.isArray(membershipList)) {
           const map: Record<string, CommunityMembershipRecord> = {};
-          data.userMemberships.forEach((m: CommunityMembershipRecord) => {
+          membershipList.forEach((m: CommunityMembershipRecord) => {
             map[m.community_id] = m;
           });
           setUserMemberships(map);
@@ -269,6 +276,11 @@ export const CommunityScreen: React.FC = () => {
       const data = await res.json();
       if (data.success) {
         showToast(data.message || 'Joined academic group successfully!');
+        // Update the membership right away so "My Groups" reflects the
+        // join immediately, even before the reload below returns.
+        if (data.membership) {
+          setUserMemberships(prev => ({ ...prev, [community.id]: data.membership }));
+        }
         await loadCommunities();
         if (data.membership && data.membership.status === 'active') {
           setSelectedCommunity(community);
