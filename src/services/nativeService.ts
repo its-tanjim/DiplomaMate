@@ -3,6 +3,7 @@ import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { RoutinePeriod, NoteItem } from '../types';
 
@@ -279,16 +280,60 @@ Saved locally on device storage via DiplomaMate for Android.`;
   }
 
   /**
-   * Downloads any document from data URL or blob to device or browser downloads
+   * Downloads any document from a data URL to the device or browser downloads.
+   * On Android/iOS the old anchor-click trick does nothing inside the WebView,
+   * so the file is written to the app cache and handed to the system share
+   * sheet instead — the user can save it or open it with any app.
    */
   async downloadDocument(dataUrl: string, fileName: string): Promise<boolean> {
     try {
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      return this.downloadBlob(blob, fileName);
+    } catch (err) {
+      console.warn('Document download error:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Saves a blob to the device (native share sheet) or the browser downloads
+   * folder (web).
+   */
+  async downloadBlob(blob: Blob, fileName: string): Promise<boolean> {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = String(reader.result || '');
+            resolve(result.includes('base64,') ? result.split('base64,')[1] : result);
+          };
+          reader.onerror = () => reject(new Error('Could not read file.'));
+          reader.readAsDataURL(blob);
+        });
+        const safeName = fileName.replace(/[/\\?%*:|"<>]/g, '_') || 'file';
+        const saved = await Filesystem.writeFile({
+          path: safeName,
+          data: base64,
+          directory: Directory.Cache
+        });
+        await Share.share({
+          title: fileName,
+          url: saved.uri,
+          dialogTitle: `Open ${fileName}`
+        });
+        return true;
+      }
+
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = dataUrl;
+      link.href = url;
       link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
       return true;
     } catch (err) {
       console.warn('Document download error:', err);

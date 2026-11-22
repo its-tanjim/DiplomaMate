@@ -889,6 +889,12 @@ export interface CommunityAttachment {
   mime_type: string;
   file_size_bytes: number;
   file_url: string;
+  // Raw base64 bytes of the uploaded file (without the data: prefix).
+  // Stored on the record itself so the file survives Render deploys — files
+  // written to disk under data/community-files/ are lost on every deploy
+  // and are not covered by the GitHub store backup. Never sent to clients
+  // in message lists; only the file download endpoint reads it.
+  file_data?: string;
   duration_seconds?: number;
 }
 

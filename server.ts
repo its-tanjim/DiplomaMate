@@ -9540,7 +9540,7 @@ app.get('/api/communities/:id/messages', (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      messages,
+      messages: messages.map(publicCommunityMessage),
       pinnedMessages,
       totalCount: messages.length,
       isMuted: userMem?.is_muted || false
@@ -9552,6 +9552,18 @@ app.get('/api/communities/:id/messages', (req: Request, res: Response) => {
 });
 
 // 15I. POST MESSAGE IN COMMUNITY (TEXT & ATTACHMENTS)
+// Attachments carry their file bytes in `file_data`, but message list /
+// post responses must stay light — the bytes are only served through the
+// file download endpoint, never embedded in chat payloads.
+function publicAttachment(att: CommunityAttachment): CommunityAttachment {
+  const { file_data: _fileData, ...rest } = att;
+  return rest as CommunityAttachment;
+}
+
+function publicCommunityMessage(msg: CommunityMessageRecord): CommunityMessageRecord {
+  return { ...msg, attachments: (msg.attachments || []).map(publicAttachment) };
+}
+
 app.post('/api/communities/:id/messages', (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
@@ -9602,13 +9614,23 @@ app.post('/api/communities/:id/messages', (req: Request, res: Response) => {
       }
 
       const attId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      
-      // If base64 content was uploaded, persist securely in data/community-files/
-      if (att.base64_data && typeof att.base64_data === 'string') {
-        const buffer = Buffer.from(att.base64_data.replace(/^data:[^;]+;base64,/, ''), 'base64');
-        const diskPath = path.join(COMMUNITY_FILES_DIR, `${attId}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
-        fs.writeFileSync(diskPath, buffer);
-      }
+
+      // The client sends the file bytes as a base64 data URL in `file_url`
+      // (older clients may send `base64_data`). Persist the bytes on the
+      // attachment record itself: files written to data/community-files/
+      // are lost on every Render deploy and are not covered by the GitHub
+      // store backup, so disk storage alone meant every uploaded file came
+      // back as a fake placeholder PDF. The old code read only
+      // `att.base64_data`, so the bytes were never saved at all.
+      const rawDataUrl =
+        typeof att.base64_data === 'string' && att.base64_data
+          ? att.base64_data
+          : typeof att.file_url === 'string' && att.file_url.startsWith('data:')
+            ? att.file_url
+            : '';
+      const fileData = rawDataUrl.includes('base64,')
+        ? rawDataUrl.split('base64,')[1]
+        : '';
 
       processedAttachments.push({
         id: attId,
@@ -9617,6 +9639,7 @@ app.post('/api/communities/:id/messages', (req: Request, res: Response) => {
         mime_type: att.mime_type || (fileType === 'pdf' ? 'application/pdf' : fileType === 'video' ? 'video/mp4' : 'application/octet-stream'),
         file_size_bytes: fileSizeBytes,
         file_url: `/api/communities/${comm.id}/files/${attId}`,
+        file_data: fileData || undefined,
         duration_seconds: durationSeconds
       });
     }
@@ -9647,7 +9670,7 @@ app.post('/api/communities/:id/messages', (req: Request, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: newMsg
+      message: publicCommunityMessage(newMsg)
     });
   } catch (err) {
     console.error('[Community Post Message] Error:', err);
@@ -9847,6 +9870,16 @@ app.get('/api/communities/:id/files/:fileId', (req: Request, res: Response) => {
           break;
         }
       }
+    }
+
+    // Serve bytes stored on the attachment record itself — the durable path,
+    // kept in the academic store (and its GitHub backup), so uploaded files
+    // survive Render deploys.
+    if (foundAtt?.file_data) {
+      const buf = Buffer.from(foundAtt.file_data, 'base64');
+      res.setHeader('Content-Type', foundAtt.mime_type || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `inline; filename="${foundAtt.file_name || 'document'}"`);
+      return res.send(buf);
     }
 
     // Look for matching file in data/community-files

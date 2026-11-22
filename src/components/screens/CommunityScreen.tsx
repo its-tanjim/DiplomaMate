@@ -1,4 +1,5 @@
 import { apiFetch } from '../../services/apiClient';
+import { nativeService } from '../../services/nativeService';
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
@@ -20,6 +21,7 @@ import {
   Plus, 
   FileText, 
   Video, 
+  ImageIcon,
   Lock, 
   Globe, 
   LogOut, 
@@ -117,6 +119,44 @@ export const CommunityScreen: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Object URLs for image attachments. The file endpoint requires an auth
+  // token, so a plain <img src> or <a href> gets a 401 — image bytes are
+  // fetched with the session token and turned into blob URLs here.
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const imageUrlsRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    const pending = messages.flatMap(m => m.attachments || []).filter(
+      att => att.file_type === 'image' && !imageUrlsRef.current[att.id]
+    );
+    if (pending.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const att of pending) {
+        try {
+          const res = await apiFetch(att.file_url, { headers: getHeaders() });
+          if (!res.ok) continue;
+          const blob = await res.blob();
+          if (cancelled) return;
+          const url = URL.createObjectURL(blob);
+          imageUrlsRef.current[att.id] = url;
+          setImageUrls(prev => ({ ...prev, [att.id]: url }));
+        } catch {
+          // Image stays as a downloadable file row below.
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [messages]);
+
+  // Revoke blob URLs when leaving the screen.
+  useEffect(() => {
+    const cache = imageUrlsRef.current;
+    return () => {
+      Object.values(cache).forEach(url => URL.revokeObjectURL(url));
+    };
+  }, []);
 
   const getHeaders = (): Record<string, string> => {
     const headers: Record<string, string> = {
@@ -293,6 +333,7 @@ export const CommunityScreen: React.FC = () => {
 
     // Check size limit: 15MB for video, 10MB for documents
     const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(file.name);
     const isPdfOrDoc = file.type === 'application/pdf' || 
                        file.type.includes('word') || 
                        file.type.includes('document') || 
@@ -315,9 +356,11 @@ export const CommunityScreen: React.FC = () => {
     const reader = new FileReader();
     reader.onload = () => {
       const base64Data = reader.result as string;
-      const fileType: 'video' | 'pdf' | 'document' | 'image' = isVideo 
-        ? 'video' 
-        : (file.type === 'application/pdf' || file.name.endsWith('.pdf')) ? 'pdf' : 'document';
+      const fileType: 'video' | 'pdf' | 'document' | 'image' = isVideo
+        ? 'video'
+        : isImage
+          ? 'image'
+          : (file.type === 'application/pdf' || file.name.endsWith('.pdf')) ? 'pdf' : 'document';
       
       setAttachment({
         file,
@@ -350,7 +393,11 @@ export const CommunityScreen: React.FC = () => {
             file_type: attachment.fileType,
             mime_type: attachment.file?.type || 'application/octet-stream',
             file_size_bytes: attachment.fileSize,
+            // The server reads the bytes from `base64_data` (and also
+            // accepts a data: URL in `file_url`); sending both keeps the
+            // upload working with old and new server builds.
             file_url: attachment.base64Data,
+            base64_data: attachment.base64Data,
             duration_seconds: attachment.durationSeconds || (attachment.fileType === 'video' ? 30 : undefined)
           }
         ];
@@ -374,6 +421,25 @@ export const CommunityScreen: React.FC = () => {
       setErrorMsg('Network error posting message.');
     } finally {
       setIsSubmittingMessage(false);
+    }
+  };
+
+  // Download / open an attachment. The file endpoint needs the session
+  // token, so a plain <a href> gets a 401 and an anchor download does
+  // nothing inside the Android WebView — the bytes are fetched with auth
+  // and handed to the native share sheet (or the browser download on web).
+  const handleAttachmentDownload = async (att: CommunityAttachment) => {
+    try {
+      const res = await apiFetch(att.file_url, { headers: getHeaders() });
+      if (!res.ok) {
+        setErrorMsg('Could not download this file.');
+        return;
+      }
+      const blob = await res.blob();
+      const ok = await nativeService.downloadBlob(blob, att.file_name);
+      if (!ok) setErrorMsg('Could not download this file.');
+    } catch {
+      setErrorMsg('Network error downloading file.');
     }
   };
 
@@ -784,18 +850,16 @@ export const CommunityScreen: React.FC = () => {
                           <div className="mt-2.5 space-y-2 pt-2 border-t border-slate-100/30">
                             {msg.attachments.map((att) => (
                               <div key={att.id} className="rounded-xl overflow-hidden">
-                                {att.file_type === 'video' ? (
+                                {att.file_type === 'image' && imageUrls[att.id] ? (
                                   <div className="bg-slate-900 rounded-xl overflow-hidden p-1">
-                                    <video
-                                      controls
-                                      playsInline
-                                      preload="metadata"
-                                      className="w-full max-h-56 rounded-lg bg-black"
-                                      src={att.file_url}
+                                    <img
+                                      src={imageUrls[att.id]}
+                                      alt={att.file_name}
+                                      className="w-full max-h-56 rounded-lg object-contain bg-black"
                                     />
                                     <div className="flex items-center justify-between text-[10px] text-slate-400 px-2 py-1">
                                       <span className="flex items-center gap-1">
-                                        <Video className="w-3 h-3 text-teal-400" />
+                                        <ImageIcon className="w-3 h-3 text-teal-400" />
                                         {att.file_name}
                                       </span>
                                       <span>{formatBytes(att.file_size_bytes)}</span>
@@ -815,13 +879,12 @@ export const CommunityScreen: React.FC = () => {
                                       </div>
                                     </div>
 
-                                    {/* Authorized File Streaming Link */}
-                                    <a
-                                      href={att.file_url}
-                                      download={att.file_name}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 shrink-0 ${
+                                    {/* Authenticated download: a plain link gets a 401 and
+                                        an anchor download does nothing in the Android WebView */}
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleAttachmentDownload(att)}
+                                      className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 shrink-0 cursor-pointer ${
                                         isAuthor 
                                           ? 'bg-surface text-blue-700 hover:bg-blue-50'
                                           : 'bg-blue-50 text-brand-blue hover:bg-blue-100'
@@ -830,7 +893,7 @@ export const CommunityScreen: React.FC = () => {
                                     >
                                       <Download className="w-3.5 h-3.5" />
                                       <span className="hidden sm:inline">Download</span>
-                                    </a>
+                                    </button>
                                   </div>
                                 )}
                               </div>
@@ -920,7 +983,7 @@ export const CommunityScreen: React.FC = () => {
               type="file" 
               ref={fileInputRef} 
               onChange={handleFileChange} 
-              accept=".pdf,.doc,.docx,video/mp4,video/webm" 
+              accept="image/*,.pdf,.doc,.docx,video/mp4,video/webm" 
               className="hidden" 
             />
             <button

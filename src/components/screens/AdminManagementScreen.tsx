@@ -349,13 +349,39 @@ export const AdminManagementScreen: React.FC = () => {
   const uploadCommunityImage = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !communityModal) return;
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 350_000) {
-      setError('Choose a PNG, JPEG, or WebP image smaller than 350 KB.');
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setError('Choose a PNG, JPEG, or WebP image.');
       event.target.value = '';
       return;
     }
+    // Phone photos are usually 1–5 MB — downscale them in the browser so
+    // they fit the 350 KB image limit instead of rejecting the upload.
+    const applyImage = (dataUrl: string) =>
+      setCommunityModal(current => current ? { ...current, image_url: dataUrl } : current);
     const reader = new FileReader();
-    reader.onload = () => setCommunityModal(current => current ? { ...current, image_url: String(reader.result || '') } : current);
+    reader.onload = () => {
+      const raw = String(reader.result || '');
+      if (file.size <= 350_000) {
+        applyImage(raw);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, 1024 / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          applyImage(raw);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        applyImage(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = () => applyImage(raw);
+      img.src = raw;
+    };
     reader.onerror = () => setError('Could not read the selected image.');
     reader.readAsDataURL(file);
     event.target.value = '';
@@ -630,7 +656,7 @@ export const AdminManagementScreen: React.FC = () => {
               <label className="space-y-1 text-xs font-semibold text-slate-700">Shift<select value={communityModal.shift} onChange={event => setCommunityModal({ ...communityModal, shift: event.target.value as CommunityDraft['shift'] })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal"><option>Both</option><option>Morning</option><option>Day</option></select></label>
               <label className="space-y-1 text-xs font-semibold text-slate-700">Section<select value={communityModal.section} onChange={event => setCommunityModal({ ...communityModal, section: event.target.value as CommunityDraft['section'] })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal"><option>All</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select></label>
               <label className="space-y-1 text-xs font-semibold text-slate-700">Visibility<select value={communityModal.visibility} onChange={event => setCommunityModal({ ...communityModal, visibility: event.target.value as CommunityDraft['visibility'] })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal"><option value="public">Public</option><option value="private">Private</option></select></label>
-              <label className="space-y-1 text-xs font-semibold text-slate-700 sm:col-span-2">Image URL or upload<input value={communityModal.image_url.startsWith('data:') ? 'Image uploaded' : communityModal.image_url} onChange={event => setCommunityModal({ ...communityModal, image_url: event.target.value })} placeholder="https://..." className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal" /><span className="flex items-center gap-2 pt-1"><ImagePlus className="h-4 w-4" /><input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadCommunityImage} className="text-[11px] font-normal" />Max 350 KB</span></label>
+              <label className="space-y-1 text-xs font-semibold text-slate-700 sm:col-span-2">Image URL or upload<input value={communityModal.image_url.startsWith('data:') ? 'Image uploaded' : communityModal.image_url} onChange={event => setCommunityModal({ ...communityModal, image_url: event.target.value })} placeholder="https://..." className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal" /><span className="flex items-center gap-2 pt-1"><ImagePlus className="h-4 w-4" /><input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadCommunityImage} className="text-[11px] font-normal" />Photos are compressed automatically</span></label>
             </div>
             <div className="flex flex-col-reverse gap-2 border-t border-slate-100 p-4 sm:flex-row sm:justify-end"><button type="button" onClick={() => setCommunityModal(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold">Cancel</button><button type="submit" disabled={saving} className="rounded-xl bg-text-primary px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{saving ? 'Saving...' : communityModal.id ? 'Save changes' : 'Create community'}</button></div>
           </form>
