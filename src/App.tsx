@@ -29,6 +29,47 @@ import { nativeService } from './services/nativeService';
 import { AppUpdateBanner } from './components/AppUpdateBanner';
 import { SplashScreen } from './components/SplashScreen';
 
+/**
+ * Catches render errors anywhere below and shows a reload screen instead of
+ * a blank white page (what happened when the splash hook-order bug shipped).
+ */
+class AppErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; message: string }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, message: error.message || 'Something went wrong.' };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('DiplomaMate crashed:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: 'sans-serif', textAlign: 'center', background: '#f8fafc' }}>
+          <h1 style={{ fontSize: 20, fontWeight: 800, color: '#12355b' }}>DiplomaMate</h1>
+          <p style={{ color: '#475569', marginTop: 8 }}>Something went wrong while opening the app.</p>
+          <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{this.state.message}</p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ marginTop: 16, padding: '10px 20px', borderRadius: 12, border: 'none', background: '#12355b', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+          >
+            Reload the app
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const AppContent: React.FC = () => {
   const { isLoggedIn, activeScreen, setActiveScreen, toastMessage, accountType, isServerVerifiedAdmin, openNotesSection } = useApp();
   const [showSplash, setShowSplash] = React.useState(true);
@@ -38,10 +79,6 @@ const AppContent: React.FC = () => {
     const timer = setTimeout(() => setShowSplash(false), 1200);
     return () => clearTimeout(timer);
   }, []);
-
-  if (showSplash) {
-    return <SplashScreen onDone={() => setShowSplash(false)} />;
-  }
 
   // Initialize Android status bar and notification channels on mount
   React.useEffect(() => {
@@ -76,6 +113,15 @@ const AppContent: React.FC = () => {
       return false; // let Android OS exit or minimize app
     });
   }, [activeScreen, setActiveScreen]);
+
+  // Splash renders ONLY after every hook above has run. An early return
+  // before these hooks made React throw "Rendered more hooks than during
+  // the previous render" the moment the splash finished (~1.2s), which
+  // unmounted the whole app and left a blank white page. Never put a
+  // conditional return above a hook in this component.
+  if (showSplash) {
+    return <SplashScreen onDone={() => setShowSplash(false)} />;
+  }
 
   if (activeScreen === 'admin_login') {
     return (
@@ -161,7 +207,9 @@ const AppContent: React.FC = () => {
 export default function App() {
   return (
     <AppProvider>
-      <AppContent />
+      <AppErrorBoundary>
+        <AppContent />
+      </AppErrorBoundary>
     </AppProvider>
   );
 }
