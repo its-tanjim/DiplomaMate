@@ -10251,8 +10251,34 @@ app.get('/api/communities', async (req: Request, res: Response) => {
   }
 });
 
+// Shared filtering for GET /api/communities/recommended, used by BOTH the
+// Supabase path and the JSON-store fallback so the response shape is
+// identical either way. This is NOT filterCommunitiesForSession(): recommended
+// excludes already-joined groups, only requires is_active (no deleted_at
+// check), and only recommends groups the user is eligible for that are
+// public or created by the user — exactly as the original JSON-only route did.
+function filterRecommendedCommunities(
+  session: ServerSession,
+  communities: AcademicCommunity[],
+  allMemberships: CommunityMembershipRecord[]
+): { recommendedCommunities: AcademicCommunity[]; hasJoinedGroups: boolean } {
+  const userMemberships = allMemberships.filter(
+    m => m.user_id === session.userId && m.status === 'active'
+  );
+  const joinedIds = new Set(userMemberships.map(m => m.community_id));
+
+  const recommended = communities.filter(comm => {
+    if (!comm.is_active) return false;
+    if (joinedIds.has(comm.id)) return false;
+    const eligibility = isUserEligibleForCommunity(session, comm);
+    return eligibility.eligible && (comm.visibility === 'public' || comm.created_by === session.userId);
+  });
+
+  return { recommendedCommunities: recommended, hasJoinedGroups: joinedIds.size > 0 };
+}
+
 // 15B. GET RECOMMENDED COMMUNITIES (FOR ONBOARDING & DASHBOARD)
-app.get('/api/communities/recommended', (req: Request, res: Response) => {
+app.get('/api/communities/recommended', async (req: Request, res: Response) => {
   try {
     let session = getAuthenticatedSession(req);
     if (!session && (req.query.college || req.query.department)) {
@@ -10281,22 +10307,36 @@ app.get('/api/communities/recommended', (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Unauthorized: Session or academic profile required.' });
     }
 
-    const userMemberships = academicStore.communityMemberships.filter(
-      m => m.user_id === session.userId && m.status === 'active'
-    );
-    const joinedIds = new Set(userMemberships.map(m => m.community_id));
+    // Phase 4 migration 2: try Supabase (Postgres) first. Any failure falls
+    // back to the JSON store below — the route never crashes for a DB error.
+    if (isSupabaseConfigured()) {
+      try {
+        const [communities, memberships] = await Promise.all([
+          listCommunities(),
+          listMembershipsForUser(session.userId)
+        ]);
+        const result = filterRecommendedCommunities(session, communities, memberships);
+        return res.status(200).json({
+          success: true,
+          recommendedCommunities: result.recommendedCommunities,
+          hasJoinedGroups: result.hasJoinedGroups
+        });
+      } catch (err) {
+        console.warn('[Communities Recommended] Supabase read failed, falling back to JSON store:', err);
+      }
+    }
 
-    const recommended = academicStore.communities.filter(comm => {
-      if (!comm.is_active) return false;
-      if (joinedIds.has(comm.id)) return false;
-      const eligibility = isUserEligibleForCommunity(session, comm);
-      return eligibility.eligible && (comm.visibility === 'public' || comm.created_by === session.userId);
-    });
+    // JSON-store fallback (original behaviour, unchanged).
+    const result = filterRecommendedCommunities(
+      session,
+      academicStore.communities,
+      academicStore.communityMemberships
+    );
 
     return res.status(200).json({
       success: true,
-      recommendedCommunities: recommended,
-      hasJoinedGroups: joinedIds.size > 0
+      recommendedCommunities: result.recommendedCommunities,
+      hasJoinedGroups: result.hasJoinedGroups
     });
   } catch (err) {
     console.error('[Communities Recommended] Error:', err);
