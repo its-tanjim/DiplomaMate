@@ -109,16 +109,22 @@ import {
   extractEmbeddedTextFromImageBuffer,
   validateAndDecodeUploadedFile
 } from './src/services/serverDocumentIntelligence';
-// Phase 4 route migrations 1–5: GET /api/communities, /recommended,
-// /api/roster, POST /api/students/login (read half) and the captain list /
-// quota reads (GET /api/admin/management, GET /api/admin/accounts/:id)
-// read Postgres first, falling back to the JSON store.
+// Phase 4 route migrations 1–8: GET /api/communities, /recommended,
+// /api/roster, POST /api/students/login (read half), the captain list /
+// quota reads (GET /api/admin/management, GET /api/admin/accounts/:id),
+// POST /api/teachers/login (read half), GET /api/routines (list) and
+// GET /api/notices/campus (list) read Postgres first, falling back to
+// the JSON store.
 import {
   isSupabaseConfigured,
   getStudentByBoardRoll,
+  getTeacherByEmail,
+  getTeacherByPhone,
+  listCampusNotices,
   listCaptainRecordsByCohort,
   listCommunities,
   listMembershipsForUser,
+  listRoutines,
   listStudentsByCohort
 } from './server/supabaseClient';
 
@@ -2060,13 +2066,53 @@ app.post('/api/teachers/login', authRateLimiter, authIpRateLimiter, async (req: 
     const cleanIdentifier = String(phoneOrEmail).trim().toLowerCase();
     const cleanPin = String(pin).trim();
 
-    // Find teacher
-    let targetTeacher: ServerTeacher | undefined;
-    for (const t of serverTeachers.values()) {
-      if (t.phone.toLowerCase() === cleanIdentifier || t.email.toLowerCase() === cleanIdentifier) {
-        targetTeacher = t;
-        break;
+    // Phase 4 migration 6 (read half only): the teacher lookup reads
+    // Postgres first — getTeacherByEmail / getTeacherByPhone, the same
+    // email-or-phone match the JSON loop did — and falls back to the JSON
+    // store when Supabase is not configured or the query throws. PIN
+    // verify, lockout, PIN-version upgrade, the verification-status gate,
+    // session minting and the response shape below are unchanged.
+    //
+    // The Maps stay the mutable live record: this route mutates the
+    // teacher (failedPinAttempts / lockoutUntil / PIN upgrade) and
+    // saveAcademicStore() persists teacherAccounts from the
+    // serverTeachers / legacyUnregisteredTeachers Maps, so a
+    // Postgres-mapped object used directly would silently lose those
+    // mutations (a lockout would never persist). toTeacher() also has
+    // no pin_hash_version column, so a v2 hash would mis-verify on a
+    // mapped row. The Postgres row is therefore only used to resolve
+    // WHICH teacher matches; the Map entry for that id is the record
+    // the rest of the route runs on. If Postgres finds a teacher the
+    // Maps do not have, the JSON loop below runs instead (and 404s,
+    // exactly as today — login only ever searched serverTeachers).
+    const findTeacherInJsonStore = (): ServerTeacher | undefined => {
+      for (const t of serverTeachers.values()) {
+        if (t.phone.toLowerCase() === cleanIdentifier || t.email.toLowerCase() === cleanIdentifier) {
+          return t;
+        }
       }
+      return undefined;
+    };
+
+    let targetTeacher: ServerTeacher | undefined;
+    if (isSupabaseConfigured()) {
+      try {
+        const supabaseTeacher = cleanIdentifier.includes('@')
+          ? await getTeacherByEmail(cleanIdentifier)
+          : await getTeacherByPhone(cleanIdentifier);
+        targetTeacher = supabaseTeacher ? serverTeachers.get(supabaseTeacher.id) : undefined;
+        if (!targetTeacher) {
+          // Postgres missed (or found a teacher the Maps do not know):
+          // same JSON lookup as before, so a stale/missing Postgres row
+          // never locks out a teacher the JSON store still has.
+          targetTeacher = findTeacherInJsonStore();
+        }
+      } catch (err) {
+        console.warn('[TeacherLogin] Supabase read failed, falling back to JSON store:', err);
+        targetTeacher = findTeacherInJsonStore();
+      }
+    } else {
+      targetTeacher = findTeacherInJsonStore();
     }
 
     if (!targetTeacher) {
@@ -9160,12 +9206,39 @@ function createScopedRoutineNotification(
 }
 
 /**
+ * Phase 4 migration 7: Supabase-first routines fetch for one cohort slice.
+ * Narrows in SQL only on the exact-match-safe fields (semester / shift /
+ * section) and leaves the cohort (college_id / department_id) and
+ * publication_status filtering to the caller's in-memory filter — the
+ * stored college/department display names do not equal the canonical
+ * resolver names, so exact-name SQL matching is unsafe (same trap as
+ * GET /api/roster). Falls back to the JSON store on missing env or any
+ * query error; never throws, so the route never 500s for a DB error.
+ */
+async function fetchRoutinesForCohort(params: {
+  semester: number;
+  shift: Shift;
+  section: Section;
+}): Promise<RoutinePeriod[]> {
+  if (isSupabaseConfigured()) {
+    try {
+      return await listRoutines(params);
+    } catch (err) {
+      console.warn('[Routines] Supabase read failed, falling back to JSON store:', err);
+    }
+  }
+  return academicStore.routines;
+}
+
+/**
  * 14A. GET ROUTINES FOR AUTHENTICATED USER'S ACADEMIC GROUP (`GET /api/routines`)
  * - Enforces strict backend filtering by `college_id`, `department_id`, `semester` (plus `shift`, `section`, `regulation`).
  * - Students ONLY receive `publication_status === 'published'` routines matching their exact group.
  * - Never returns an unfiltered global routine list as a fallback.
+ * - Phase 4 migration 7: reads Postgres first via fetchRoutinesForCohort(),
+ *   falling back to the JSON store on missing env or any query error.
  */
-app.get('/api/routines', (req: Request, res: Response) => {
+app.get('/api/routines', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -9236,7 +9309,15 @@ app.get('/api/routines', (req: Request, res: Response) => {
         effectiveShift === userGroup.shift &&
         effectiveSection === userGroup.section;
 
-      const filtered = academicStore.routines.filter((r) => {
+      // Supabase first (narrowed on semester/shift/section in SQL; the
+      // cohort + publication_status filter below runs in memory on either
+      // source); JSON store fallback.
+      const routineSource = await fetchRoutinesForCohort({
+        semester: Number(userGroup.semester),
+        shift: effectiveShift,
+        section: effectiveSection
+      });
+      const filtered = routineSource.filter((r) => {
         if (r.publication_status === 'needs_admin_review' || r.publication_status === 'archived') {
           return false;
         }
@@ -9309,7 +9390,12 @@ app.get('/api/routines', (req: Request, res: Response) => {
       }
 
       const grp = resolvedGroup.group;
-      const filtered = academicStore.routines.filter((r) => {
+      const routineSource = await fetchRoutinesForCohort({
+        semester: Number(grp.semester),
+        shift: grp.shift,
+        section: grp.section
+      });
+      const filtered = routineSource.filter((r) => {
         if (r.publication_status === 'needs_admin_review' || r.publication_status === 'archived') return false;
         if (r.publication_status === 'draft' && !includeDrafts) return false;
         return (
@@ -9343,7 +9429,12 @@ app.get('/api/routines', (req: Request, res: Response) => {
     }
 
     const grp = adminGroupRes.group;
-    const filtered = academicStore.routines.filter((r) => {
+    const routineSource = await fetchRoutinesForCohort({
+      semester: Number(grp.semester),
+      shift: grp.shift,
+      section: grp.section
+    });
+    const filtered = routineSource.filter((r) => {
       if (r.publication_status === 'needs_admin_review' || r.publication_status === 'archived') return false;
       return (
         r.college_id === grp.college_id &&
@@ -12668,10 +12759,34 @@ function isCaptainAuthorizedForCohort(
 }
 
 /**
+ * Phase 4 migration 8: GET /api/notices/campus reads Postgres first via
+ * listCampusNotices(). No SQL narrowing on college/department — the
+ * stored display names do not equal the canonical resolver names, so
+ * exact-name SQL matching is unsafe (same trap as GET /api/roster and
+ * GET /api/routines). The route's own filter (college/department ids,
+ * semester/shift/section, targetScope, search, expiry) runs in memory
+ * on whichever array comes back, exactly as it does for the JSON store.
+ * Falls back to the JSON store on missing env or any query error; never
+ * throws, so the route never 500s for a DB error.
+ */
+async function fetchCampusNotices(): Promise<CampusNoticeItem[]> {
+  if (isSupabaseConfigured()) {
+    try {
+      return await listCampusNotices();
+    } catch (err) {
+      console.warn('[Notices] Supabase read failed, falling back to JSON store:', err);
+    }
+  }
+  return academicStore.campusNotices;
+}
+
+/**
  * 16B-1. GET TEACHER & CR CAMPUS NOTICES (`GET /api/notices/campus`)
  * Supports `filter`: `'all' | 'college' | 'my_group'`, search `q`, and user cohort context.
+ * - Phase 4 migration 8: reads Postgres first via fetchCampusNotices(),
+ *   falling back to the JSON store on missing env or any query error.
  */
-app.get('/api/notices/campus', (req: Request, res: Response) => {
+app.get('/api/notices/campus', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const filter = String(req.query.filter || 'all').trim().toLowerCase();
@@ -12688,7 +12803,9 @@ app.get('/api/notices/campus', (req: Request, res: Response) => {
     const userDept = normalizeTechnology(rawDept);
     const todayIso = new Date().toISOString().slice(0, 10);
 
-    const notices = academicStore.campusNotices
+    const noticeSource = await fetchCampusNotices();
+
+    const notices = noticeSource
       .filter(notice => {
         // Expiry check
         if (!includeExpired && notice.expiryDate && notice.expiryDate < todayIso) {

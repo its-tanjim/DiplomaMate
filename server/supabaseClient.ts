@@ -56,9 +56,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { EnrolledStudent } from '../src/data/mockData';
 import type {
   AcademicCommunity,
+  CampusNoticeItem,
   CaptainRecord,
   CommunityMembershipRecord,
   CommunityMessageRecord,
+  RoutinePeriod,
 } from '../src/types';
 
 // ---------------------------------------------------------------------------
@@ -279,6 +281,61 @@ export interface MessageRow {
   created_at: string | null;
 }
 
+export interface RoutineRow {
+  id: string;
+  day: string | null;
+  period_number: number | null;
+  start_time: string | null;
+  end_time: string | null;
+  subject_code: string | null;
+  subject_name: string | null;
+  teacher_name: string | null;
+  room: string | null;
+  type: string | null;
+  shift: string | null;
+  section: string | null;
+  college_id: string | null;
+  college: string | null;
+  department_id: string | null;
+  technology_id: string | null;
+  department: string | null;
+  regulation: string | null;
+  semester: number | null;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_by_role: string | null;
+  publication_status: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CampusNoticeRow {
+  id: string;
+  title: string | null;
+  description: string | null;
+  publisher_id: string | null;
+  publisher_name: string | null;
+  publisher_role: string | null;
+  publisher_designation: string | null;
+  college_id: string | null;
+  college: string | null;
+  department_id: string | null;
+  department: string | null;
+  semester: number | null;
+  shift: string | null;
+  section: string | null;
+  target_scope: string | null;
+  priority: string | null;
+  is_pinned: boolean | null;
+  attachment_name: string | null;
+  attachment_url: string | null;
+  attachment_type: string | null;
+  expiry_date: string | null;
+  reports_count: number | null;
+  published_at: string | null;
+  updated_at: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Row -> domain mappers (snake_case -> the app's camelCase types)
 // ---------------------------------------------------------------------------
@@ -420,6 +477,137 @@ export function toMessage(row: MessageRow): CommunityMessageRecord {
     is_deleted: row.is_deleted ?? false,
     reports_count: row.reports_count ?? 0,
     created_at: row.created_at ?? '',
+  };
+}
+
+/**
+ * Routine row -> RoutinePeriod. Same scalar cleaning as
+ * migrateAndValidateRoutineRecord() in server.ts (day / shift / section /
+ * type fallbacks, regulation default '2022'), but NO re-resolution of
+ * college/department and NO quarantine: the Postgres rows are verbatim
+ * copies of already-migrated store records, and the route's own filter
+ * (college_id / department_id / semester / publication_status) decides
+ * visibility exactly as it does for the JSON store. A row with an invalid
+ * semester maps to `semester: null`, which the route filter excludes.
+ */
+export function toRoutine(row: RoutineRow): RoutinePeriod {
+  const day = (
+    ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'].includes(String(row.day))
+      ? String(row.day)
+      : 'Saturday'
+  ) as RoutinePeriod['day'];
+  const publicationStatus = (
+    ['published', 'draft', 'needs_admin_review', 'archived'].includes(String(row.publication_status))
+      ? String(row.publication_status)
+      : 'published'
+  ) as RoutinePeriod['publication_status'];
+  return {
+    id: row.id,
+    day,
+    periodNumber: Number(row.period_number) || 1,
+    startTime: String(row.start_time || '08:00 AM'),
+    endTime: String(row.end_time || '08:45 AM'),
+    subjectCode: String(row.subject_code || '').trim(),
+    subjectName: String(row.subject_name || '').trim(),
+    teacherName: String(row.teacher_name || 'Department Instructor').trim(),
+    room: String(row.room || 'TBA').trim(),
+    type: row.type === 'Practical / Lab' ? 'Practical / Lab' : 'Theory',
+    shift: row.shift === 'Day' ? 'Day' : 'Morning',
+    section: (
+      ['A1', 'A2', 'B1', 'B2'].includes(String(row.section)) ? String(row.section) : 'A1'
+    ) as RoutinePeriod['section'],
+    college_id: row.college_id ?? null,
+    college: row.college ?? undefined,
+    department_id: row.department_id ?? null,
+    technology_id: row.technology_id ?? null,
+    department: row.department ?? undefined,
+    regulation: (
+      row.regulation === '2016' || row.regulation === '2022' ? row.regulation : '2022'
+    ) as RoutinePeriod['regulation'],
+    semester: (
+      row.semester !== null && Number.isInteger(row.semester) && row.semester >= 1 && row.semester <= 8
+        ? row.semester
+        : null
+    ) as RoutinePeriod['semester'],
+    created_by: row.created_by ?? undefined,
+    created_by_name: row.created_by_name ?? undefined,
+    created_by_role: (row.created_by_role ?? undefined) as RoutinePeriod['created_by_role'],
+    publication_status: publicationStatus,
+    created_at: row.created_at ?? undefined,
+    updated_at: row.updated_at ?? undefined,
+  };
+}
+
+/**
+ * Campus-notice row -> CampusNoticeItem. Same scalar cleaning as the
+ * seed records in `INITIAL_CAMPUS_NOTICES` (src/data/mockData.ts):
+ * enum fields fall back to their safe defaults, an invalid semester
+ * maps to `null` (college-wide notice). Two date normalisations keep
+ * the route's comparisons identical to the JSON path:
+ * - `expiry_date` is `timestamptz` in Postgres but a date-only
+ *   'YYYY-MM-DD' string in the store, and the route compares it with
+ *   `< todayIso` as a string — so it is reduced to its date part.
+ * - `published_at` / `updated_at` are normalised to `.000Z` ISO
+ *   strings, the store's format (the route sorts on them via
+ *   `new Date(...).getTime()`, so either format would sort the same,
+ *   but the response shape stays identical).
+ * NO re-resolution of college/department and NO cohort filtering here:
+ * the Postgres rows are verbatim copies of already-migrated store
+ * records, and the route's own filter (college/department ids,
+ * semester/shift/section, targetScope, search, expiry) decides
+ * visibility exactly as it does for the JSON store.
+ */
+export function toCampusNotice(row: CampusNoticeRow): CampusNoticeItem {
+  const toIso = (value: string | null | undefined): string | undefined => {
+    if (!value) return undefined;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+  };
+  const publisherRole = (
+    ['teacher', 'class_captain', 'system_admin'].includes(String(row.publisher_role))
+      ? String(row.publisher_role)
+      : 'teacher'
+  ) as CampusNoticeItem['publisherRole'];
+  const targetScope = (
+    ['college', 'department', 'cohort'].includes(String(row.target_scope))
+      ? String(row.target_scope)
+      : 'college'
+  ) as CampusNoticeItem['targetScope'];
+  return {
+    id: row.id,
+    title: String(row.title ?? '').trim(),
+    description: String(row.description ?? '').trim(),
+    publisherId: String(row.publisher_id ?? ''),
+    publisherName: String(row.publisher_name ?? '').trim(),
+    publisherRole,
+    publisherDesignation: row.publisher_designation ?? undefined,
+    college_id: String(row.college_id ?? ''),
+    college: String(row.college ?? ''),
+    department_id: String(row.department_id ?? ''),
+    department: String(row.department ?? ''),
+    semester: (
+      row.semester !== null && Number.isInteger(row.semester) && row.semester >= 1 && row.semester <= 8
+        ? row.semester
+        : null
+    ) as CampusNoticeItem['semester'],
+    shift: (
+      ['Morning', 'Day', 'Both'].includes(String(row.shift)) ? String(row.shift) : null
+    ) as CampusNoticeItem['shift'],
+    section: (
+      ['A1', 'A2', 'B1', 'B2', 'All'].includes(String(row.section)) ? String(row.section) : null
+    ) as CampusNoticeItem['section'],
+    targetScope,
+    priority: (row.priority === 'Important' ? 'Important' : 'Normal') as CampusNoticeItem['priority'],
+    isPinned: row.is_pinned ?? false,
+    attachmentUrl: row.attachment_url ?? undefined,
+    attachmentName: row.attachment_name ?? undefined,
+    attachmentType: (
+      ['PDF', 'IMAGE', 'DOCX'].includes(String(row.attachment_type)) ? String(row.attachment_type) : undefined
+    ) as CampusNoticeItem['attachmentType'],
+    expiryDate: row.expiry_date ? String(row.expiry_date).slice(0, 10) : undefined,
+    publishedAt: toIso(row.published_at) ?? '',
+    updatedAt: toIso(row.updated_at),
+    reportsCount: row.reports_count ?? 0,
   };
 }
 
@@ -565,6 +753,22 @@ export async function getTeacherRowByEmail(email: string): Promise<TeacherRow | 
 
 export async function getTeacherByEmail(email: string): Promise<TeacherAccount | null> {
   const row = await getTeacherRowByEmail(email);
+  return row ? toTeacher(row) : null;
+}
+
+export async function getTeacherRowByPhone(phone: string): Promise<TeacherRow | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('teacher_accounts')
+    .select('*')
+    .eq('phone', phone.trim())
+    .maybeSingle();
+  throwIfError(error, 'getTeacherRowByPhone');
+  return (data as TeacherRow | null) ?? null;
+}
+
+export async function getTeacherByPhone(phone: string): Promise<TeacherAccount | null> {
+  const row = await getTeacherRowByPhone(phone);
   return row ? toTeacher(row) : null;
 }
 
@@ -716,4 +920,83 @@ export async function listCommunityMessages(
     .limit(limit);
   throwIfError(error, 'listCommunityMessages');
   return ((data ?? []) as MessageRow[]).map(toMessage);
+}
+
+// ---------------------------------------------------------------------------
+// Routines — replaces the `academicStore.routines.filter(...)` reads in
+// GET /api/routines. The cohort (college_id / department_id) and
+// publication_status filtering still lives in server.ts and must be
+// applied by the caller on the rows returned here — Postgres does not
+// know the visibility rules, and the stored college/department display
+// names do not equal the canonical resolver names, so exact-name SQL
+// matching is unsafe (same trap as GET /api/roster).
+// ---------------------------------------------------------------------------
+
+export interface RoutineFilter {
+  semester?: number;
+  shift?: string;
+  section?: string;
+  day?: string;
+}
+
+const WEEKDAY_ORDER: Record<string, number> = {
+  Saturday: 0,
+  Sunday: 1,
+  Monday: 2,
+  Tuesday: 3,
+  Wednesday: 4,
+  Thursday: 5,
+};
+
+/**
+ * Routines for one cohort slice. Narrows in SQL ONLY on the
+ * exact-match-safe fields (semester / shift / section, plus optional
+ * day) — never on college/department display names. The caller filters
+ * the returned rows in memory by college_id / department_id /
+ * publication_status, exactly as the JSON path does. Sorted by weekday
+ * (Saturday first) then period number, like a routine list is displayed.
+ */
+export async function listRoutines(filter: RoutineFilter): Promise<RoutinePeriod[]> {
+  const client = getSupabaseClient();
+  let query = client.from('routines').select('*');
+  if (filter.semester !== undefined) query = query.eq('semester', filter.semester);
+  if (filter.shift) query = query.eq('shift', filter.shift);
+  if (filter.section) query = query.eq('section', filter.section);
+  if (filter.day) query = query.eq('day', filter.day);
+  const { data, error } = await query;
+  throwIfError(error, 'listRoutines');
+  return ((data ?? []) as RoutineRow[])
+    .map(toRoutine)
+    .sort((a, b) => {
+      const dayDiff = (WEEKDAY_ORDER[a.day] ?? 99) - (WEEKDAY_ORDER[b.day] ?? 99);
+      return dayDiff !== 0 ? dayDiff : a.periodNumber - b.periodNumber;
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Campus notices — replaces the `academicStore.campusNotices` read in
+// GET /api/notices/campus. No SQL narrowing on college/department: the
+// stored display names do not equal the canonical resolver names, so
+// exact-name SQL matching is unsafe (same trap as GET /api/roster and
+// GET /api/routines), and the route's visibility filter depends on the
+// caller's `filter` / session role / search query anyway. The caller
+// applies its unchanged in-memory filter (college/department ids,
+// semester/shift/section, targetScope, search, expiry, pinned sort) to
+// the rows returned here, exactly as it does for the JSON store.
+// ---------------------------------------------------------------------------
+
+/**
+ * All campus notices, newest first. Throws
+ * `Supabase listCampusNotices failed: …` on error (no silent nulls);
+ * the route's fetch helper catches that and falls back to the JSON
+ * store, so the route never 500s for a DB error.
+ */
+export async function listCampusNotices(): Promise<CampusNoticeItem[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('campus_notices')
+    .select('*')
+    .order('published_at', { ascending: false });
+  throwIfError(error, 'listCampusNotices');
+  return ((data ?? []) as CampusNoticeRow[]).map(toCampusNotice);
 }
