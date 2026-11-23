@@ -109,6 +109,13 @@ import {
   extractEmbeddedTextFromImageBuffer,
   validateAndDecodeUploadedFile
 } from './src/services/serverDocumentIntelligence';
+// Phase 4 route migration 1: GET /api/communities reads Postgres first,
+// falling back to the JSON store. Only that route uses these helpers so far.
+import {
+  isSupabaseConfigured,
+  listCommunities,
+  listMembershipsForUser
+} from './server/supabaseClient';
 
 dotenv.config();
 
@@ -10147,8 +10154,58 @@ function isUserCommunityModerator(session: ServerSession, comm: AcademicCommunit
   return false;
 }
 
+// Shared filtering for GET /api/communities, used by BOTH the Supabase path
+// and the JSON-store fallback so the response shape is identical either way.
+// `allMemberships` is every membership row for this user; the returned
+// `memberships` field keeps only active / pending_approval / invited, exactly
+// as the original JSON-only route did.
+function filterCommunitiesForSession(
+  session: ServerSession,
+  communities: AcademicCommunity[],
+  allMemberships: CommunityMembershipRecord[],
+  scope: string
+): { communities: AcademicCommunity[]; memberships: CommunityMembershipRecord[] } {
+  const userMemberships = allMemberships.filter(
+    m => m.user_id === session.userId && (m.status === 'active' || m.status === 'pending_approval' || m.status === 'invited')
+  );
+  const membershipMap = new Map(userMemberships.map(m => [m.community_id, m]));
+
+  const visibleCommunities = communities.filter(comm => {
+    if (comm.deleted_at && session.role !== 'system_admin') return false;
+    if (!comm.is_active && session.role !== 'system_admin') return false;
+
+    const mem = membershipMap.get(comm.id);
+    if (mem && (mem.status === 'active' || mem.status === 'pending_approval' || mem.status === 'invited')) {
+      return true;
+    }
+
+    // If public, check if academically eligible
+    if (comm.visibility === 'public') {
+      return isUserEligibleForCommunity(session, comm).eligible;
+    }
+
+    // Private groups are discoverable ONLY if member, invited, or creator/admin
+    return session.role === 'system_admin' || comm.created_by === session.userId;
+  });
+
+  let filtered = visibleCommunities;
+  if (scope === 'joined') {
+    filtered = visibleCommunities.filter(c => {
+      const mem = membershipMap.get(c.id);
+      return mem && mem.status === 'active';
+    });
+  } else if (scope === 'discover') {
+    filtered = visibleCommunities.filter(c => {
+      const mem = membershipMap.get(c.id);
+      return !mem || mem.status === 'pending_approval' || mem.status === 'invited';
+    });
+  }
+
+  return { communities: filtered, memberships: userMemberships };
+}
+
 // 15A. GET DISCOVERABLE & JOINED COMMUNITIES
-app.get('/api/communities', (req: Request, res: Response) => {
+app.get('/api/communities', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -10156,46 +10213,37 @@ app.get('/api/communities', (req: Request, res: Response) => {
     }
 
     const scope = String(req.query.scope || 'all');
-    const userMemberships = academicStore.communityMemberships.filter(
-      m => m.user_id === session.userId && (m.status === 'active' || m.status === 'pending_approval' || m.status === 'invited')
-    );
-    const membershipMap = new Map(userMemberships.map(m => [m.community_id, m]));
 
-    const visibleCommunities = academicStore.communities.filter(comm => {
-      if (comm.deleted_at && session.role !== 'system_admin') return false;
-      if (!comm.is_active && session.role !== 'system_admin') return false;
-
-      const mem = membershipMap.get(comm.id);
-      if (mem && (mem.status === 'active' || mem.status === 'pending_approval' || mem.status === 'invited')) {
-        return true;
+    // Phase 4 migration 1: try Supabase (Postgres) first. Any failure falls
+    // back to the JSON store below — the route never crashes for a DB error.
+    if (isSupabaseConfigured()) {
+      try {
+        const [communities, memberships] = await Promise.all([
+          listCommunities(),
+          listMembershipsForUser(session.userId)
+        ]);
+        const result = filterCommunitiesForSession(session, communities, memberships, scope);
+        return res.status(200).json({
+          success: true,
+          communities: result.communities,
+          memberships: result.memberships
+        });
+      } catch (err) {
+        console.warn('[Communities List] Supabase read failed, falling back to JSON store:', err);
       }
-
-      // If public, check if academically eligible
-      if (comm.visibility === 'public') {
-        return isUserEligibleForCommunity(session, comm).eligible;
-      }
-
-      // Private groups are discoverable ONLY if member, invited, or creator/admin
-      return session.role === 'system_admin' || comm.created_by === session.userId;
-    });
-
-    let filtered = visibleCommunities;
-    if (scope === 'joined') {
-      filtered = visibleCommunities.filter(c => {
-        const mem = membershipMap.get(c.id);
-        return mem && mem.status === 'active';
-      });
-    } else if (scope === 'discover') {
-      filtered = visibleCommunities.filter(c => {
-        const mem = membershipMap.get(c.id);
-        return !mem || mem.status === 'pending_approval' || mem.status === 'invited';
-      });
     }
 
+    // JSON-store fallback (original behaviour, unchanged).
+    const result = filterCommunitiesForSession(
+      session,
+      academicStore.communities,
+      academicStore.communityMemberships,
+      scope
+    );
     return res.status(200).json({
       success: true,
-      communities: filtered,
-      memberships: userMemberships
+      communities: result.communities,
+      memberships: result.memberships
     });
   } catch (err) {
     console.error('[Communities List] Error:', err);
