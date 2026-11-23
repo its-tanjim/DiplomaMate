@@ -492,8 +492,15 @@ export async function getStudentByRegNumber(regNumber: string): Promise<Enrolled
 /**
  * Cohort roster — replaces `getCohortRoster()` in server.ts.
  * Pass the EXACT stored college/department display names (resolve them
- * first with normalizeCollege()/normalizeTechnology()). Sorted by class
- * roll numeric, then board roll, like the JSON version.
+ * first with normalizeCollege()/normalizeTechnology()). NOTE: the stored
+ * names do not always equal the canonical ones (e.g. stored
+ * "Dhaka Polytechnic Institute (DPI), Tejgaon" vs canonical
+ * "Dhaka Polytechnic Institute"), so callers that need canonical-id
+ * matching must filter the returned rows in memory with
+ * filterStudentsByCohort() instead of passing college/department here —
+ * see GET /api/roster. Sorted by class roll numeric, then board roll, like
+ * the JSON version (class_roll is text in Postgres, so the numeric sort
+ * happens in memory, not in SQL).
  */
 export async function listStudentsByCohort(filter: CohortFilter): Promise<EnrolledStudent[]> {
   const client = getSupabaseClient();
@@ -503,9 +510,19 @@ export async function listStudentsByCohort(filter: CohortFilter): Promise<Enroll
   if (filter.semester !== undefined) query = query.eq('semester', filter.semester);
   if (filter.shift) query = query.eq('shift', filter.shift);
   if (filter.section) query = query.eq('section', filter.section);
-  const { data, error } = await query.order('class_roll', { ascending: true }).order('board_roll', { ascending: true });
+  const { data, error } = await query;
   throwIfError(error, 'listStudentsByCohort');
-  return ((data ?? []) as StudentRow[]).map(toStudent);
+  // class_roll is text in Postgres, so a SQL ORDER BY would sort it
+  // lexicographically ("10" before "2"). Sort numerically in memory,
+  // exactly like getCohortRoster() does in server.ts.
+  return ((data ?? []) as StudentRow[])
+    .map(toStudent)
+    .sort((a, b) => {
+      const crA = parseInt(a.classRoll, 10) || 999;
+      const crB = parseInt(b.classRoll, 10) || 999;
+      if (crA !== crB) return crA - crB;
+      return a.boardRoll.localeCompare(b.boardRoll);
+    });
 }
 
 /**
@@ -603,7 +620,15 @@ export async function listCaptainRecordsByCohort(filter: CaptainCohortFilter): P
   return ((data ?? []) as CaptainRow[]).map(toCaptain);
 }
 
-/** Approved captains for one exact group — the 2-per-section quota check (`getApprovedCaptainsForGroup()`). */
+/**
+ * Approved captains for one exact group — the 2-per-section quota check (`getApprovedCaptainsForGroup()`).
+ * WARNING: `filter.college` / `filter.department` must be the EXACT STORED
+ * display names (e.g. "Dhaka Polytechnic Institute (DPI), Tejgaon"), NOT
+ * canonical resolver names — the stored names do not equal the canonical
+ * ones (see GET /api/roster). The quota check in server.ts takes canonical
+ * ids, so it does NOT call this helper: it lists by status/semester/shift/
+ * section via listCaptainRecordsByCohort() and filters by id in memory.
+ */
 export async function countApprovedCaptainsForGroup(filter: CohortFilter): Promise<number> {
   const client = getSupabaseClient();
   let query = client.from('captain_records').select('id', { count: 'exact', head: true }).eq('status', 'Approved');

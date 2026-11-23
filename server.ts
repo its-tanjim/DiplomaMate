@@ -109,12 +109,17 @@ import {
   extractEmbeddedTextFromImageBuffer,
   validateAndDecodeUploadedFile
 } from './src/services/serverDocumentIntelligence';
-// Phase 4 route migration 1: GET /api/communities reads Postgres first,
-// falling back to the JSON store. Only that route uses these helpers so far.
+// Phase 4 route migrations 1–5: GET /api/communities, /recommended,
+// /api/roster, POST /api/students/login (read half) and the captain list /
+// quota reads (GET /api/admin/management, GET /api/admin/accounts/:id)
+// read Postgres first, falling back to the JSON store.
 import {
   isSupabaseConfigured,
+  getStudentByBoardRoll,
+  listCaptainRecordsByCohort,
   listCommunities,
-  listMembershipsForUser
+  listMembershipsForUser,
+  listStudentsByCohort
 } from './server/supabaseClient';
 
 dotenv.config();
@@ -1292,9 +1297,30 @@ app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: 
     return res.status(400).json({ success: false, error: 'Board Roll is required.' });
   }
 
-  const student = academicStore.students.find(
-    account => account.boardRoll === boardRoll && account.isRegisteredAccount === true
-  );
+  // Phase 4 migration 4 (read half only): the student lookup reads
+  // Postgres first via getStudentByBoardRoll({ registeredOnly: true })
+  // — the same board-roll + isRegisteredAccount match the JSON .find()
+  // did — and falls back to the JSON store when Supabase is not
+  // configured or the query throws. PIN verify, lockout (in-memory
+  // studentLoginFailures Map), session minting and the requiresPinSetup
+  // flow below are unchanged and run on whichever source answered.
+  // toStudent() preserves pinHash/pinSalt, so verifyStudentPin() works
+  // identically on a Postgres row.
+  let student: EnrolledStudent | null;
+  if (isSupabaseConfigured()) {
+    try {
+      student = await getStudentByBoardRoll(boardRoll, { registeredOnly: true });
+    } catch (err) {
+      console.warn('[StudentLogin] Supabase read failed, falling back to JSON store:', err);
+      student = academicStore.students.find(
+        account => account.boardRoll === boardRoll && account.isRegisteredAccount === true
+      ) ?? null;
+    }
+  } else {
+    student = academicStore.students.find(
+      account => account.boardRoll === boardRoll && account.isRegisteredAccount === true
+    ) ?? null;
+  }
   // Lockout key: the student id once the account is found, otherwise the
   // board roll, so unknown roll+reg pairs cannot be enumerated freely.
   const lockoutKey = student ? `student:${student.id}` : `roll:${boardRoll}`;
@@ -5348,21 +5374,32 @@ function checkTeacherCohortAuthorization(
 
 /**
  * Helper: Filter enrolled students matching a specific cohort `(college, department, semester, shift, section)`
+ * Shared by getCohortRoster() (JSON store) and the Supabase-first GET /api/roster
+ * path, so both return identical results. College/department match by
+ * canonical id via normalizeCollege()/normalizeTechnology() — the stored
+ * display names do NOT match the canonical names (e.g. stored
+ * "Dhaka Polytechnic Institute (DPI), Tejgaon" vs canonical
+ * "Dhaka Polytechnic Institute", stored "Computer Science & Technology (CST)"
+ * vs canonical "Computer Science and Technology (CST)"), so an exact-name
+ * SQL filter would silently return an empty roster for the DPI cohort.
  */
-function getCohortRoster(params: {
-  college: string;
-  department: string;
-  semester: number;
-  shift: string;
-  section: string;
-}): EnrolledStudent[] {
+function filterStudentsByCohort(
+  students: EnrolledStudent[],
+  params: {
+    college: string;
+    department: string;
+    semester: number;
+    shift: string;
+    section: string;
+  }
+): EnrolledStudent[] {
   const colId = normalizeCollege(params.college).id;
   const deptId = normalizeTechnology(params.department).id;
   const semNum = Number(params.semester);
   const shiftClean = params.shift === 'Day' ? 'Day' : 'Morning';
   const secClean = params.section || 'A1';
 
-  return academicStore.students
+  return students
     .filter(s => {
       const sColId = normalizeCollege(s.college).id;
       const sDeptId = normalizeTechnology(s.department).id;
@@ -5380,6 +5417,16 @@ function getCohortRoster(params: {
       if (crA !== crB) return crA - crB;
       return a.boardRoll.localeCompare(b.boardRoll);
     });
+}
+
+function getCohortRoster(params: {
+  college: string;
+  department: string;
+  semester: number;
+  shift: string;
+  section: string;
+}): EnrolledStudent[] {
+  return filterStudentsByCohort(academicStore.students, params);
 }
 
 /**
@@ -5449,8 +5496,10 @@ app.put('/api/teachers/profile', (req: Request, res: Response) => {
 /**
  * 10B. GET STUDENT ROSTER FOR SELECTED CLASS (`GET /api/roster`)
  * Protected: Only authorized Teachers (or System Admins) can load the confidential student roster.
+ * Phase 4 migration 3: tries Supabase (Postgres) first via listStudentsByCohort(),
+ * falling back to the JSON store (getCohortRoster) on missing env or any query error.
  */
-app.get('/api/roster', (req: Request, res: Response) => {
+app.get('/api/roster', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const college = String(req.query.college || 'Dhaka Polytechnic Institute').trim();
@@ -5482,7 +5531,30 @@ app.get('/api/roster', (req: Request, res: Response) => {
       }
     }
 
-    const roster = getCohortRoster({ college, department, semester, shift, section });
+    // Postgres matches stored display names, not canonical ids — and the
+    // stored names do NOT equal the canonical ones (see
+    // filterStudentsByCohort), so the SQL query narrows only on the
+    // exact-match-safe fields (semester/shift/section) and the shared
+    // id-based cohort filter runs in memory. Any failure falls back to the
+    // JSON store below — the route never crashes for a DB error, and the
+    // response shape is identical.
+    let roster: EnrolledStudent[];
+    if (isSupabaseConfigured()) {
+      try {
+        const cohortRows = await listStudentsByCohort({
+          semester,
+          shift: shift === 'Day' ? 'Day' : 'Morning',
+          section: section || 'A1'
+        });
+        roster = filterStudentsByCohort(cohortRows, { college, department, semester, shift, section });
+      } catch (err) {
+        console.warn('[Roster] Supabase read failed, falling back to JSON store:', err);
+        roster = getCohortRoster({ college, department, semester, shift, section });
+      }
+    } else {
+      roster = getCohortRoster({ college, department, semester, shift, section });
+    }
+
     return res.status(200).json({
       success: true,
       cohort: {
@@ -8774,15 +8846,24 @@ function resolveSessionAcademicGroup(session: ServerSession): ResolvedAcademicGr
 
 /**
  * Helper: Count verified (`Approved`) Class Captains for an exact academic group.
+ * Phase 4 migration 5: the filter lives in `filterApprovedCaptainsForGroup()`
+ * so it can run over Postgres rows too. `getApprovedCaptainsForGroup()` keeps
+ * reading the JSON store — its callers (POST /api/captains/sync and the
+ * routine publish authorisation) are write-gating paths that stay on the
+ * JSON store until they migrate. `getApprovedCaptainsForGroupAsync()` is the
+ * Supabase-first read of the same check.
  */
-function getApprovedCaptainsForGroup(group: {
-  college_id: string;
-  department_id: string;
-  semester: number;
-  shift: Shift;
-  section: Section;
-}): CaptainRecord[] {
-  return academicStore.captainRecords.filter((c) => {
+function filterApprovedCaptainsForGroup(
+  captains: CaptainRecord[],
+  group: {
+    college_id: string;
+    department_id: string;
+    semester: number;
+    shift: Shift;
+    section: Section;
+  }
+): CaptainRecord[] {
+  return captains.filter((c) => {
     if (c.status !== 'Approved') return false;
     const cCol = resolveStrictCollege(c.college);
     const cDept = resolveStrictTechnology(c.department);
@@ -8795,6 +8876,50 @@ function getApprovedCaptainsForGroup(group: {
       c.section === group.section
     );
   });
+}
+
+function getApprovedCaptainsForGroup(group: {
+  college_id: string;
+  department_id: string;
+  semester: number;
+  shift: Shift;
+  section: Section;
+}): CaptainRecord[] {
+  return filterApprovedCaptainsForGroup(academicStore.captainRecords, group);
+}
+
+/**
+ * Supabase-first version of the 2-per-section quota check.
+ * Postgres matches stored display names, not canonical ids — and the stored
+ * names do NOT equal the canonical ones (e.g. stored
+ * "Dhaka Polytechnic Institute (DPI), Tejgaon" vs canonical
+ * "Dhaka Polytechnic Institute"), so the SQL query narrows only on the
+ * exact-match-safe fields (status/semester/shift/section) and the shared
+ * id-based filter runs in memory, exactly as GET /api/roster does. Falls
+ * back to the JSON store on missing env or any query error.
+ */
+async function getApprovedCaptainsForGroupAsync(group: {
+  college_id: string;
+  department_id: string;
+  semester: number;
+  shift: Shift;
+  section: Section;
+}): Promise<CaptainRecord[]> {
+  if (!isSupabaseConfigured()) {
+    return getApprovedCaptainsForGroup(group);
+  }
+  try {
+    const rows = await listCaptainRecordsByCohort({
+      status: 'Approved',
+      semester: group.semester,
+      shift: group.shift,
+      section: group.section
+    });
+    return filterApprovedCaptainsForGroup(rows, group);
+  } catch (err) {
+    console.warn('[CaptainQuota] Supabase read failed, falling back to JSON store:', err);
+    return getApprovedCaptainsForGroup(group);
+  }
 }
 
 /**
@@ -11243,10 +11368,42 @@ interface AdminManagedAccount {
   deleted: boolean;
 }
 
-function getAdminManagedAccounts(): AdminManagedAccount[] {
+/**
+ * Phase 4 migration 5: Supabase-first captain records for the admin list
+ * reads (GET /api/admin/management, GET /api/admin/accounts/:id).
+ * Postgres `captain_records` has no `is_registered_account` column, so the
+ * mapped rows never carry that flag — but `getAdminManagedAccounts()`
+ * merges on it. Derive it the way the JSON store does in practice (the
+ * sync route sets the flag together with the student's registered account):
+ * a record counts as registered when its student is a registered student
+ * in the JSON store (students have not migrated yet). The test record
+ * `app_test_cap_colA_cst_sem3` has `student_id` NULL, so it maps to
+ * `studentId: ''`, matches no student, and is excluded exactly as the
+ * JSON path excludes it. Any error falls back to the JSON store.
+ */
+async function loadCaptainRecordsForAdminList(): Promise<CaptainRecord[]> {
+  if (!isSupabaseConfigured()) {
+    return academicStore.captainRecords;
+  }
+  try {
+    const rows = await listCaptainRecordsByCohort({});
+    const registeredStudentIds = new Set(
+      academicStore.students.filter(student => student.isRegisteredAccount).map(student => student.id)
+    );
+    return rows.map(record => ({
+      ...record,
+      isRegisteredAccount: record.isRegisteredAccount ?? registeredStudentIds.has(record.studentId)
+    }));
+  } catch (err) {
+    console.warn('[AdminCaptains] Supabase read failed, falling back to JSON store:', err);
+    return academicStore.captainRecords;
+  }
+}
+
+function getAdminManagedAccounts(captainRecords: CaptainRecord[] = academicStore.captainRecords): AdminManagedAccount[] {
   const accounts = new Map<string, AdminManagedAccount>();
   const applicationsByStudent = new Map(
-    academicStore.captainRecords.filter(app => app.isRegisteredAccount).map(app => [app.studentId, app] as const)
+    captainRecords.filter(app => app.isRegisteredAccount).map(app => [app.studentId, app] as const)
   );
 
   academicStore.students.filter(student => student.isRegisteredAccount).forEach(student => {
@@ -11270,7 +11427,7 @@ function getAdminManagedAccounts(): AdminManagedAccount[] {
     });
   });
 
-  academicStore.captainRecords.filter(application =>
+  captainRecords.filter(application =>
     application.isRegisteredAccount || academicStore.students.some(student => student.id === application.studentId && student.isRegisteredAccount)
   ).forEach(application => {
     if (!accounts.has(application.studentId)) {
@@ -11341,8 +11498,11 @@ function appendAdminAudit(
 }
 
 // 15P. ADMIN ACCOUNT AND COMMUNITY MANAGEMENT ENDPOINTS
-app.get('/api/admin/management', requireSystemAdmin, (_req: Request, res: Response) => {
-  const accounts = getAdminManagedAccounts().filter(account => !account.deleted);
+// Phase 4 migration 5: GET /api/admin/management reads its captain records
+// from Postgres first (loadCaptainRecordsForAdminList), falling back to the
+// JSON store; students/teachers still come from the JSON store.
+app.get('/api/admin/management', requireSystemAdmin, async (_req: Request, res: Response) => {
+  const accounts = getAdminManagedAccounts(await loadCaptainRecordsForAdminList()).filter(account => !account.deleted);
   const communities = academicStore.communities.filter(community => !community.deleted_at);
   return res.status(200).json({
     success: true,
@@ -11361,11 +11521,12 @@ app.get('/api/admin/management', requireSystemAdmin, (_req: Request, res: Respon
   });
 });
 
-app.get('/api/admin/accounts/:id', requireSystemAdmin, (req: Request, res: Response) => {
-  const account = getAdminManagedAccounts().find(item => item.id === req.params.id);
+app.get('/api/admin/accounts/:id', requireSystemAdmin, async (req: Request, res: Response) => {
+  const captainRecords = await loadCaptainRecordsForAdminList();
+  const account = getAdminManagedAccounts(captainRecords).find(item => item.id === req.params.id);
   if (!account) return res.status(404).json({ success: false, error: 'Account not found.' });
   const student = academicStore.students.find(item => item.id === account.id);
-  const application = academicStore.captainRecords.find(item => item.studentId === account.id && item.isRegisteredAccount);
+  const application = captainRecords.find(item => item.studentId === account.id && item.isRegisteredAccount);
   const teacher = serverTeachers.get(account.id);
   return res.status(200).json({
     success: true,
