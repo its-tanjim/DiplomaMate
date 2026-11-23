@@ -114,18 +114,27 @@ import {
 // quota reads (GET /api/admin/management, GET /api/admin/accounts/:id),
 // POST /api/teachers/login (read half), GET /api/routines (list) and
 // GET /api/notices/campus (list) read Postgres first, falling back to
-// the JSON store.
+// the JSON store. Write route 1 (captain decision + teacher endorsement
+// persistence), write route 2 (community create + community message
+// post) and write route 3 (student register + one-time PIN setup)
+// dual-write to Postgres first, then the JSON store.
 import {
   isSupabaseConfigured,
   getStudentByBoardRoll,
   getTeacherByEmail,
   getTeacherByPhone,
+  insertCommunity,
+  insertCommunityMembership,
+  insertCommunityMessage,
+  insertStudent,
   listCampusNotices,
   listCaptainRecordsByCohort,
   listCommunities,
   listMembershipsForUser,
   listRoutines,
-  listStudentsByCohort
+  listStudentsByCohort,
+  updateCaptainRecordById,
+  updateStudentById
 } from './server/supabaseClient';
 
 dotenv.config();
@@ -1499,7 +1508,7 @@ function mintStudentSession(student: EnrolledStudent, role: AccountType): Server
  * new 4–6 digit PIN. Sets the PIN (PBKDF2 v2) and signs the student in
  * immediately. The token is single-use.
  */
-app.post('/api/students/setup-pin', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
+app.post('/api/students/setup-pin', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
   const token = String(req.body?.pinSetupToken || '').trim();
   const pin = String(req.body?.pin || '').trim();
   const requestedRole = req.body?.role === 'class_captain' ? 'class_captain' : 'student';
@@ -1533,6 +1542,14 @@ app.post('/api/students/setup-pin', authRateLimiter, authIpRateLimiter, (req: Re
       : 'student';
   pinSetupTokens.delete(token);
   setStudentPin(student, pin);
+  // Phase 4 write route 3: dual-write the new PIN hash to Postgres
+  // FIRST. A Postgres failure only logs a warning — the JSON write
+  // below still happens, so the PIN setup is never lost.
+  await persistStudentUpdateToSupabase(student.id, {
+    pin_hash: student.pinHash ?? null,
+    pin_salt: student.pinSalt ?? null,
+    pin_hash_version: student.pinHashVersion ?? null
+  }, 'StudentSetupPin');
   saveAcademicStore(academicStore);
   studentLoginFailures.delete(`student:${student.id}`);
   const session = mintStudentSession(student, role);
@@ -2078,11 +2095,12 @@ app.post('/api/teachers/login', authRateLimiter, authIpRateLimiter, async (req: 
     // saveAcademicStore() persists teacherAccounts from the
     // serverTeachers / legacyUnregisteredTeachers Maps, so a
     // Postgres-mapped object used directly would silently lose those
-    // mutations (a lockout would never persist). toTeacher() also has
-    // no pin_hash_version column, so a v2 hash would mis-verify on a
-    // mapped row. The Postgres row is therefore only used to resolve
-    // WHICH teacher matches; the Map entry for that id is the record
-    // the rest of the route runs on. If Postgres finds a teacher the
+    // mutations (a lockout would never persist). toTeacher() maps
+    // pin_hash_version only once supabase-schema-phase4.sql has been
+    // run; until then a mapped row has no version, so a v2 hash would
+    // mis-verify on a mapped row. The Postgres row is therefore only
+    // used to resolve WHICH teacher matches; the Map entry for that id
+    // is the record the rest of the route runs on. If Postgres finds a teacher the
     // Maps do not have, the JSON loop below runs instead (and 404s,
     // exactly as today — login only ever searched serverTeachers).
     const findTeacherInJsonStore = (): ServerTeacher | undefined => {
@@ -2703,7 +2721,7 @@ app.post('/api/teacher-contacts/:id/archive', (req: Request, res: Response) => {
 /**
  * 7B. ADMIN ONLY: VERIFY / REJECT / REVOKE CAPTAIN APPLICATION (`POST /api/admin/captains/decision`)
  */
-app.post('/api/admin/captains/decision', requireSystemAdmin, (req: Request, res: Response) => {
+app.post('/api/admin/captains/decision', requireSystemAdmin, async (req: Request, res: Response) => {
   try {
     const adminSession: ServerSession = (req as any).adminSession;
     const { applicationId, decision, notes } = req.body;
@@ -2719,32 +2737,44 @@ app.post('/api/admin/captains/decision', requireSystemAdmin, (req: Request, res:
     }
     const student = academicStore.students.find(item => item.id === application.studentId);
     if (decision === 'approve' && student) {
-      const approvedCount = academicStore.students.filter(item =>
-        item.id !== student.id &&
-        item.accountType === 'class_captain' &&
-        item.captainVerificationStatus === 'Approved' &&
-        item.college === student.college &&
-        item.department === student.department &&
-        item.semester === student.semester &&
-        item.shift === student.shift &&
-        item.section === student.section
-      ).length;
+      // Phase 4 write route 1: quota via the Supabase-first
+      // getApprovedCaptainsForGroupAsync() (falls back to the JSON store);
+      // skipped when the application is already Approved, as before.
+      const approvedCount = await countApprovedCaptainsForStudent(student);
       if (approvedCount >= 2 && application.status !== 'Approved') {
         return res.status(409).json({ success: false, error: 'This class already has the maximum of two approved captains.' });
       }
     }
     const now = new Date().toISOString();
     const nextStatus = decision === 'approve' ? 'Approved' : decision === 'reject' ? 'Rejected' : 'NotApplied';
-    application.status = nextStatus;
-    application.adminDecision = {
+    const nextVerificationStatus = decision === 'approve' ? 'Approved' : decision === 'reject' ? 'Rejected' : 'NotApplied';
+    const adminDecision = {
       decidedBy: `${adminSession.name} (${adminSession.email})`,
       decidedAt: now,
       notes: String(notes || 'Decision recorded by System Administrator.').trim().slice(0, 1000)
     };
-    if (decision !== 'approve') application.rejectionReason = String(notes || '').trim().slice(0, 1000);
+    const rejectionReason = decision !== 'approve' ? String(notes || '').trim().slice(0, 1000) : undefined;
+    // Phase 4 write route 1: dual-write to Postgres FIRST, then the JSON
+    // store below. A Postgres failure only logs a warning — the JSON
+    // write still happens, so the decision is never lost.
+    const captainPatch: Parameters<typeof updateCaptainRecordById>[1] = {
+      status: nextStatus,
+      admin_decision: adminDecision
+    };
+    if (rejectionReason !== undefined) captainPatch.rejection_reason = rejectionReason;
+    await persistCaptainRecordToSupabase(applicationId, captainPatch, 'CaptainDecision');
+    if (student) {
+      await persistCaptainStudentToSupabase(student.id, {
+        account_type: 'class_captain',
+        captain_verification_status: nextVerificationStatus
+      }, 'CaptainDecision');
+    }
+    application.status = nextStatus;
+    application.adminDecision = adminDecision;
+    if (rejectionReason !== undefined) application.rejectionReason = rejectionReason;
     if (student) {
       student.accountType = 'class_captain';
-      student.captainVerificationStatus = decision === 'approve' ? 'Approved' : decision === 'reject' ? 'Rejected' : 'NotApplied';
+      student.captainVerificationStatus = nextVerificationStatus as EnrolledStudent['captainVerificationStatus'];
     }
     appendAdminAudit(
       adminSession,
@@ -2775,7 +2805,7 @@ app.post('/api/admin/captains/decision', requireSystemAdmin, (req: Request, res:
  * Validates institutional teacher faculty PIN, enforces PBKDF2 hash, rate limits failed PINs,
  * validates cohort match (college, dept, semester, shift), and checks teacher verification status.
  */
-app.post('/api/verification/teacher-approve', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
+app.post('/api/verification/teacher-approve', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
   try {
     const { 
       teacherId, 
@@ -2915,6 +2945,15 @@ app.post('/api/verification/teacher-approve', authRateLimiter, authIpRateLimiter
       } else {
         serverRecord.teacherEndorsement = endorsement;
       }
+      // Phase 4 write route 1: dual-write the captain-record mutation to
+      // Postgres FIRST (teacher_endorsement / status + rejection_reason).
+      // A Postgres failure only logs a warning — the JSON write above
+      // still happens. The pendingTeacherEndorsements registry below has
+      // no Postgres table yet, so it stays JSON-only.
+      const endorsementPatch: Parameters<typeof updateCaptainRecordById>[1] = action === 'reject'
+        ? { status: 'Rejected', rejection_reason: comments || 'Rejected by Guide Teacher.' }
+        : { teacher_endorsement: endorsement };
+      await persistCaptainRecordToSupabase(applicationId, endorsementPatch, 'TeacherEndorsement');
     }
     if (action !== 'reject') {
       // Registry write: remember this endorsement independently of the
@@ -5286,6 +5325,18 @@ app.post('/api/students/register', authRateLimiter, authIpRateLimiter, async (re
     }
     existingByRoll.isRegisteredAccount = true;
     setStudentPin(existingByRoll, pin);
+    // Phase 4 write route 3: dual-write the re-registration (account
+    // type / verification status / new PIN) to Postgres FIRST. A
+    // Postgres failure only logs a warning — the JSON write below
+    // still happens, so the registration is never lost.
+    await persistStudentUpdateToSupabase(existingByRoll.id, {
+      account_type: existingByRoll.accountType,
+      captain_verification_status: existingByRoll.captainVerificationStatus,
+      is_registered_account: true,
+      pin_hash: existingByRoll.pinHash ?? null,
+      pin_salt: existingByRoll.pinSalt ?? null,
+      pin_hash_version: existingByRoll.pinHashVersion ?? null
+    }, 'StudentRegister');
     saveAcademicStore(academicStore);
     return res.status(200).json({
       success: true,
@@ -5314,6 +5365,10 @@ app.post('/api/students/register', authRateLimiter, authIpRateLimiter, async (re
     isRegisteredAccount: true
   };
   setStudentPin(account, pin);
+  // Phase 4 write route 3: dual-write the new student to Postgres
+  // FIRST. A Postgres failure only logs a warning — the JSON write
+  // below still happens, so the registration is never lost.
+  await persistStudentInsertToSupabase(account, 'StudentRegister');
   academicStore.students.push(account);
   saveAcademicStore(academicStore);
   return res.status(201).json({
@@ -8969,6 +9024,169 @@ async function getApprovedCaptainsForGroupAsync(group: {
 }
 
 /**
+ * Phase 4 write route 1 — dual-write helpers for the captain decision
+ * routes (`POST /api/admin/captains/decision`,
+ * `POST /api/admin/accounts/:id/decision`) and the teacher endorsement
+ * route (`POST /api/verification/teacher-approve`).
+ *
+ * The JSON store is still the source of truth: every helper below writes
+ * to Postgres FIRST and never throws — on missing env, on any query
+ * error, or when the row does not exist in Postgres (update returns
+ * null, e.g. a record created client-side that never reached the server
+ * store), it logs a warning and the caller carries on with the JSON
+ * write, so a captain decision is never lost because Postgres is down.
+ * The admin audit log (`appendAdminAudit`) and the
+ * `pendingTeacherEndorsements` registry have no Postgres table yet, so
+ * they stay JSON-only.
+ */
+async function persistCaptainRecordToSupabase(
+  recordId: string,
+  patch: Parameters<typeof updateCaptainRecordById>[1],
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const updated = await updateCaptainRecordById(recordId, patch);
+    if (!updated) {
+      console.warn(`[${logTag}] Captain record ${recordId} not found in Postgres; decision kept in JSON store only.`);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistCaptainStudentToSupabase(
+  studentId: string,
+  patch: Parameters<typeof updateStudentById>[1],
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const updated = await updateStudentById(studentId, patch);
+    if (!updated) {
+      console.warn(`[${logTag}] Student ${studentId} not found in Postgres; captain status kept in JSON store only.`);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Write route 2 dual-write helpers (community create + message post).
+ * Same contract as the captain persist helpers above: return early when
+ * Supabase is unconfigured, never throw — on any query error the caller
+ * carries on with the JSON write, so a community create / message post
+ * is never lost because Postgres is down. The three create inserts run
+ * in one try/catch, so a failure part-way (e.g. community inserted but
+ * membership rejected) can leave a partial Postgres row set; the JSON
+ * store stays the source of truth until the live path is verified.
+ * The admin audit log (`appendAdminAudit`) has no Postgres table yet,
+ * so it stays JSON-only.
+ */
+async function persistCommunityCreateToSupabase(
+  community: AcademicCommunity,
+  membership: CommunityMembershipRecord,
+  welcomeMessage: CommunityMessageRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertCommunity(community);
+    await insertCommunityMembership(membership);
+    await insertCommunityMessage(welcomeMessage);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistCommunityMessageToSupabase(
+  message: CommunityMessageRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertCommunityMessage(message);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Write route 3 dual-write helpers (student register + one-time PIN
+ * setup). Same contract as the captain / community persist helpers:
+ * return early when Supabase is unconfigured, never throw — on any
+ * query error, or when the row does not exist in Postgres (update
+ * returns null, e.g. a student registered before the Phase 2 migration
+ * or whose Postgres row was never created), log a warning and the
+ * caller carries on with the JSON write, so a registration / PIN setup
+ * is never lost because Postgres is down.
+ *
+ * `pin_hash_version` has no Postgres column until
+ * supabase-schema-phase4.sql is run in the SQL Editor. The
+ * supabaseClient write helpers retry once without that column on a
+ * PGRST204 error, so the student row / PIN still lands in Postgres;
+ * until the ALTER runs the column simply stays unset (NULL) and reads
+ * treat the hash as legacy — verifyStudentPin() always uses the v2
+ * iteration count for students, so verification is unaffected.
+ */
+async function persistStudentInsertToSupabase(student: EnrolledStudent, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertStudent(student);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistStudentUpdateToSupabase(
+  studentId: string,
+  patch: Parameters<typeof updateStudentById>[1],
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const updated = await updateStudentById(studentId, patch);
+    if (!updated) {
+      console.warn(`[${logTag}] Student ${studentId} not found in Postgres; change kept in JSON store only.`);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * 2-per-section quota check for the captain decision routes, Supabase-
+ * first. Resolves the student's cohort to canonical ids and counts
+ * Approved captain records via `getApprovedCaptainsForGroupAsync()`
+ * (which itself falls back to the JSON store), excluding the applicant.
+ * If the cohort names do not resolve, falls back to the original
+ * students-based JSON count so the check still runs.
+ */
+async function countApprovedCaptainsForStudent(student: EnrolledStudent): Promise<number> {
+  const resolved = resolveExplicitAcademicGroupInput({
+    college: student.college,
+    department: student.department,
+    semester: student.semester,
+    shift: student.shift,
+    section: student.section
+  });
+  if (resolved.valid && resolved.group) {
+    const approved = await getApprovedCaptainsForGroupAsync(resolved.group);
+    return approved.filter(c => c.studentId !== student.id).length;
+  }
+  return academicStore.students.filter(item =>
+    item.id !== student.id &&
+    item.accountType === 'class_captain' &&
+    item.captainVerificationStatus === 'Approved' &&
+    item.college === student.college &&
+    item.department === student.department &&
+    item.semester === student.semester &&
+    item.shift === student.shift &&
+    item.section === student.section
+  ).length;
+}
+
+/**
  * Server-side authorization check for publishing, editing, or deleting a routine.
  * - Never trusts client-submitted `college_id`, `department_id`, or `semester` without
  *   verifying that the authenticated Captain or Teacher is authorized for that exact cohort.
@@ -10598,7 +10816,7 @@ app.get('/api/communities/:id', (req: Request, res: Response) => {
 });
 
 // 15D. CREATE ACADEMIC COMMUNITY
-app.post('/api/communities', requireCommunityCreator, (req: Request, res: Response) => {
+app.post('/api/communities', requireCommunityCreator, async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -10670,8 +10888,6 @@ app.post('/api/communities', requireCommunityCreator, (req: Request, res: Respon
       updated_at: nowIso
     };
 
-    academicStore.communities.push(newCommunity);
-
     // Add creator as owner/moderator
     const creatorMembership: CommunityMembershipRecord = {
       id: `mem_${commId}_${session.userId}`,
@@ -10690,8 +10906,6 @@ app.post('/api/communities', requireCommunityCreator, (req: Request, res: Respon
       joined_at: nowIso,
       updated_at: nowIso
     };
-    academicStore.communityMemberships.push(creatorMembership);
-
     // Initial system welcome message
     const welcomeMsg: CommunityMessageRecord = {
       id: `msg_${Date.now()}_welcome`,
@@ -10710,8 +10924,16 @@ app.post('/api/communities', requireCommunityCreator, (req: Request, res: Respon
       reports_count: 0,
       created_at: nowIso
     };
-    academicStore.communityMessages.push(welcomeMsg);
     newCommunity.pinned_notice_id = welcomeMsg.id;
+
+    // Write route 2 dual-write: Postgres first, then the JSON store.
+    // The persist helper never throws — on any Postgres failure the
+    // JSON write below still happens and the create is not lost.
+    await persistCommunityCreateToSupabase(newCommunity, creatorMembership, welcomeMsg, 'CommunityCreate');
+
+    academicStore.communities.push(newCommunity);
+    academicStore.communityMemberships.push(creatorMembership);
+    academicStore.communityMessages.push(welcomeMsg);
 
     appendAdminAudit(session, 'community_created', commId, communityName);
     saveAcademicStore(academicStore);
@@ -11050,7 +11272,7 @@ function inspectCommunityUpload(rawDataUrl: string, claimedFileName: string): In
   return { mimeType, fileType, fileSizeBytes, fileData };
 }
 
-app.post('/api/communities/:id/messages', (req: Request, res: Response) => {
+app.post('/api/communities/:id/messages', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -11144,6 +11366,11 @@ app.post('/api/communities/:id/messages', (req: Request, res: Response) => {
       reports_count: 0,
       created_at: nowIso
     };
+
+    // Write route 2 dual-write: Postgres first, then the JSON store.
+    // The persist helper never throws — on any Postgres failure the
+    // JSON write below still happens and the message is not lost.
+    await persistCommunityMessageToSupabase(newMsg, 'CommunityMessage');
 
     academicStore.communityMessages.push(newMsg);
     comm.updated_at = nowIso;
@@ -11629,7 +11856,7 @@ app.get('/api/admin/accounts/:id', requireSystemAdmin, async (req: Request, res:
   });
 });
 
-app.post('/api/admin/accounts/:id/decision', requireSystemAdmin, (req: Request, res: Response) => {
+app.post('/api/admin/accounts/:id/decision', requireSystemAdmin, async (req: Request, res: Response) => {
   const admin = (req as any).adminSession as ServerSession;
   const accountId = req.params.id;
   const decision = req.body?.decision;
@@ -11662,29 +11889,42 @@ app.post('/api/admin/accounts/:id/decision', requireSystemAdmin, (req: Request, 
       return res.status(409).json({ success: false, error: 'A teacher endorsement is required before approving a class captain.' });
     }
     if (decision === 'approve') {
-      const currentCaptainCount = academicStore.students.filter(item =>
-        item.id !== student.id &&
-        item.accountType === 'class_captain' &&
-        item.captainVerificationStatus === 'Approved' &&
-        item.college === student.college &&
-        item.department === student.department &&
-        item.semester === student.semester &&
-        item.shift === student.shift &&
-        item.section === student.section
-      ).length;
+      // Phase 4 write route 1: quota via the Supabase-first
+      // getApprovedCaptainsForGroupAsync() (falls back to the JSON store).
+      const currentCaptainCount = await countApprovedCaptainsForStudent(student);
       if (currentCaptainCount >= 2) {
         return res.status(409).json({ success: false, error: 'This class already has the maximum of two approved captains.' });
       }
     }
+    // Phase 4 write route 1: dual-write the captain decision to Postgres
+    // FIRST, then the JSON store below. A Postgres failure only logs a
+    // warning — the JSON write still happens, so the decision is never
+    // lost. (The teacher branch above stays JSON-only: teacher writes
+    // are out of scope for this route.)
+    const accountAdminDecision = {
+      decidedBy: `${admin.name} (${admin.email})`,
+      decidedAt: new Date().toISOString(),
+      notes: typeof req.body?.notes === 'string' ? req.body.notes.trim().slice(0, 1000) : undefined
+    };
+    if (application) {
+      const accountCaptainPatch: Parameters<typeof updateCaptainRecordById>[1] = {
+        status,
+        admin_decision: accountAdminDecision
+      };
+      if (decision === 'reject' && accountAdminDecision.notes !== undefined) {
+        accountCaptainPatch.rejection_reason = accountAdminDecision.notes;
+      }
+      await persistCaptainRecordToSupabase(application.id, accountCaptainPatch, 'AccountDecision');
+    }
+    await persistCaptainStudentToSupabase(student.id, {
+      account_type: 'class_captain',
+      captain_verification_status: status
+    }, 'AccountDecision');
     student.accountType = 'class_captain';
     student.captainVerificationStatus = status;
     if (application) {
       application.status = status;
-      application.adminDecision = {
-        decidedBy: `${admin.name} (${admin.email})`,
-        decidedAt: new Date().toISOString(),
-        notes: typeof req.body?.notes === 'string' ? req.body.notes.trim().slice(0, 1000) : undefined
-      };
+      application.adminDecision = accountAdminDecision;
       if (decision === 'reject') {
         application.rejectionReason = application.adminDecision.notes;
       }

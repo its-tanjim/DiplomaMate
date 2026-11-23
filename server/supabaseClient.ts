@@ -30,17 +30,26 @@
  *   `getCohortRoster()` does today. Postgres has no name-normalisation.
  *
  * KNOWN GAPS (fix in the route-migration step, not here)
- * - `pin_hash_version` is NOT a column in Postgres yet. Mapped teachers
- *   return `pinHashVersion: undefined`, which `server.ts`
- *   `verifyTeacherPin()` treats as legacy PBKDF2-1000 (v1). That is correct
- *   for the migrated hashes (all legacy), but a v2 upgrade after login
- *   needs `ALTER TABLE teacher_accounts ADD COLUMN pin_hash_version int`.
+ * - `pin_hash_version`: the column does NOT exist in Postgres yet — it is
+ *   added by `supabase-schema-phase4.sql` (run it in the SQL Editor).
+ *   `toStudent()` / `toTeacher()` map it when present and return
+ *   `undefined` otherwise (`select('*')` simply does not return a
+ *   missing column), which the verifiers treat as a legacy hash:
+ *   `verifyTeacherPin()` uses PBKDF2-1000 for `undefined`/1 and
+ *   PBKDF2-100000 for 2, and `verifyStudentPin()` always uses the v2
+ *   count for students, so a missing value changes nothing for
+ *   students. The write helpers (`insertStudent`,
+ *   `updateStudentById`, `updateTeacherById`) include the column in
+ *   the payload and retry once without it on a PostgREST PGRST204
+ *   (unknown-column) error, so a write still lands in Postgres before
+ *   the ALTER has been run — the column just stays unset until then.
  * - Student lockout is in-memory only in `server.ts`
  *   (`studentLoginFailures` Map, line ~612); the Postgres columns
  *   `failed_pin_attempts` / `lockout_until` exist but `EnrolledStudent`
  *   has no such fields, so they are only exposed via the raw-row helpers.
  * - `pendingTeacherEndorsements` (a `Record<string, …>` inside the JSON
- *   store) has NO Postgres table yet — it needs one before
+ *   store) has NO Postgres table yet — the table is defined in
+ *   `supabase-schema-phase4.sql`; it needs to be run before
  *   `POST /api/captains/sync` can migrate.
  * - `attendance_rate` is a string like "98%" in the app and `numeric`
  *   in Postgres; the mapper converts numeric -> "98%".
@@ -113,9 +122,33 @@ export async function checkSupabaseConnection(): Promise<boolean> {
 
 function throwIfError(error: unknown, context: string): void {
   if (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    // PostgREST errors are plain objects ({ code, message, details,
+    // hint }), not Error instances — String(error) would only give
+    // "[object Object]" and hide the real message (e.g. a PGRST204
+    // unknown-column error). Prefer the object's message when present.
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error !== null && 'message' in error
+          ? String((error as { message: unknown }).message)
+          : String(error);
     throw new Error(`Supabase ${context} failed: ${message}`);
   }
+}
+
+/**
+ * PostgREST PGRST204: the payload names a column that does not exist in
+ * the table yet (e.g. `pin_hash_version` before
+ * `supabase-schema-phase4.sql` has been run in the SQL Editor). The
+ * student / teacher write helpers below retry once without that column
+ * instead of failing the whole write.
+ */
+function isMissingColumnError(error: unknown, column: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { code?: unknown; message?: unknown };
+  return (
+    err.code === 'PGRST204' && typeof err.message === 'string' && err.message.includes(column)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +174,8 @@ export interface StudentRow {
   attendance_rate: number | null;
   pin_hash: string | null;
   pin_salt: string | null;
+  // Added by supabase-schema-phase4.sql; null until that ALTER is run.
+  pin_hash_version: number | null;
   failed_pin_attempts: number | null;
   lockout_until: string | null;
   is_registered_account: boolean | null;
@@ -164,6 +199,8 @@ export interface TeacherRow {
   verification_status: string | null;
   pin_salt: string | null;
   pin_hash: string | null;
+  // Added by supabase-schema-phase4.sql; null until that ALTER is run.
+  pin_hash_version: number | null;
   failed_pin_attempts: number | null;
   lockout_until: string | null;
   admin_notes: string | null;
@@ -172,7 +209,7 @@ export interface TeacherRow {
   updated_at: string | null;
 }
 
-/** ServerTeacher shape as defined in server.ts (pinHashVersion has no Postgres column yet). */
+/** ServerTeacher shape as defined in server.ts (pinHashVersion maps to the pin_hash_version column added by supabase-schema-phase4.sql; undefined until that ALTER runs). */
 export interface TeacherAccount {
   id: string;
   name: string;
@@ -361,7 +398,12 @@ export function toStudent(row: StudentRow): EnrolledStudent {
     isRegisteredAccount: row.is_registered_account ?? false,
     pinHash: row.pin_hash ?? undefined,
     pinSalt: row.pin_salt ?? undefined,
-    // pinHashVersion: no Postgres column yet — see header note.
+    // pin_hash_version is added by supabase-schema-phase4.sql. Until
+    // that ALTER runs, select('*') does not return the column and this
+    // is undefined (= legacy hash). verifyStudentPin() always uses the
+    // v2 iteration count for students, so a missing value changes
+    // nothing for students.
+    pinHashVersion: row.pin_hash_version ?? undefined,
   };
 }
 
@@ -381,7 +423,11 @@ export function toTeacher(row: TeacherRow): TeacherAccount {
     verificationStatus: (row.verification_status ?? 'Pending') as TeacherAccount['verificationStatus'],
     pinHash: row.pin_hash ?? '',
     pinSalt: row.pin_salt ?? '',
-    // pinHashVersion: no Postgres column yet — see header note.
+    // pin_hash_version is added by supabase-schema-phase4.sql. Until
+    // that ALTER runs, select('*') does not return the column and this
+    // is undefined, which verifyTeacherPin() treats as legacy
+    // PBKDF2-1000 (v1) — correct for the migrated hashes.
+    pinHashVersion: row.pin_hash_version ?? undefined,
     failedPinAttempts: row.failed_pin_attempts ?? 0,
     lockoutUntil: row.lockout_until ? Date.parse(row.lockout_until) : null,
     createdAt: row.created_at ?? '',
@@ -717,20 +763,84 @@ export async function listStudentsByCohort(filter: CohortFilter): Promise<Enroll
  * Partial update of one student (PIN setup, lockout persistence, profile
  * changes). Sets `updated_at`. Returns the mapped student, or null if the id
  * does not exist. Only columns present in `StudentRow` may be patched.
+ * If the patch includes `pin_hash_version` and Postgres does not have
+ * that column yet (supabase-schema-phase4.sql not run), the update is
+ * retried once without it instead of failing — the PIN still lands.
  */
 export async function updateStudentById(
   id: string,
   patch: Partial<Omit<StudentRow, 'id' | 'created_at'>>,
 ): Promise<EnrolledStudent | null> {
   const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('students')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select('*')
-    .maybeSingle();
+  const runUpdate = (p: Partial<Omit<StudentRow, 'id' | 'created_at'>>) =>
+    client
+      .from('students')
+      .update({ ...p, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+  let { data, error } = await runUpdate(patch);
+  if (error && 'pin_hash_version' in patch && isMissingColumnError(error, 'pin_hash_version')) {
+    const { pin_hash_version: _dropped, ...patchWithoutVersion } = patch;
+    ({ data, error } = await runUpdate(patchWithoutVersion));
+  }
   throwIfError(error, 'updateStudentById');
   return data ? toStudent(data as StudentRow) : null;
+}
+
+/**
+ * Insert helper for write route 3 (student register). Inserts one row
+ * into `students` and returns the mapped student. Throws on any query
+ * error (callers catch and fall back to JSON-only), following the same
+ * contract as `updateCaptainRecordById` / `insertCommunity`.
+ *
+ * Column notes: `email` was added by supabase-migration-phase2.sql.
+ * `pin_hash_version` is added by supabase-schema-phase4.sql — until
+ * that ALTER runs, the insert is retried once without it on a
+ * PGRST204 error, so the registration still lands in Postgres (the
+ * column just stays unset). `attendance_rate` is numeric in Postgres
+ * and a "98%" string in the app; an empty rate inserts as NULL.
+ * `board_roll` is unique in Postgres: re-registering a roll that
+ * already has a Postgres row fails here and the caller keeps the
+ * JSON-store write (the register route's own duplicate check runs on
+ * the JSON store first, so this only fires on a JSON/Postgres skew).
+ */
+export async function insertStudent(student: EnrolledStudent): Promise<EnrolledStudent> {
+  const client = getSupabaseClient();
+  const rate = parseFloat(String(student.attendanceRate || '').replace('%', ''));
+  const row: StudentRow = {
+    id: student.id,
+    name: student.name,
+    class_roll: student.classRoll || null,
+    board_roll: student.boardRoll || null,
+    reg_number: student.regNumber || null,
+    college: student.college || null,
+    department: student.department || null,
+    semester: student.semester ?? null,
+    shift: student.shift ?? null,
+    section: student.section ?? null,
+    phone: student.phone || null,
+    email: student.email?.trim() ? student.email.trim() : null,
+    account_type: student.accountType ?? 'student',
+    captain_verification_status: student.captainVerificationStatus ?? 'NotApplied',
+    attendance_rate: Number.isFinite(rate) ? rate : null,
+    pin_hash: student.pinHash ?? null,
+    pin_salt: student.pinSalt ?? null,
+    pin_hash_version: student.pinHashVersion ?? null,
+    failed_pin_attempts: 0,
+    lockout_until: null,
+    is_registered_account: student.isRegisteredAccount ?? false,
+    auth_user_id: null,
+    created_at: student.createdAt ?? new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  let { data, error } = await client.from('students').insert(row).select('*').single();
+  if (error && isMissingColumnError(error, 'pin_hash_version')) {
+    const { pin_hash_version: _dropped, ...rowWithoutVersion } = row;
+    ({ data, error } = await client.from('students').insert(rowWithoutVersion).select('*').single());
+  }
+  throwIfError(error, 'insertStudent');
+  return toStudent(data as StudentRow);
 }
 
 // ---------------------------------------------------------------------------
@@ -784,12 +894,20 @@ export async function updateTeacherById(
   patch: Partial<Omit<TeacherRow, 'id' | 'created_at'>>,
 ): Promise<TeacherAccount | null> {
   const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('teacher_accounts')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select('*')
-    .maybeSingle();
+  const runUpdate = (p: Partial<Omit<TeacherRow, 'id' | 'created_at'>>) =>
+    client
+      .from('teacher_accounts')
+      .update({ ...p, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+  let { data, error } = await runUpdate(patch);
+  // Same pin_hash_version grace as updateStudentById (see above): the
+  // column is added by supabase-schema-phase4.sql; retry without it.
+  if (error && 'pin_hash_version' in patch && isMissingColumnError(error, 'pin_hash_version')) {
+    const { pin_hash_version: _dropped, ...patchWithoutVersion } = patch;
+    ({ data, error } = await runUpdate(patchWithoutVersion));
+  }
   throwIfError(error, 'updateTeacherById');
   return data ? toTeacher(data as TeacherRow) : null;
 }
@@ -844,6 +962,30 @@ export async function countApprovedCaptainsForGroup(filter: CohortFilter): Promi
   const { count, error } = await query;
   throwIfError(error, 'countApprovedCaptainsForGroup');
   return count ?? 0;
+}
+
+/**
+ * Partial update of one captain record (admin decision, teacher
+ * endorsement, rejection reason). Sets `updated_at`. Returns the mapped
+ * record, or null if the id does not exist in Postgres (e.g. a record
+ * created client-side that never reached the server store). Only columns
+ * present in `CaptainRow` may be patched. Callers dual-writing a captain
+ * decision must treat a null return / thrown error as "Postgres did not
+ * take the write" and keep the JSON-store write as the source of truth.
+ */
+export async function updateCaptainRecordById(
+  id: string,
+  patch: Partial<Omit<CaptainRow, 'id' | 'created_at'>>,
+): Promise<CaptainRecord | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('captain_records')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('*')
+    .maybeSingle();
+  throwIfError(error, 'updateCaptainRecordById');
+  return data ? toCaptain(data as CaptainRow) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -920,6 +1062,101 @@ export async function listCommunityMessages(
     .limit(limit);
   throwIfError(error, 'listCommunityMessages');
   return ((data ?? []) as MessageRow[]).map(toMessage);
+}
+
+/**
+ * Insert helpers for write route 2 (community create + message post).
+ * The caller dual-writes: Postgres FIRST, then the JSON store. These
+ * throw on any query error (callers catch and fall back to JSON-only),
+ * following the same contract as `updateCaptainRecordById`.
+ *
+ * Column gaps (same as the read mappers): `communities` has NO
+ * `image_url` column, so the community image URL is JSON-only and is
+ * deliberately omitted here — inserting it would fail with an unknown-
+ * column error. `community_messages` has no `deleted_by` / `updated_at`
+ * columns, so those are omitted too. Attachments are inserted verbatim
+ * (jsonb), including `file_data` base64 bytes, so the Postgres copy is
+ * faithful to the JSON store.
+ */
+export async function insertCommunity(community: AcademicCommunity): Promise<AcademicCommunity> {
+  const client = getSupabaseClient();
+  const row: CommunityRow = {
+    id: community.id,
+    name: community.name,
+    description: community.description,
+    college_id: community.college_id,
+    college: community.college,
+    department_id: community.department_id,
+    department: community.department,
+    semester: community.semester,
+    regulation: community.regulation,
+    shift: community.shift,
+    section: community.section,
+    visibility: community.visibility,
+    created_by: community.created_by,
+    created_by_name: community.created_by_name,
+    created_by_role: community.created_by_role,
+    moderators: community.moderators,
+    member_count: community.member_count,
+    is_active: community.is_active,
+    avatar_emoji: community.avatar_emoji ?? null,
+    pinned_notice_id: community.pinned_notice_id ?? null,
+    created_at: community.created_at,
+    updated_at: community.updated_at,
+  };
+  const { data, error } = await client.from('communities').insert(row).select('*').single();
+  throwIfError(error, 'insertCommunity');
+  return toCommunity(data as CommunityRow);
+}
+
+export async function insertCommunityMembership(
+  membership: CommunityMembershipRecord,
+): Promise<CommunityMembershipRecord> {
+  const client = getSupabaseClient();
+  const row: MembershipRow = {
+    id: membership.id,
+    community_id: membership.community_id,
+    user_id: membership.user_id,
+    user_name: membership.user_name,
+    user_role: membership.user_role,
+    college_id: membership.college_id,
+    department_id: membership.department_id,
+    semester: membership.semester,
+    shift: membership.shift ?? null,
+    section: membership.section ?? null,
+    membership_role: membership.membership_role,
+    status: membership.status,
+    is_muted: membership.is_muted,
+    joined_at: membership.joined_at,
+    updated_at: membership.updated_at,
+  };
+  const { data, error } = await client.from('community_memberships').insert(row).select('*').single();
+  throwIfError(error, 'insertCommunityMembership');
+  return toMembership(data as MembershipRow);
+}
+
+export async function insertCommunityMessage(message: CommunityMessageRecord): Promise<CommunityMessageRecord> {
+  const client = getSupabaseClient();
+  const row: MessageRow = {
+    id: message.id,
+    community_id: message.community_id,
+    sender_id: message.sender_id,
+    sender_name: message.sender_name,
+    sender_role: message.sender_role,
+    sender_designation: message.sender_designation ?? null,
+    is_moderator: message.is_moderator,
+    content: message.content,
+    attachments: message.attachments,
+    is_pinned: message.is_pinned,
+    pinned_by: message.pinned_by ?? null,
+    pinned_at: message.pinned_at ?? null,
+    is_deleted: message.is_deleted,
+    reports_count: message.reports_count,
+    created_at: message.created_at,
+  };
+  const { data, error } = await client.from('community_messages').insert(row).select('*').single();
+  throwIfError(error, 'insertCommunityMessage');
+  return toMessage(data as MessageRow);
 }
 
 // ---------------------------------------------------------------------------
