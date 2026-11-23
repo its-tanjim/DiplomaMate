@@ -12,9 +12,7 @@ import {
   Trash2,
   ShieldCheck, 
   UserCheck, 
-  Lock, 
   Sparkles, 
-  CreditCard, 
   CheckCircle2, 
   AlertCircle, 
   AlertTriangle,
@@ -36,9 +34,6 @@ export const TeachersContactsScreen: React.FC = () => {
     addTeacher, 
     archiveTeacherContact,
     accountType, 
-    isTeacherContactUnlocked, 
-    isTeacherContactAccessLocked,
-    unlockTeacherContactsWithPayment, 
     userProfile,
     setActiveScreen,
     showToast 
@@ -54,12 +49,6 @@ export const TeachersContactsScreen: React.FC = () => {
   const [customArchiveReason, setCustomArchiveReason] = useState('');
   const [isArchiving, setIsArchiving] = useState(false);
 
-  // Payment checkout modal state
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState<'bKash' | 'Nagad' | 'Rocket' | 'Card'>('bKash');
-  const [transactionId, setTransactionId] = useState('');
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   // New teacher form state
   const [newTeacher, setNewTeacher] = useState<{
@@ -196,152 +185,6 @@ export const TeachersContactsScreen: React.FC = () => {
     }
   };
 
-  const handleVerifyPayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!transactionId.trim()) {
-      setPaymentError('Please enter the MFS Transaction ID.');
-      return;
-    }
-
-    setIsProcessingPayment(true);
-    setPaymentError(null);
-    try {
-      const res = await unlockTeacherContactsWithPayment(selectedProvider, transactionId.trim().toUpperCase());
-      if (res.success) {
-        setShowPaymentModal(false);
-        setTransactionId('');
-      } else {
-        setPaymentError(res.message);
-      }
-    } finally {
-      setIsProcessingPayment(false);
-    }
-  };
-
-  // Keep the existing payment flow available if an administrator locks this feature.
-  if (!isTeacherContactUnlocked) {
-    return (
-      <div className="space-y-4 pb-12">
-        {/* Header */}
-        <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-teal-50 text-brand-teal flex items-center justify-center font-bold">
-              <Contact2 className="w-4 h-4" />
-            </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-bold text-text-primary">
-                Teachers' Contacts Directory
-              </h1>
-              <p className="text-xs text-slate-500">
-                Direct faculty dialer & consulting schedule
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Premium Paywall Card */}
-        <div className="bg-gradient-to-b from-white to-blue-50/40 rounded-2xl border border-blue-200/80 p-6 shadow-sm text-center relative overflow-hidden">
-          <div className="absolute top-0 right-0 bg-brand-blue text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-bl-xl shadow-xs">
-            One-Time Access
-          </div>
-
-          <div className="w-14 h-14 rounded-2xl bg-blue-100/80 text-brand-blue mx-auto flex items-center justify-center mb-3 shadow-inner">
-            <Lock className="w-7 h-7" />
-          </div>
-
-          <h2 className="text-xl font-extrabold text-text-primary">
-            Unlock Teachers' Contacts
-          </h2>
-          <p className="text-xs text-slate-600 mt-1 max-w-sm mx-auto">
-            Get instant, verified dial access to your college instructors, guide teachers, and heads of departments.
-          </p>
-
-          <div className="my-5 p-4 rounded-xl bg-surface border border-blue-100 shadow-xs max-w-xs mx-auto">
-            <div className="text-3xl font-black text-brand-blue flex items-center justify-center gap-1">
-              <span className="text-lg font-bold text-slate-500">৳</span>10
-              <span className="text-xs font-normal text-slate-400">/ lifetime</span>
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1">
-              One-time charge. No recurring subscription.
-            </p>
-          </div>
-
-          <button
-            onClick={() => setShowPaymentModal(true)}
-            className="w-full max-w-xs py-3 px-4 rounded-xl bg-brand-blue hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 mx-auto cursor-pointer transition-all"
-          >
-            <CreditCard className="w-4 h-4" />
-            <span>Pay BDT 10 via bKash / Nagad</span>
-          </button>
-        </div>
-
-        {/* Payment Modal */}
-        {showPaymentModal && (
-          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-surface rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h3 className="font-bold text-sm text-text-primary">Complete BDT 10 Payment</h3>
-                <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
-              </div>
-
-              <form onSubmit={handleVerifyPayment} className="space-y-3 mt-3">
-                <div className="flex gap-2">
-                  {(['bKash', 'Nagad', 'Rocket'] as const).map(p => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setSelectedProvider(p)}
-                      className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition-all ${
-                        selectedProvider === p
-                          ? 'bg-blue-50 border-blue-500 text-blue-700'
-                          : 'bg-slate-50 border-slate-200 text-slate-600'
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="p-2.5 rounded-lg bg-blue-50/60 border border-blue-100 text-[11px] text-blue-900">
-                  Send Money BDT 10 to Merchant: <strong className="font-mono">01700-112233</strong> and paste Transaction ID below.
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-text-primary mb-1">Transaction ID (TrxID)</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. TRX99214A"
-                    value={transactionId}
-                    onChange={(e) => setTransactionId(e.target.value)}
-                    className="w-full px-3 py-2 text-xs uppercase font-mono bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
-                  />
-                  {paymentError && <p className="text-[11px] text-rose-500 mt-1">{paymentError}</p>}
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowPaymentModal(false)}
-                    className="flex-1 py-2 text-xs font-semibold rounded-lg border border-slate-200 text-slate-600"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isProcessingPayment}
-                    className="flex-1 py-2 text-xs font-bold rounded-lg bg-brand-blue text-white hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {isProcessingPayment ? 'Verifying...' : 'Confirm & Unlock'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
 
   // Unlocked State: Render Faculty Directory
   return (
@@ -359,7 +202,7 @@ export const TeachersContactsScreen: React.FC = () => {
               </h1>
               <span className="bg-teal-50 text-brand-teal border border-teal-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3" />
-                <span>{isTeacherContactAccessLocked ? 'Lifetime access' : 'Free access'}</span>
+                <span>Free access</span>
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">

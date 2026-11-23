@@ -330,8 +330,8 @@ const aiRateLimiter = createRateLimiter({
 // Global authentication for mutating API routes.
 // Every POST/PUT/PATCH/DELETE under /api requires a valid session, except
 // the explicit public allow-list below (login / registration / bootstrap /
-// PIN-verified teacher endorsement / public result lookup / the payment
-// stub, which is out of scope for this change). GET reads keep their
+// PIN-verified teacher endorsement / public result lookup / payments
+// (disabled: the handler returns 503). GET reads keep their
 // existing per-handler checks.
 // ---------------------------------------------------------------------------
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -359,7 +359,7 @@ function requireAdminOrTeacher(req: Request, res: Response, next: NextFunction) 
 }
 
 const PUBLIC_MUTATING_ROUTES = new Set([
-  'POST /api/payments/verify', // out of scope: fake-payment stub left as-is
+  'POST /api/payments/verify', // payments disabled: handler returns 503
   'POST /api/teachers/register',
   'POST /api/students/register',
   'POST /api/students/setup-pin', // one-time PIN setup, token-authenticated internally
@@ -1038,6 +1038,11 @@ function areDepartmentsEquivalent(dept1?: string, dept2?: string): boolean {
  */
 app.post('/api/payments/verify', (req: Request, res: Response) => {
   try {
+    // Payments are currently disabled: no payment gateway is integrated yet,
+    // so the previous verification stub must never accept a payment again.
+    // Re-enable only as part of a real gateway integration. There is
+    // deliberately no env flag that can re-enable the stub.
+    return res.status(503).json({ success: false, error: 'Payments are currently disabled' });
     const { studentId, rollNumber, provider, transactionId, amount } = req.body;
 
     if (!studentId || !rollNumber || !provider || !transactionId) {

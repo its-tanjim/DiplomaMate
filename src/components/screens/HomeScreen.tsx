@@ -41,7 +41,6 @@ export const HomeScreen: React.FC = () => {
     addAnnouncement,
     switchAccountType,
     isTeacherContactUnlocked,
-    isTeacherContactAccessLocked,
     jobs
   } = useApp();
 
@@ -575,14 +574,8 @@ export const HomeScreen: React.FC = () => {
                 <Contact2 className="w-5 h-5" />
               </div>
               <div className="flex items-center gap-1.5">
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  isTeacherContactUnlocked 
-                    ? 'bg-teal-50 text-brand-teal border border-teal-200'
-                    : 'bg-amber-50 text-amber-700 border border-amber-200'
-                }`}>
-                  {isTeacherContactAccessLocked
-                    ? isTeacherContactUnlocked ? 'Lifetime access' : 'Access restricted'
-                    : 'Free access'}
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-brand-teal border border-teal-200">
+                  Free access
                 </span>
                 <span className="text-xs font-semibold text-brand-teal group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                   Directory <ChevronRight className="w-3.5 h-3.5" />

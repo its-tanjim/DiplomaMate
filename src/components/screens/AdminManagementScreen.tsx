@@ -488,7 +488,7 @@ export const AdminManagementScreen: React.FC = () => {
                   <h2 className="text-lg font-bold text-text-primary">Teacher Contact access</h2>
                   <p className="mt-1 max-w-xl text-xs text-slate-600">
                     {teacherContactsLocked
-                      ? 'Access is locked. The existing payment and unlock flow is active.'
+                      ? 'Access is locked, but the payment flow is currently off, so the lock has no effect — Teacher Contacts are free for everyone.'
                       : 'Teacher Contacts are free and available to users without payment.'}
                   </p>
                   <p className="mt-2 text-[11px] text-slate-500">

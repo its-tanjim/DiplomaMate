@@ -180,14 +180,13 @@ interface AppContextType {
   toggleReminder: (id: string) => void;
   deleteReminder: (id: string) => void;
   
-  // Teacher Contact access; legacy payment-based unlock is retained for future use.
+  // Teacher Contact access. Payments are currently disabled, so contacts are free for everyone.
   teachers: TeacherContact[];
   addTeacher: (teacher: Omit<TeacherContact, 'id'>) => Promise<{ success: boolean; message: string }>;
   archiveTeacherContact: (contactId: string, reason: string) => Promise<{ success: boolean; message: string }>;
   isTeacherContactUnlocked: boolean;
   isTeacherContactAccessLocked: boolean;
   updateTeacherContactAccessLock: (locked: boolean) => Promise<{ success: boolean; message: string }>;
-  unlockTeacherContactsWithPayment: (provider: 'bKash' | 'Nagad' | 'Rocket' | 'Card', transactionId: string) => Promise<{ success: boolean; message: string }>;
 
   
   // Class Captain Verification Workflow
@@ -1780,48 +1779,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  // 2. PREMIUM TEACHER'S CONTACT: BDT 10 ONE-TIME PAYMENT & LIFETIME ACCESS
-  const unlockTeacherContactsWithPayment = async (
-    provider: 'bKash' | 'Nagad' | 'Rocket' | 'Card', 
-    transactionId: string
-  ): Promise<{ success: boolean; message: string }> => {
-    if (userProfile.isTeacherContactUnlocked) {
-      return { success: true, message: 'You already possess verified lifetime access to Teacher Contacts.' };
-    }
-
-    try {
-      const response = await apiFetch('/api/payments/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentId: userProfile.id,
-          rollNumber: userProfile.boardRoll,
-          provider,
-          transactionId,
-          amount: 10
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        return { success: false, message: data.error || 'Payment verification failed.' };
-      }
-
-      // Unlock permanently
-      setUserProfile(prev => ({
-        ...prev,
-        isTeacherContactUnlocked: true,
-        paymentRecord: data.paymentRecord
-      }));
-
-      showToast('🎉 Lifetime Access Unlocked! Teacher Contacts are now permanently available.');
-      return { success: true, message: 'Payment verified and lifetime entitlement activated.' };
-    } catch (e) {
-      console.error('Payment verification request failed:', e);
-      return { success: false, message: 'Could not communicate with payment verification server.' };
-    }
-  };
 
   const updateTeacherContactAccessLock = async (
     locked: boolean
@@ -2730,11 +2687,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         teachers,
         addTeacher,
         archiveTeacherContact,
-        isTeacherContactUnlocked:
-          !isTeacherContactAccessLocked || Boolean(userProfile.isTeacherContactUnlocked),
+        // Payments are currently disabled, so Teacher Contacts are free for everyone.
+        isTeacherContactUnlocked: true,
         isTeacherContactAccessLocked,
         updateTeacherContactAccessLock,
-        unlockTeacherContactsWithPayment,
         applications,
         submitCaptainApplication,
         teacherEndorseApplication,
