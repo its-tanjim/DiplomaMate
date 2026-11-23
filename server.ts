@@ -116,25 +116,42 @@ import {
 // GET /api/notices/campus (list) read Postgres first, falling back to
 // the JSON store. Write route 1 (captain decision + teacher endorsement
 // persistence), write route 2 (community create + community message
-// post) and write route 3 (student register + one-time PIN setup)
+// post), write route 3 (student register + one-time PIN setup) and
+// POST /api/captains/sync (captain record + linked student + teacher-
+// endorsement registry) and POST /api/teachers/change-pin (teacher PIN
+// change) dual-write to Postgres first, then the JSON
+// store. GET /api/attendance/sheets and GET /api/attendance/monthly
+// read Postgres first, falling back to the JSON store, and
+// POST /api/attendance/sheets (create + allowUpdate), PUT
+// /api/attendance/sheets/:id and DELETE /api/attendance/sheets/:id
 // dual-write to Postgres first, then the JSON store.
 import {
   isSupabaseConfigured,
+  deleteAttendanceSheetById,
+  getPendingTeacherEndorsement,
   getStudentByBoardRoll,
   getTeacherByEmail,
   getTeacherByPhone,
+  insertAttendanceSheet,
+  insertCaptainRecord,
   insertCommunity,
   insertCommunityMembership,
   insertCommunityMessage,
   insertStudent,
+  listAttendanceSheets,
   listCampusNotices,
   listCaptainRecordsByCohort,
   listCommunities,
   listMembershipsForUser,
   listRoutines,
   listStudentsByCohort,
+  toAttendanceSheetRow,
+  toCaptainRow,
+  updateAttendanceSheetById,
   updateCaptainRecordById,
-  updateStudentById
+  updateStudentById,
+  updateTeacherById,
+  upsertPendingTeacherEndorsement
 } from './server/supabaseClient';
 
 dotenv.config();
@@ -2298,7 +2315,7 @@ app.post('/api/teachers/reset-lockout', requireSystemAdmin, (req: Request, res: 
 // the same protections as teacher login. Previously this endpoint took any
 // teacherId with no session at all, and it never saved the store, so a PIN
 // change was lost on the next server restart.
-app.post('/api/teachers/change-pin', authRateLimiter, authIpRateLimiter, requireAuth, (req: Request, res: Response) => {
+app.post('/api/teachers/change-pin', authRateLimiter, authIpRateLimiter, requireAuth, async (req: Request, res: Response) => {
   try {
     const { teacherId, currentPin, newPin } = req.body;
     const session = (req as unknown as { session: ServerSession }).session;
@@ -2356,6 +2373,14 @@ app.post('/api/teachers/change-pin', authRateLimiter, authIpRateLimiter, require
     teacher.pinHashVersion = 2;
     teacher.failedPinAttempts = 0;
     teacher.lockoutUntil = null;
+    // Phase 4 write route 4: dual-write the new PIN hash to Postgres
+    // FIRST. A Postgres failure only logs a warning — the JSON write
+    // below still happens, so the PIN change is never lost.
+    await persistTeacherPinChangeToSupabase(teacher.id, {
+      pin_hash: teacher.pinHash ?? null,
+      pin_salt: teacher.pinSalt ?? null,
+      pin_hash_version: teacher.pinHashVersion ?? null
+    }, 'TeacherChangePin');
     saveAcademicStore(academicStore);
     appendSystemAudit('teacher_pin_changed', teacher.id, teacher.name, 'Teacher changed their own security PIN.', teacher.id);
     saveAcademicStore(academicStore);
@@ -6196,9 +6221,104 @@ app.post('/api/attendance/roster/merge', (req: Request, res: Response) => {
 });
 
 /**
- * 10E. GET ATTENDANCE SHEETS FOR COHORT / DATE (`GET /api/attendance/sheets`)
+ * Phase 4 migration 9 — attendance sheets.
+ * Shared by GET /api/attendance/sheets (10E) and GET
+ * /api/attendance/monthly (10I), so both read the same source. The
+ * stored college/department ids do NOT always equal the canonical
+ * ones — the Postgres Phase 2 seed rows carry legacy ids
+ * (`col_01_dhaka` / `tech_03_computer`) while the JSON store uses
+ * `clg_dhaka` / `tech_computer` — so the match resolves the STORED
+ * id (or, when the id is missing, the stored display name) through
+ * `resolveStrictCollege()` / `resolveStrictTechnology()`, which map
+ * the legacy ids to the canonical ones. A sheet whose college or
+ * department cannot be resolved is excluded, exactly as
+ * `filterApprovedCaptainsForGroup()` does. Semester / shift /
+ * section / date / subjectCode / periodLabel use the JSON route's
+ * exact conditions (`date` empty = no filter, `subjectCode` /
+ * `periodLabel` of 'all' = no filter).
  */
-app.get('/api/attendance/sheets', (req: Request, res: Response) => {
+function filterAttendanceSheetsByCohort(
+  sheets: AttendanceSheet[],
+  params: {
+    college: string;
+    department: string;
+    semester: number;
+    shift: string;
+    section: string;
+    date?: string;
+    subjectCode?: string;
+    periodLabel?: string;
+    datePrefix?: string;
+  }
+): AttendanceSheet[] {
+  const colId = normalizeCollege(params.college).id;
+  const deptId = normalizeTechnology(params.department).id;
+  const semNum = Number(params.semester);
+  const shiftClean = params.shift === 'Day' ? 'Day' : 'Morning';
+  const secClean = params.section || 'A1';
+
+  return sheets.filter(sh => {
+    const shCol = resolveStrictCollege(sh.collegeId) ?? resolveStrictCollege(sh.college);
+    const shDept = resolveStrictTechnology(sh.departmentId) ?? resolveStrictTechnology(sh.department);
+    if (!shCol || shCol.id !== colId) return false;
+    if (!shDept || shDept.id !== deptId) return false;
+    if (Number(sh.semester) !== semNum) return false;
+    if (sh.shift !== shiftClean) return false;
+    if (sh.section !== secClean) return false;
+    if (params.date && sh.date !== params.date) return false;
+    if (params.datePrefix && !sh.date.startsWith(params.datePrefix)) return false;
+    if (params.subjectCode && params.subjectCode !== 'all' && sh.subjectCode !== params.subjectCode) return false;
+    if (params.periodLabel && params.periodLabel !== 'all' && sh.periodLabel !== params.periodLabel) return false;
+    return true;
+  });
+}
+
+/**
+ * Supabase-first loader for the attendance sheet routes. Tries
+ * Postgres via `listAttendanceSheets()` (which narrows in SQL only
+ * on the exact-match-safe fields) and applies the shared in-memory
+ * cohort filter, falling back to the same filter over the JSON store
+ * on missing env or any query error. Never throws — the route never
+ * 500s for a DB error, and the response shape is identical.
+ */
+async function getAttendanceSheetsForCohortAsync(
+  params: {
+    college: string;
+    department: string;
+    semester: number;
+    shift: string;
+    section: string;
+    date?: string;
+    subjectCode?: string;
+    periodLabel?: string;
+    datePrefix?: string;
+  }
+): Promise<AttendanceSheet[]> {
+  if (!isSupabaseConfigured()) {
+    return filterAttendanceSheetsByCohort(academicStore.attendanceSheets, params);
+  }
+  try {
+    const rows = await listAttendanceSheets({
+      semester: Number(params.semester),
+      shift: params.shift === 'Day' ? 'Day' : 'Morning',
+      section: params.section || 'A1',
+      date: params.date || undefined,
+      subjectCode: params.subjectCode && params.subjectCode !== 'all' ? params.subjectCode : undefined
+    });
+    return filterAttendanceSheetsByCohort(rows, params);
+  } catch (err) {
+    console.warn('[AttendanceSheets] Supabase read failed, falling back to JSON store:', err);
+    return filterAttendanceSheetsByCohort(academicStore.attendanceSheets, params);
+  }
+}
+
+/**
+ * 10E. GET ATTENDANCE SHEETS FOR COHORT / DATE (`GET /api/attendance/sheets`)
+ * Phase 4 migration 9: tries Supabase (Postgres) first via
+ * getAttendanceSheetsForCohortAsync(), falling back to the JSON store
+ * on missing env or any query error.
+ */
+app.get('/api/attendance/sheets', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const college = String(req.query.college || 'Dhaka Polytechnic Institute').trim();
@@ -6224,21 +6344,16 @@ app.get('/api/attendance/sheets', (req: Request, res: Response) => {
       });
     }
 
-    const colId = normalizeCollege(college).id;
-    const deptId = normalizeTechnology(department).id;
-
-    const sheets = academicStore.attendanceSheets
-      .filter(sh => {
-        if (sh.collegeId !== colId || sh.departmentId !== deptId) return false;
-        if (sh.semester !== semester) return false;
-        if (sh.shift !== shift) return false;
-        if (sh.section !== section) return false;
-        if (date && sh.date !== date) return false;
-        if (subjectCode && subjectCode !== 'all' && sh.subjectCode !== subjectCode) return false;
-        if (periodLabel && periodLabel !== 'all' && sh.periodLabel !== periodLabel) return false;
-        return true;
-      })
-      .sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt));
+    const sheets = (await getAttendanceSheetsForCohortAsync({
+      college,
+      department,
+      semester,
+      shift,
+      section,
+      date,
+      subjectCode,
+      periodLabel
+    })).sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt));
 
     return res.status(200).json({
       success: true,
@@ -6255,8 +6370,12 @@ app.get('/api/attendance/sheets', (req: Request, res: Response) => {
  * - Prevents accidental duplicate sheets for the same (class, date, subject, period) unless `allowUpdate: true`
  * - Enforces explicit statuses (`present`, `absent`, `not_marked`)
  * - Never silently converts `not_marked` to Present or Absent
+ * Phase 4 migration 9: dual-writes the new / updated sheet to
+ * Postgres first (persistAttendanceSheetToSupabase), then the JSON
+ * store. The duplicate check stays on the JSON store (source of
+ * truth), so the 409 response is unchanged.
  */
-app.post('/api/attendance/sheets', (req: Request, res: Response) => {
+app.post('/api/attendance/sheets', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const {
@@ -6369,6 +6488,7 @@ app.post('/api/attendance/sheets', (req: Request, res: Response) => {
         updatedAt: nowIso,
         auditTrail: [auditEntry, ...(existing.auditTrail || [])]
       };
+      await persistAttendanceSheetToSupabase(updatedSheet, 'AttendanceSave');
       academicStore.attendanceSheets[existingIdx] = updatedSheet;
       saveAcademicStore(academicStore);
 
@@ -6409,6 +6529,7 @@ app.post('/api/attendance/sheets', (req: Request, res: Response) => {
       ]
     };
 
+    await persistAttendanceSheetToSupabase(newSheet, 'AttendanceSave');
     academicStore.attendanceSheets.push(newSheet);
     saveAcademicStore(academicStore);
 
@@ -6425,8 +6546,10 @@ app.post('/api/attendance/sheets', (req: Request, res: Response) => {
 
 /**
  * 10G. UPDATE EXISTING ATTENDANCE SHEET BY ID (`PUT /api/attendance/sheets/:id`)
+ * Phase 4 migration 9: dual-writes the updated sheet to Postgres
+ * first (persistAttendanceSheetToSupabase), then the JSON store.
  */
-app.put('/api/attendance/sheets/:id', (req: Request, res: Response) => {
+app.put('/api/attendance/sheets/:id', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const { id } = req.params;
@@ -6499,6 +6622,7 @@ app.put('/api/attendance/sheets/:id', (req: Request, res: Response) => {
       auditTrail: [auditEntry, ...(existing.auditTrail || [])]
     };
 
+    await persistAttendanceSheetToSupabase(updatedSheet, 'AttendanceUpdate');
     academicStore.attendanceSheets[existingIdx] = updatedSheet;
     saveAcademicStore(academicStore);
 
@@ -6515,8 +6639,10 @@ app.put('/api/attendance/sheets/:id', (req: Request, res: Response) => {
 
 /**
  * 10H. DELETE ATTENDANCE SHEET (`DELETE /api/attendance/sheets/:id`)
+ * Phase 4 migration 9: deletes the Postgres row first
+ * (persistAttendanceSheetDeleteToSupabase), then the JSON store.
  */
-app.delete('/api/attendance/sheets/:id', (req: Request, res: Response) => {
+app.delete('/api/attendance/sheets/:id', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const { id } = req.params;
@@ -6540,6 +6666,7 @@ app.delete('/api/attendance/sheets/:id', (req: Request, res: Response) => {
       });
     }
 
+    await persistAttendanceSheetDeleteToSupabase(id, 'AttendanceDelete');
     academicStore.attendanceSheets = academicStore.attendanceSheets.filter(sh => sh.id !== id);
     saveAcademicStore(academicStore);
 
@@ -6560,8 +6687,11 @@ app.delete('/api/attendance/sheets/:id', (req: Request, res: Response) => {
  *   and recorded session statuses (`present`, `absent`, `not_marked`)
  * - Calculates percentages ONLY from applicable recorded class sessions (never counting unmarked students as Present
  *   and never counting non-class days / holidays as absences)
+ * Phase 4 migration 9: reads the month's sheets via
+ * getAttendanceSheetsForCohortAsync() (Supabase first, JSON
+ * fallback); the matrix / percentage computation below is unchanged.
  */
-app.get('/api/attendance/monthly', (req: Request, res: Response) => {
+app.get('/api/attendance/monthly', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const college = String(req.query.college || 'Dhaka Polytechnic Institute').trim();
@@ -6593,17 +6723,15 @@ app.get('/api/attendance/monthly', (req: Request, res: Response) => {
     const daysInMonth = new Date(year, month, 0).getDate();
 
     // Filter sheets recorded in this month for this cohort (and optional subject filter)
-    const monthlySheets = academicStore.attendanceSheets
-      .filter(sh => {
-        if (sh.collegeId !== canonicalCollege.id || sh.departmentId !== canonicalDept.id) return false;
-        if (sh.semester !== semester) return false;
-        if (sh.shift !== shift) return false;
-        if (sh.section !== section) return false;
-        if (!sh.date.startsWith(monthPrefix)) return false;
-        if (subjectCode && subjectCode !== 'all' && sh.subjectCode !== subjectCode) return false;
-        return true;
-      })
-      .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
+    const monthlySheets = (await getAttendanceSheetsForCohortAsync({
+      college,
+      department,
+      semester,
+      shift,
+      section,
+      subjectCode,
+      datePrefix: monthPrefix
+    })).sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
 
     // Build calendar days list
     const calendarDays: Array<{
@@ -9155,6 +9283,154 @@ async function persistStudentUpdateToSupabase(
 }
 
 /**
+ * Write route 4 dual-write helper (teacher PIN change). Same contract
+ * as the student / captain persist helpers above: return early when
+ * Supabase is unconfigured, never throw — on any query error, or when
+ * the row does not exist in Postgres (update returns null, e.g. a
+ * teacher registered before the Phase 2 migration or whose Postgres
+ * row was never created), log a warning and the caller carries on
+ * with the JSON write, so a PIN change is never lost because Postgres
+ * is down. Only the new PIN hash/salt/version are written — the
+ * failed-attempt / lockout counters stay JSON-only, exactly as the
+ * route's lockout logic already does (they are not part of the PIN
+ * change itself). `pin_hash_version` has no Postgres column until
+ * supabase-schema-phase4.sql is run in the SQL Editor; the
+ * updateTeacherById helper retries once without that column on a
+ * PGRST204 error, so the PIN still lands in Postgres.
+ */
+async function persistTeacherPinChangeToSupabase(
+  teacherId: string,
+  patch: Parameters<typeof updateTeacherById>[1],
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const updated = await updateTeacherById(teacherId, patch);
+    if (!updated) {
+      console.warn(`[${logTag}] Teacher ${teacherId} not found in Postgres; PIN change kept in JSON store only.`);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Supabase-first read of the server-side endorsement registry for one
+ * application (captain record) id. Returns the Postgres registry entry,
+ * or undefined when Supabase is unconfigured, when Postgres has no row
+ * for that id, or when the query fails (warns once and the caller uses
+ * the JSON registry instead). Never throws.
+ */
+async function getRegistryEndorsementFromSupabase(
+  applicationId: string
+): Promise<CaptainRecord['teacherEndorsement'] | undefined> {
+  if (!isSupabaseConfigured()) return undefined;
+  try {
+    return (await getPendingTeacherEndorsement(applicationId)) ?? undefined;
+  } catch (err) {
+    console.warn('[CaptainSync] Supabase endorsement lookup failed, using JSON registry:', err);
+    return undefined;
+  }
+}
+
+/**
+ * POST /api/captains/sync dual-write. Same contract as the other
+ * persist helpers above: return early when Supabase is unconfigured,
+ * never throw — on any query error the caller carries on with the JSON
+ * write, so a captain sync is never lost because Postgres is down.
+ *
+ * Order matters: `captain_records.student_id` references
+ * `students(id)`, so the student row is written FIRST (update, or
+ * insert when Postgres has no row for it), then the captain record
+ * (update, or insert when Postgres has no row — a record created
+ * client-side that never reached the server store). Finally, when the
+ * synced captain record carries a teacher endorsement, it is upserted
+ * into `pending_teacher_endorsements`, so a genuine endorsement
+ * replayed by a healing sync seeds the Postgres registry and Postgres
+ * becomes the source of truth for it going forward.
+ */
+async function persistCaptainSyncToSupabase(
+  captain: CaptainRecord,
+  student: EnrolledStudent,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    // 1. Student first (FK target of captain_records.student_id).
+    const updatedStudent = await updateStudentById(student.id, {
+      account_type: student.accountType,
+      captain_verification_status: student.captainVerificationStatus,
+      is_registered_account: true
+    });
+    if (!updatedStudent) {
+      await insertStudent(student);
+    }
+    // 2. Captain record: update, or insert when Postgres has no row.
+    const row = toCaptainRow(captain);
+    const { id: _captainId, created_at: _captainCreatedAt, ...captainPatch } = row;
+    const updatedCaptain = await updateCaptainRecordById(captain.id, captainPatch);
+    if (!updatedCaptain) {
+      await insertCaptainRecord(captain);
+    }
+    // 3. Registry: seed Postgres with a genuine endorsement replayed here.
+    if (captain.teacherEndorsement) {
+      await upsertPendingTeacherEndorsement(captain.id, {
+        teacherId: String(captain.teacherEndorsement.teacherId ?? ''),
+        teacherName: String(captain.teacherEndorsement.teacherName ?? ''),
+        teacherDesignation: String(captain.teacherEndorsement.teacherDesignation ?? ''),
+        endorsedAt: String(captain.teacherEndorsement.endorsedAt ?? ''),
+        comments: String(captain.teacherEndorsement.comments ?? '')
+      });
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Phase 4 migration 9 dual-write helpers (attendance sheets: POST
+ * create + allowUpdate, PUT update, DELETE). Same contract as the
+ * captain / community / student persist helpers above: return early
+ * when Supabase is unconfigured, never throw — on any query error
+ * the caller carries on with the JSON write, so an attendance save
+ * is never lost because Postgres is down.
+ *
+ * Upsert order: update first, insert when Postgres has no row for
+ * the id (a sheet recorded before the Phase 2 migration, or created
+ * while Postgres was unreachable). The `records` / `audit_trail`
+ * JSONB columns are written verbatim from `entries` /
+ * `auditTrail`, so the Postgres copy matches the JSON store exactly.
+ * The table has NO `updated_at` column — the update helper does not
+ * set one; the update time is carried by the newest `audit_trail`
+ * entry, which the routes prepend before calling this.
+ */
+async function persistAttendanceSheetToSupabase(sheet: AttendanceSheet, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const row = toAttendanceSheetRow(sheet);
+    const { id: _sheetId, created_at: _sheetCreatedAt, ...sheetPatch } = row;
+    const updated = await updateAttendanceSheetById(sheet.id, sheetPatch);
+    if (!updated) {
+      await insertAttendanceSheet(sheet);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistAttendanceSheetDeleteToSupabase(id: string, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const deleted = await deleteAttendanceSheetById(id);
+    if (!deleted) {
+      console.warn(`[${logTag}] Attendance sheet ${id} not found in Postgres; delete kept in JSON store only.`);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
  * 2-per-section quota check for the captain decision routes, Supabase-
  * first. Resolves the student's cohort to canonical ids and counts
  * Approved captain records via `getApprovedCaptainsForGroupAsync()`
@@ -10231,8 +10507,14 @@ app.delete('/api/routines/:id', (req: Request, res: Response) => {
  * 14H. CAPTAIN COHORT REGISTRATION / APPROVAL SYNC (`POST /api/captains/sync`)
  * - Synchronizes CaptainRecord state on the server and enforces the maximum of 2
  *   verified (`Approved`) Class Captains per `(college_id, department_id, semester, shift, section)`.
+ * - Phase 4 write route: the 2-per-section quota check reads Postgres first
+ *   (`getApprovedCaptainsForGroupAsync()`, JSON fallback); the teacher-
+ *   endorsement trust check reads the server-side endorsement registry
+ *   from Postgres first (`pending_teacher_endorsements`, JSON-registry
+ *   fallback); the synced captain record + linked student dual-write to
+ *   Postgres first (`persistCaptainSyncToSupabase()`), then the JSON store.
  */
-app.post('/api/captains/sync', requireAuth, (req: Request, res: Response) => {
+app.post('/api/captains/sync', requireAuth, async (req: Request, res: Response) => {
   try {
     const body = req.body || {};
     const recordInput = body.captainRecord || body;
@@ -10272,7 +10554,7 @@ app.post('/api/captains/sync', requireAuth, (req: Request, res: Response) => {
     );
 
     if (recordInput.status === 'Approved') {
-      const existingApproved = getApprovedCaptainsForGroup(grp).filter(
+      const existingApproved = (await getApprovedCaptainsForGroupAsync(grp)).filter(
         (c) => c.id !== recordInput.id && c.studentId !== recordInput.studentId
       );
       if (existingApproved.length >= 2) {
@@ -10290,19 +10572,37 @@ app.post('/api/captains/sync', requireAuth, (req: Request, res: Response) => {
     // endorsement cannot approve a captain. When the client sends no
     // endorsement, an existing server endorsement is kept, so the healing
     // sync cannot erase one.
+    // Phase 4: the registry is read from Postgres FIRST
+    // (`pending_teacher_endorsements` — the server-side source of truth),
+    // with the JSON registry as fallback. During the transition
+    // `POST /api/verification/teacher-approve` still writes the registry
+    // JSON-only, so an incoming endorsement is trusted when it matches
+    // EITHER store — a genuine endorsement must not be rejected just
+    // because its registry write has not migrated yet. Once
+    // teacher-approve dual-writes the registry, the JSON fallback here
+    // can go away and Postgres alone decides.
     const incomingEndorsement = recordInput.teacherEndorsement;
     const existingEndorsement = existingIdx >= 0
       ? academicStore.captainRecords[existingIdx].teacherEndorsement
       : undefined;
     const registryEndorsement = (recordInput.id && academicStore.pendingTeacherEndorsements[String(recordInput.id)])
       || (existingIdx >= 0 ? academicStore.pendingTeacherEndorsements[academicStore.captainRecords[existingIdx].id] : undefined);
+    const registryApplicationIds = [
+      ...(recordInput.id ? [String(recordInput.id)] : []),
+      ...(existingIdx >= 0 ? [academicStore.captainRecords[existingIdx].id] : [])
+    ];
+    const pgRegistryEndorsements: unknown[] = [];
+    for (const applicationId of [...new Set(registryApplicationIds)]) {
+      const pgEndorsement = await getRegistryEndorsementFromSupabase(applicationId);
+      if (pgEndorsement) pgRegistryEndorsements.push(pgEndorsement);
+    }
     const endorsementMatches = (candidate: unknown, reference: unknown): boolean => {
       if (!candidate || typeof candidate !== 'object' || !reference || typeof reference !== 'object') return false;
       const c = candidate as { teacherId?: unknown; endorsedAt?: unknown };
       const r = reference as { teacherId?: unknown; endorsedAt?: unknown };
       return c.teacherId === r.teacherId && c.endorsedAt === r.endorsedAt;
     };
-    const trustedEndorsement = incomingEndorsement && (endorsementMatches(incomingEndorsement, existingEndorsement) || endorsementMatches(incomingEndorsement, registryEndorsement))
+    const trustedEndorsement = incomingEndorsement && (endorsementMatches(incomingEndorsement, existingEndorsement) || endorsementMatches(incomingEndorsement, registryEndorsement) || pgRegistryEndorsements.some((pg) => endorsementMatches(incomingEndorsement, pg)))
       ? incomingEndorsement
       : undefined;
     const teacherEndorsement = trustedEndorsement || existingEndorsement;
@@ -10339,6 +10639,7 @@ app.post('/api/captains/sync', requireAuth, (req: Request, res: Response) => {
     };
 
     const linkedStudent = academicStore.students.find(student => student.id === normalizedCaptain.studentId);
+    let syncedStudent: EnrolledStudent;
     if (linkedStudent) {
       if (
         (normalizedCaptain.boardRoll && linkedStudent.boardRoll !== normalizedCaptain.boardRoll) ||
@@ -10351,6 +10652,7 @@ app.post('/api/captains/sync', requireAuth, (req: Request, res: Response) => {
         linkedStudent.accountType = 'class_captain';
         linkedStudent.captainVerificationStatus = 'Pending';
       }
+      syncedStudent = linkedStudent;
     } else {
       const duplicateStudent = academicStore.students.find(student =>
         (normalizedCaptain.boardRoll && student.boardRoll === normalizedCaptain.boardRoll) ||
@@ -10362,7 +10664,7 @@ app.post('/api/captains/sync', requireAuth, (req: Request, res: Response) => {
       if (!normalizedCaptain.boardRoll || !normalizedCaptain.regNumber) {
         return res.status(400).json({ success: false, error: 'Board roll and registration number are required to register this captain account.' });
       }
-      academicStore.students.push({
+      syncedStudent = {
         id: normalizedCaptain.studentId,
         name: normalizedCaptain.studentName,
         classRoll: normalizedCaptain.boardRoll.slice(-2),
@@ -10379,7 +10681,19 @@ app.post('/api/captains/sync', requireAuth, (req: Request, res: Response) => {
         attendanceRate: '',
         createdAt: normalizedCaptain.appliedAt,
         isRegisteredAccount: true
-      });
+      };
+    }
+
+    // Phase 4: dual-write the synced captain record + linked student to
+    // Postgres FIRST (student first — captain_records.student_id
+    // references students(id) — then the captain record, then the
+    // endorsement registry when one is carried). A Postgres failure only
+    // logs a warning — the JSON write below still happens, so the sync
+    // is never lost.
+    await persistCaptainSyncToSupabase(normalizedCaptain, syncedStudent, 'CaptainSync');
+
+    if (!linkedStudent) {
+      academicStore.students.push(syncedStudent);
     }
 
     if (existingIdx >= 0) {
@@ -10393,7 +10707,7 @@ app.post('/api/captains/sync', requireAuth, (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       captainRecord: normalizedCaptain,
-      cohortApprovedCount: getApprovedCaptainsForGroup(grp).length
+      cohortApprovedCount: (await getApprovedCaptainsForGroupAsync(grp)).length
     });
   } catch (err) {
     console.error('[Captains API] POST /api/captains/sync error:', err);

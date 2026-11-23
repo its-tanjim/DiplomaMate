@@ -30,27 +30,33 @@
  *   `getCohortRoster()` does today. Postgres has no name-normalisation.
  *
  * KNOWN GAPS (fix in the route-migration step, not here)
- * - `pin_hash_version`: the column does NOT exist in Postgres yet — it is
- *   added by `supabase-schema-phase4.sql` (run it in the SQL Editor).
- *   `toStudent()` / `toTeacher()` map it when present and return
- *   `undefined` otherwise (`select('*')` simply does not return a
- *   missing column), which the verifiers treat as a legacy hash:
+ * - `pin_hash_version`: the column is added by
+ *   `supabase-schema-phase4.sql`, which the user ran in the SQL Editor
+ *   on 2026-11-24, so the column now exists. `toStudent()` /
+ *   `toTeacher()` map it when present and return `undefined`
+ *   otherwise (`select('*')` simply does not return a missing column),
+ *   which the verifiers treat as a legacy hash:
  *   `verifyTeacherPin()` uses PBKDF2-1000 for `undefined`/1 and
  *   PBKDF2-100000 for 2, and `verifyStudentPin()` always uses the v2
  *   count for students, so a missing value changes nothing for
  *   students. The write helpers (`insertStudent`,
  *   `updateStudentById`, `updateTeacherById`) include the column in
  *   the payload and retry once without it on a PostgREST PGRST204
- *   (unknown-column) error, so a write still lands in Postgres before
- *   the ALTER has been run — the column just stays unset until then.
+ *   (unknown-column) error, so a write still lands in Postgres even
+ *   if the ALTER is ever missing — the retry is kept as a guard.
  * - Student lockout is in-memory only in `server.ts`
  *   (`studentLoginFailures` Map, line ~612); the Postgres columns
  *   `failed_pin_attempts` / `lockout_until` exist but `EnrolledStudent`
  *   has no such fields, so they are only exposed via the raw-row helpers.
  * - `pendingTeacherEndorsements` (a `Record<string, …>` inside the JSON
- *   store) has NO Postgres table yet — the table is defined in
- *   `supabase-schema-phase4.sql`; it needs to be run before
- *   `POST /api/captains/sync` can migrate.
+ *   store) now has a Postgres table, also from
+ *   `supabase-schema-phase4.sql` (run 2026-11-24) — see
+ *   `getPendingTeacherEndorsement()` /
+ *   `upsertPendingTeacherEndorsement()` below, used by
+ *   POST /api/captains/sync. `POST /api/verification/teacher-approve`
+ *   still writes the registry JSON-only (not yet migrated), so the
+ *   sync route trusts a server-side endorsement from EITHER store
+ *   until that route dual-writes the registry too.
  * - `attendance_rate` is a string like "98%" in the app and `numeric`
  *   in Postgres; the mapper converts numeric -> "98%".
  * - Teacher `lockout_until` is epoch-ms `number | null` in the app and
@@ -65,6 +71,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { EnrolledStudent } from '../src/data/mockData';
 import type {
   AcademicCommunity,
+  AttendanceAuditEntry,
+  AttendanceRecordEntry,
+  AttendanceSheet,
   CampusNoticeItem,
   CaptainRecord,
   CommunityMembershipRecord,
@@ -988,6 +997,153 @@ export async function updateCaptainRecordById(
   return data ? toCaptain(data as CaptainRow) : null;
 }
 
+/**
+ * Domain -> row mapper for captain records (the reverse of
+ * `toCaptain()`). Used by `insertCaptainRecord()` and by the sync
+ * route's update-then-insert upsert. `captain_records` has NO
+ * `is_registered_account` column — Postgres captain rows are all
+ * server-registered by construction — so that flag is deliberately
+ * omitted here and stays JSON-only.
+ */
+export function toCaptainRow(captain: CaptainRecord): CaptainRow {
+  return {
+    id: captain.id,
+    student_id: captain.studentId || null,
+    student_name: captain.studentName || null,
+    college: captain.college || null,
+    department: captain.department || null,
+    semester: captain.semester ?? null,
+    shift: captain.shift ?? null,
+    section: captain.section ?? null,
+    board_roll: captain.boardRoll || null,
+    reg_number: captain.regNumber || null,
+    phone: captain.phone || null,
+    session: captain.session ?? null,
+    status: captain.status ?? 'Pending',
+    applied_at: captain.appliedAt || new Date().toISOString(),
+    verification_form_url: captain.verificationFormUrl ?? null,
+    verification_form_name: captain.verificationFormName ?? null,
+    teacher_endorsement: captain.teacherEndorsement ?? null,
+    admin_decision: captain.adminDecision ?? null,
+    rejection_reason: captain.rejectionReason ?? null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Insert helper for POST /api/captains/sync. Inserts one row into
+ * `captain_records` and returns the mapped record. Throws on any query
+ * error (callers catch and fall back to JSON-only), following the same
+ * contract as `updateCaptainRecordById` / `insertCommunity`.
+ *
+ * FK note: `captain_records.student_id` references `students(id)`,
+ * so the caller must write the student row FIRST (see
+ * `persistCaptainSyncToSupabase` in server.ts) — inserting a captain
+ * whose student row is not in Postgres yet fails here, and the JSON
+ * write still happens.
+ */
+export async function insertCaptainRecord(captain: CaptainRecord): Promise<CaptainRecord> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('captain_records')
+    .insert(toCaptainRow(captain))
+    .select('*')
+    .single();
+  throwIfError(error, 'insertCaptainRecord');
+  return toCaptain(data as CaptainRow);
+}
+
+// ---------------------------------------------------------------------------
+// Teacher-endorsement registry — replaces
+// `academicStore.pendingTeacherEndorsements` for POST /api/captains/sync.
+// Table: `pending_teacher_endorsements` (supabase-schema-phase4.sql, run
+// 2026-11-24). `application_id` has NO FK to `captain_records` on
+// purpose: an endorsement can exist for an application created
+// client-side whose captain record has not reached the server (yet).
+// `endorsed_at` is kept as text, like the JSON store's display string
+// ("24 Nov 2026, 10:30 AM"), not an ISO timestamp.
+// ---------------------------------------------------------------------------
+
+export interface PendingTeacherEndorsementRow {
+  application_id: string;
+  teacher_id: string;
+  teacher_name: string;
+  teacher_designation: string | null;
+  endorsed_at: string | null;
+  comments: string | null;
+  created_at: string | null;
+}
+
+/** App shape of a registry entry — identical to the JSON store's value type. */
+export interface PendingTeacherEndorsement {
+  teacherId: string;
+  teacherName: string;
+  teacherDesignation: string;
+  endorsedAt: string;
+  comments: string;
+}
+
+export function toPendingTeacherEndorsement(
+  row: PendingTeacherEndorsementRow,
+): PendingTeacherEndorsement {
+  return {
+    teacherId: row.teacher_id,
+    teacherName: row.teacher_name,
+    teacherDesignation: row.teacher_designation ?? '',
+    endorsedAt: row.endorsed_at ?? '',
+    comments: row.comments ?? '',
+  };
+}
+
+/**
+ * One registry entry by application (captain record) id, or null when
+ * Postgres has no row for it. Throws on any query error (including a
+ * missing table, PGRST205) — callers catch and fall back to the JSON
+ * registry, so a DB error never breaks a sync.
+ */
+export async function getPendingTeacherEndorsement(
+  applicationId: string,
+): Promise<PendingTeacherEndorsement | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('pending_teacher_endorsements')
+    .select('*')
+    .eq('application_id', applicationId)
+    .maybeSingle();
+  throwIfError(error, 'getPendingTeacherEndorsement');
+  return data ? toPendingTeacherEndorsement(data as PendingTeacherEndorsementRow) : null;
+}
+
+/**
+ * Upsert one registry entry (insert, or replace on `application_id`
+ * conflict). Throws on any query error — callers catch and continue
+ * with the JSON store. `created_at` refreshes on a re-upsert; nothing
+ * reads it, it only records the last replay.
+ */
+export async function upsertPendingTeacherEndorsement(
+  applicationId: string,
+  endorsement: PendingTeacherEndorsement,
+): Promise<PendingTeacherEndorsement> {
+  const client = getSupabaseClient();
+  const row: PendingTeacherEndorsementRow = {
+    application_id: applicationId,
+    teacher_id: endorsement.teacherId,
+    teacher_name: endorsement.teacherName,
+    teacher_designation: endorsement.teacherDesignation || null,
+    endorsed_at: endorsement.endorsedAt || null,
+    comments: endorsement.comments || null,
+    created_at: new Date().toISOString(),
+  };
+  const { data, error } = await client
+    .from('pending_teacher_endorsements')
+    .upsert(row, { onConflict: 'application_id' })
+    .select('*')
+    .single();
+  throwIfError(error, 'upsertPendingTeacherEndorsement');
+  return toPendingTeacherEndorsement(data as PendingTeacherEndorsementRow);
+}
+
 // ---------------------------------------------------------------------------
 // Communities + memberships — replaces the in-memory filtering in
 // GET /api/communities, /recommended, /:id/members, /:id/messages.
@@ -1236,4 +1392,218 @@ export async function listCampusNotices(): Promise<CampusNoticeItem[]> {
     .order('published_at', { ascending: false });
   throwIfError(error, 'listCampusNotices');
   return ((data ?? []) as CampusNoticeRow[]).map(toCampusNotice);
+}
+
+// ---------------------------------------------------------------------------
+// Attendance sheets — replaces the `academicStore.attendanceSheets`
+// reads in GET /api/attendance/sheets and GET /api/attendance/monthly,
+// and dual-writes POST /api/attendance/sheets (create + allowUpdate),
+// PUT /api/attendance/sheets/:id and DELETE /api/attendance/sheets/:id.
+//
+// Table: `attendance_sheets` (supabase-schema-phase1.sql, plus
+// `teacher_id` / `teacher_name` / `audit_trail` added by
+// supabase-migration-phase2.sql — both already run, and the Phase 2
+// migration inserted the 2 seed sheets). The per-student rows live in
+// the `records` JSONB column and the audit entries in `audit_trail`
+// JSONB; both are stored verbatim, exactly as the JSON store holds
+// them (`entries` / `auditTrail`), so the Postgres copy is faithful.
+//
+// Two gaps the caller must know about:
+// - The table has NO `updated_at` column, so `toAttendanceSheet()`
+//   derives `updatedAt` from the newest audit entry
+//   (`audit_trail[0].timestamp` — the route prepends new entries) and
+//   falls back to `created_at` for sheets with no audit trail. The
+//   sort in GET /api/attendance/sheets (`date`, then `updatedAt`)
+//   therefore behaves the same on both stores.
+// - The Phase 2 seed rows carry LEGACY college/department ids
+//   (`col_01_dhaka` / `tech_03_computer`) while the JSON store and
+//   `normalizeCollege()` / `normalizeTechnology()` use the canonical
+//   ids (`clg_dhaka` / `tech_cst`). Exact-id SQL matching on
+//   college_id / department_id would silently drop those rows, so
+//   `listAttendanceSheets()` narrows in SQL ONLY on the
+//   exact-match-safe fields (semester / shift / section / date /
+//   subject_code) and the caller filters college/department in
+//   memory via `resolveStrictCollege()` / `resolveStrictTechnology()`
+//   (which map the legacy ids), exactly as GET /api/roster does.
+//   `period_label` is deliberately NOT narrowed in SQL either: it
+//   is left to the caller's in-memory filter, so there is exactly
+//   one comparison site for it and no case/whitespace skew between
+//   the SQL `eq` and the JSON route's comparison can drop a sheet.
+// ---------------------------------------------------------------------------
+
+export interface AttendanceSheetRow {
+  id: string;
+  college: string | null;
+  college_id: string | null;
+  department: string | null;
+  department_id: string | null;
+  semester: number | null;
+  shift: string | null;
+  section: string | null;
+  date: string | null;
+  subject_code: string | null;
+  subject_name: string | null;
+  period_label: string | null;
+  records: unknown;
+  created_at: string | null;
+  teacher_id: string | null;
+  teacher_name: string | null;
+  audit_trail: unknown;
+}
+
+/**
+ * Postgres row -> AttendanceSheet. `records` / `audit_trail` are
+ * passed through verbatim (they are the JSON store's `entries` /
+ * `auditTrail` arrays); a non-array value maps to `[]`, so a row
+ * with a NULL / malformed JSONB column still yields a usable sheet.
+ * `date` is a Postgres `date` and comes back as a 'YYYY-MM-DD'
+ * string, the store's format. `updatedAt` is derived (see the
+ * section note above): newest audit entry's timestamp, else
+ * `created_at`.
+ */
+export function toAttendanceSheet(row: AttendanceSheetRow): AttendanceSheet {
+  const entries = (Array.isArray(row.records) ? row.records : []) as AttendanceRecordEntry[];
+  const auditTrail = (Array.isArray(row.audit_trail) ? row.audit_trail : []) as AttendanceAuditEntry[];
+  const createdAt = row.created_at ?? '';
+  return {
+    id: row.id,
+    college: row.college ?? '',
+    collegeId: row.college_id ?? '',
+    department: row.department ?? '',
+    departmentId: row.department_id ?? '',
+    semester: (row.semester ?? 1) as AttendanceSheet['semester'],
+    shift: (row.shift === 'Day' ? 'Day' : 'Morning') as AttendanceSheet['shift'],
+    section: (
+      ['A1', 'A2', 'B1', 'B2'].includes(String(row.section)) ? String(row.section) : 'A1'
+    ) as AttendanceSheet['section'],
+    date: row.date ? String(row.date).slice(0, 10) : '',
+    subjectCode: row.subject_code ?? '',
+    subjectName: row.subject_name ?? '',
+    periodLabel: row.period_label ?? '',
+    teacherId: row.teacher_id ?? '',
+    teacherName: row.teacher_name ?? '',
+    entries,
+    createdAt,
+    updatedAt: auditTrail[0]?.timestamp ?? createdAt,
+    auditTrail,
+  };
+}
+
+/** Domain -> row mapper for attendance sheets (the reverse of `toAttendanceSheet()`). */
+export function toAttendanceSheetRow(sheet: AttendanceSheet): AttendanceSheetRow {
+  return {
+    id: sheet.id,
+    college: sheet.college || null,
+    college_id: sheet.collegeId || null,
+    department: sheet.department || null,
+    department_id: sheet.departmentId || null,
+    semester: sheet.semester ?? null,
+    shift: sheet.shift ?? null,
+    section: sheet.section ?? null,
+    date: sheet.date || null,
+    subject_code: sheet.subjectCode || null,
+    subject_name: sheet.subjectName || null,
+    period_label: sheet.periodLabel || null,
+    records: sheet.entries ?? [],
+    created_at: sheet.createdAt || new Date().toISOString(),
+    teacher_id: sheet.teacherId || null,
+    teacher_name: sheet.teacherName || null,
+    audit_trail: sheet.auditTrail ?? [],
+  };
+}
+
+export interface AttendanceSheetFilter {
+  semester?: number;
+  shift?: string;
+  section?: string;
+  date?: string;
+  subjectCode?: string;
+}
+
+/**
+ * Attendance sheets for one cohort slice. Narrows in SQL ONLY on the
+ * exact-match-safe fields (semester / shift / section, plus optional
+ * date / subjectCode) — never on college/department ids or
+ * periodLabel (see the section note above). The caller filters the
+ * returned rows in memory by college_id / department_id (via
+ * `resolveStrict*`, which maps the legacy seed ids) and by
+ * periodLabel, exactly as the JSON path does. Returned unsorted —
+ * GET /api/attendance/sheets sorts by date desc, GET
+ * /api/attendance/monthly by date asc.
+ */
+export async function listAttendanceSheets(filter: AttendanceSheetFilter): Promise<AttendanceSheet[]> {
+  const client = getSupabaseClient();
+  let query = client.from('attendance_sheets').select('*');
+  if (filter.semester !== undefined) query = query.eq('semester', filter.semester);
+  if (filter.shift) query = query.eq('shift', filter.shift);
+  if (filter.section) query = query.eq('section', filter.section);
+  if (filter.date) query = query.eq('date', filter.date);
+  if (filter.subjectCode) query = query.eq('subject_code', filter.subjectCode);
+  const { data, error } = await query;
+  throwIfError(error, 'listAttendanceSheets');
+  return ((data ?? []) as AttendanceSheetRow[]).map(toAttendanceSheet);
+}
+
+/**
+ * Insert helper for the attendance write routes. Inserts one row into
+ * `attendance_sheets` and returns the mapped sheet. Throws on any
+ * query error (callers catch and fall back to JSON-only), following
+ * the same contract as `insertCommunity` / `insertCaptainRecord`.
+ * No PGRST204 retry is needed here: every column written exists
+ * since Phase 1 / Phase 2 (both already run), unlike the
+ * `pin_hash_version` columns handled by the student / teacher
+ * helpers.
+ */
+export async function insertAttendanceSheet(sheet: AttendanceSheet): Promise<AttendanceSheet> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('attendance_sheets')
+    .insert(toAttendanceSheetRow(sheet))
+    .select('*')
+    .single();
+  throwIfError(error, 'insertAttendanceSheet');
+  return toAttendanceSheet(data as AttendanceSheetRow);
+}
+
+/**
+ * Partial update of one attendance sheet (entries / subject /
+ * period after a save or an edit). Returns the mapped sheet, or null
+ * if the id does not exist in Postgres (e.g. a sheet recorded before
+ * the Phase 2 migration whose row was never created) — callers treat
+ * null as "insert instead". Only columns present in
+ * `AttendanceSheetRow` may be patched. NOTE: the table has NO
+ * `updated_at` column, so — unlike the student / teacher / captain
+ * update helpers — this one must NOT set it; the update time is
+ * carried by the newest `audit_trail` entry instead.
+ */
+export async function updateAttendanceSheetById(
+  id: string,
+  patch: Partial<Omit<AttendanceSheetRow, 'id' | 'created_at'>>,
+): Promise<AttendanceSheet | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('attendance_sheets')
+    .update(patch)
+    .eq('id', id)
+    .select('*')
+    .maybeSingle();
+  throwIfError(error, 'updateAttendanceSheetById');
+  return data ? toAttendanceSheet(data as AttendanceSheetRow) : null;
+}
+
+/**
+ * Delete helper for DELETE /api/attendance/sheets/:id. Returns true
+ * when a Postgres row was deleted, false when Postgres had no row
+ * for the id. Throws on any query error — callers catch and continue
+ * with the JSON delete.
+ */
+export async function deleteAttendanceSheetById(id: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('attendance_sheets')
+    .delete()
+    .eq('id', id)
+    .select('id');
+  throwIfError(error, 'deleteAttendanceSheetById');
+  return (data?.length ?? 0) > 0;
 }
