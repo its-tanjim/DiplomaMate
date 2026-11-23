@@ -53,10 +53,10 @@
  *   `supabase-schema-phase4.sql` (run 2026-11-24) — see
  *   `getPendingTeacherEndorsement()` /
  *   `upsertPendingTeacherEndorsement()` below, used by
- *   POST /api/captains/sync. `POST /api/verification/teacher-approve`
- *   still writes the registry JSON-only (not yet migrated), so the
- *   sync route trusts a server-side endorsement from EITHER store
- *   until that route dual-writes the registry too.
+ *   POST /api/captains/sync and POST /api/verification/teacher-approve.
+ *   The sync route trusts a server-side endorsement from Postgres alone;
+ *   the JSON registry is consulted only when Supabase is unconfigured or
+ *   the Postgres lookup throws.
  * - `attendance_rate` is a string like "98%" in the app and `numeric`
  *   in Postgres; the mapper converts numeric -> "98%".
  * - Teacher `lockout_until` is epoch-ms `number | null` in the app and
@@ -1367,6 +1367,116 @@ export async function listRoutines(filter: RoutineFilter): Promise<RoutinePeriod
 }
 
 // ---------------------------------------------------------------------------
+// Routine writes — dual-write targets for POST /api/routines,
+// POST /api/routines/publish-batch, PUT /api/routines/:id,
+// DELETE /api/routines/:id, POST /api/admin/routines/migrate-legacy
+// and POST /api/admin/routines/:id/assign-group.
+//
+// `toRoutineRow()` drops the JSON-store-only fields
+// (`migration_review_reason`, `confidence`, `uncertainFields`):
+// `public.routines` has no such columns (supabase-schema-phase1.sql),
+// and `toRoutine()` never reads them back, so the Postgres copy is
+// the routine minus its review/OCR metadata — exactly what the
+// GET /api/routines read path returns from either store.
+// ---------------------------------------------------------------------------
+
+/**
+ * RoutinePeriod -> RoutineRow (camelCase -> snake_case). Mirrors
+ * `toAttendanceSheetRow()`: every column in `RoutineRow` is written
+ * verbatim from the domain object, with `null` for absent optional
+ * values. `created_at` / `updated_at` are passed through when the
+ * caller set them (create / update routes always do), so the
+ * Postgres timestamps match the JSON store's.
+ */
+export function toRoutineRow(routine: RoutinePeriod): RoutineRow {
+  return {
+    id: routine.id,
+    day: routine.day ?? null,
+    period_number: routine.periodNumber ?? null,
+    start_time: routine.startTime || null,
+    end_time: routine.endTime || null,
+    subject_code: routine.subjectCode || null,
+    subject_name: routine.subjectName || null,
+    teacher_name: routine.teacherName || null,
+    room: routine.room || null,
+    type: routine.type ?? null,
+    shift: routine.shift ?? null,
+    section: routine.section ?? null,
+    college_id: routine.college_id ?? null,
+    college: routine.college ?? null,
+    department_id: routine.department_id ?? null,
+    technology_id: routine.technology_id ?? null,
+    department: routine.department ?? null,
+    regulation: routine.regulation ?? null,
+    semester: routine.semester ?? null,
+    created_by: routine.created_by ?? null,
+    created_by_name: routine.created_by_name ?? null,
+    created_by_role: routine.created_by_role ?? null,
+    publication_status: routine.publication_status ?? null,
+    created_at: routine.created_at || new Date().toISOString(),
+    updated_at: routine.updated_at || new Date().toISOString(),
+  };
+}
+
+/**
+ * Insert helper for the routine write routes. Inserts one row into
+ * `routines` and returns the mapped routine. Throws on any query
+ * error (callers catch and fall back to JSON-only), following the
+ * same contract as `insertAttendanceSheet` / `insertCaptainRecord`.
+ * No PGRST204 retry is needed here: every column written exists
+ * since Phase 1 (already run).
+ */
+export async function insertRoutine(routine: RoutinePeriod): Promise<RoutinePeriod> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('routines')
+    .insert(toRoutineRow(routine))
+    .select('*')
+    .single();
+  throwIfError(error, 'insertRoutine');
+  return toRoutine(data as RoutineRow);
+}
+
+/**
+ * Partial update of one routine period. Returns the mapped routine,
+ * or null if the id does not exist in Postgres (e.g. a routine
+ * recorded before the Phase 2 migration whose row was never
+ * created) — callers treat null as "insert instead". Only columns
+ * present in `RoutineRow` may be patched.
+ */
+export async function updateRoutineById(
+  id: string,
+  patch: Partial<Omit<RoutineRow, 'id' | 'created_at'>>,
+): Promise<RoutinePeriod | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('routines')
+    .update(patch)
+    .eq('id', id)
+    .select('*')
+    .maybeSingle();
+  throwIfError(error, 'updateRoutineById');
+  return data ? toRoutine(data as RoutineRow) : null;
+}
+
+/**
+ * Delete helper for DELETE /api/routines/:id. Returns true when a
+ * Postgres row was deleted, false when Postgres had no row for the
+ * id. Throws on any query error — callers catch and continue with
+ * the JSON delete.
+ */
+export async function deleteRoutineById(id: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('routines')
+    .delete()
+    .eq('id', id)
+    .select('id');
+  throwIfError(error, 'deleteRoutineById');
+  return (data?.length ?? 0) > 0;
+}
+
+// ---------------------------------------------------------------------------
 // Campus notices — replaces the `academicStore.campusNotices` read in
 // GET /api/notices/campus. No SQL narrowing on college/department: the
 // stored display names do not equal the canonical resolver names, so
@@ -1606,4 +1716,109 @@ export async function deleteAttendanceSheetById(id: string): Promise<boolean> {
     .select('id');
   throwIfError(error, 'deleteAttendanceSheetById');
   return (data?.length ?? 0) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Supabase Storage — file bytes for uploads (Phase 4, uploads item).
+//
+// Buckets (supabase-storage-phase3.sql, already run):
+//   community-files (private), notes (private), assignments (private),
+//   avatars (public), admin-images (public).
+//
+// The backend uses the service_role key, which bypasses the storage
+// policies, so the server can always read/write. The same lazy
+// singleton client is used — `getSupabaseClient()` throws when the
+// env is missing, so callers must check `isSupabaseConfigured()`
+// first (the server.ts persist helpers do) or catch.
+//
+// Contract (same as the Postgres helpers above): these THROW on any
+// error — callers catch and fall back to the JSON store's `file_data`
+// bytes, so an upload is never lost because Storage is down or
+// unconfigured. Nothing here retries: a failed upload is a fallback,
+// not a reason to fail the request.
+//
+// The generic helpers take the bucket name so the notes / assignments
+// uploads can reuse them later; the community wrappers pin the
+// `community-files` bucket and the storage-path layout
+// `<communityId>/<attachmentId>_<sanitised file name>`.
+// ---------------------------------------------------------------------------
+
+/** Storage object path inside a bucket — never a leading slash. */
+export type StoragePath = string;
+
+/**
+ * Strip path separators / control characters from a file name so it
+ * is safe as one path segment inside a Storage object key. Keeps
+ * letters, digits, `.`, `-`, `_` and spaces (spaces are legal in
+ * object keys); anything else becomes `_`. Falls back to 'file'
+ * for an empty / fully-stripped name. This is for the object KEY
+ * only — the download `Content-Disposition` filename is still
+ * sanitised separately by `sanitizeDownloadFilename()` in server.ts.
+ */
+export function sanitizeStorageFileName(name: string): string {
+  const base = String(name || 'file').split(/[\\/]/).pop() || 'file';
+  const cleaned = base.replace(/["\r\n\x00-\x1f\x7f]/g, '').replace(/[^A-Za-z0-9 .\-_]/g, '_').trim();
+  return cleaned || 'file';
+}
+
+/**
+ * Upload raw bytes to a Storage bucket. Returns the object path
+ * (relative to the bucket). Throws `Supabase storage upload failed:
+ * …` on any error — including a missing bucket (the Phase 3 SQL must
+ * have been run) and an invalid key. `upsert: false`: an upload for
+ * an already-existing path fails instead of silently replacing a
+ * file another message points at (attachment ids are unique, so a
+ * collision means a bug, not a retry).
+ */
+export async function uploadStorageFile(
+  bucket: string,
+  path: string,
+  data: Buffer,
+  contentType: string,
+): Promise<StoragePath> {
+  const client = getSupabaseClient();
+  const { error } = await client.storage.from(bucket).upload(path, data, {
+    contentType,
+    upsert: false,
+  });
+  throwIfError(error, 'storage upload');
+  return path;
+}
+
+/**
+ * Download raw bytes from a Storage bucket. Throws
+ * `Supabase storage download failed: …` on any error — including
+ * "object not found" (the row points at a Storage object that is
+ * gone). Callers catch and fall through to the JSON `file_data` /
+ * disk fallbacks in the download route.
+ */
+export async function downloadStorageFile(bucket: string, path: string): Promise<Buffer> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.storage.from(bucket).download(path);
+  throwIfError(error, 'storage download');
+  if (!data) throw new Error('Supabase storage download failed: empty response.');
+  return Buffer.from(await data.arrayBuffer());
+}
+
+/**
+ * Upload one community attachment's bytes to the `community-files`
+ * bucket. Returns the Storage object path, which the caller stores
+ * on the attachment record as `storage_path` (and then drops
+ * `file_data`, so the bytes live in Storage only). Throws on any
+ * error — callers catch and keep the bytes in `file_data` instead.
+ */
+export async function uploadCommunityFile(
+  communityId: string,
+  attachmentId: string,
+  fileName: string,
+  data: Buffer,
+  mimeType: string,
+): Promise<StoragePath> {
+  const path = `${communityId}/${attachmentId}_${sanitizeStorageFileName(fileName)}`;
+  return uploadStorageFile('community-files', path, data, mimeType);
+}
+
+/** Download one community attachment's bytes from `community-files` by its stored path. */
+export async function downloadCommunityFile(storagePath: string): Promise<Buffer> {
+  return downloadStorageFile('community-files', storagePath);
 }

@@ -120,14 +120,31 @@ import {
 // POST /api/captains/sync (captain record + linked student + teacher-
 // endorsement registry) and POST /api/teachers/change-pin (teacher PIN
 // change) dual-write to Postgres first, then the JSON
-// store. GET /api/attendance/sheets and GET /api/attendance/monthly
+// store. POST /api/verification/teacher-approve dual-writes the
+// pendingTeacherEndorsements registry entry to Postgres first, then the
+// JSON store, so POST /api/captains/sync trusts the Postgres registry
+// alone (JSON registry only as fallback when Supabase is unconfigured
+// or the Postgres lookup throws). GET /api/attendance/sheets and GET /api/attendance/monthly
 // read Postgres first, falling back to the JSON store, and
 // POST /api/attendance/sheets (create + allowUpdate), PUT
 // /api/attendance/sheets/:id and DELETE /api/attendance/sheets/:id
-// dual-write to Postgres first, then the JSON store.
+// dual-write to Postgres first, then the JSON store. POST
+// /api/routines, POST /api/routines/publish-batch, PUT
+// /api/routines/:id, DELETE /api/routines/:id, POST
+// /api/admin/routines/migrate-legacy and POST
+// /api/admin/routines/:id/assign-group dual-write to Postgres first,
+// then the JSON store. Uploads: POST /api/communities/:id/messages
+// uploads each attachment's bytes to the Supabase Storage
+// `community-files` bucket first (storage_path on the attachment,
+// file_data dropped) and falls back to keeping the bytes in the JSON
+// store's file_data when Storage is unconfigured or the upload
+// throws; GET /api/communities/:id/files/:fileId serves from Storage
+// first, then file_data, then the legacy disk file.
 import {
   isSupabaseConfigured,
   deleteAttendanceSheetById,
+  deleteRoutineById,
+  downloadCommunityFile,
   getPendingTeacherEndorsement,
   getStudentByBoardRoll,
   getTeacherByEmail,
@@ -137,6 +154,7 @@ import {
   insertCommunity,
   insertCommunityMembership,
   insertCommunityMessage,
+  insertRoutine,
   insertStudent,
   listAttendanceSheets,
   listCampusNotices,
@@ -147,10 +165,13 @@ import {
   listStudentsByCohort,
   toAttendanceSheetRow,
   toCaptainRow,
+  toRoutineRow,
   updateAttendanceSheetById,
   updateCaptainRecordById,
+  updateRoutineById,
   updateStudentById,
   updateTeacherById,
+  uploadCommunityFile,
   upsertPendingTeacherEndorsement
 } from './server/supabaseClient';
 
@@ -2973,8 +2994,8 @@ app.post('/api/verification/teacher-approve', authRateLimiter, authIpRateLimiter
       // Phase 4 write route 1: dual-write the captain-record mutation to
       // Postgres FIRST (teacher_endorsement / status + rejection_reason).
       // A Postgres failure only logs a warning — the JSON write above
-      // still happens. The pendingTeacherEndorsements registry below has
-      // no Postgres table yet, so it stays JSON-only.
+      // still happens. The pendingTeacherEndorsements registry is
+      // dual-written below (Postgres first, then JSON).
       const endorsementPatch: Parameters<typeof updateCaptainRecordById>[1] = action === 'reject'
         ? { status: 'Rejected', rejection_reason: comments || 'Rejected by Guide Teacher.' }
         : { teacher_endorsement: endorsement };
@@ -2986,6 +3007,11 @@ app.post('/api/verification/teacher-approve', authRateLimiter, authIpRateLimiter
       // server-side endorsement apart from a client-forged one. This
       // matters when the captain record itself was created client-side
       // and is not on the server yet — the registry entry is the proof.
+      // Phase 4: dual-write the registry to Postgres FIRST (upsert on
+      // application_id), then the JSON registry. A Postgres failure only
+      // logs a warning — the JSON write below still happens, so the
+      // endorsement is never lost because Postgres is down.
+      await persistTeacherEndorsementRegistryToSupabase(applicationId, endorsement, 'TeacherEndorsementRegistry');
       academicStore.pendingTeacherEndorsements[applicationId] = endorsement;
     }
     saveAcademicStore(academicStore);
@@ -9163,9 +9189,11 @@ async function getApprovedCaptainsForGroupAsync(group: {
  * null, e.g. a record created client-side that never reached the server
  * store), it logs a warning and the caller carries on with the JSON
  * write, so a captain decision is never lost because Postgres is down.
- * The admin audit log (`appendAdminAudit`) and the
- * `pendingTeacherEndorsements` registry have no Postgres table yet, so
- * they stay JSON-only.
+ * The admin audit log (`appendAdminAudit`) has no Postgres table yet,
+ * so it stays JSON-only. The `pendingTeacherEndorsements` registry now
+ * has a Postgres table (`supabase-schema-phase4.sql`, run 2026-11-24)
+ * and is dual-written by `POST /api/verification/teacher-approve`
+ * via `persistTeacherEndorsementRegistryToSupabase()` below.
  */
 async function persistCaptainRecordToSupabase(
   recordId: string,
@@ -9196,6 +9224,28 @@ async function persistCaptainStudentToSupabase(
     }
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Phase 4 — `POST /api/verification/teacher-approve` registry
+ * dual-write. Same contract as the captain persist helpers above:
+ * return early when Supabase is unconfigured, never throw — on any
+ * query error log a warning and the caller carries on with the JSON
+ * registry write, so an endorsement is never lost because Postgres is
+ * down. The upsert is keyed on `application_id`, so re-endorsing the
+ * same application replaces the Postgres row.
+ */
+async function persistTeacherEndorsementRegistryToSupabase(
+  applicationId: string,
+  endorsement: Parameters<typeof upsertPendingTeacherEndorsement>[1],
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await upsertPendingTeacherEndorsement(applicationId, endorsement);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase registry write failed, continuing with JSON store:`, err);
   }
 }
 
@@ -9236,6 +9286,50 @@ async function persistCommunityMessageToSupabase(
     await insertCommunityMessage(message);
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Community attachment with its Supabase Storage location.
+ * `storage_path` is the object key inside the `community-files`
+ * bucket (e.g. `<communityId>/<attachmentId>_notes.pdf`). It lives
+ * only in server.ts for now — `CommunityAttachment` in
+ * src/types/index.ts has no such field yet, and the task keeps this
+ * change to server.ts / server/supabaseClient.ts; promote it into
+ * the shared type when the client starts reading it. An attachment
+ * carries EITHER `storage_path` (bytes in Storage, no `file_data`)
+ * OR `file_data` (bytes in the JSON store, Storage unconfigured or
+ * the upload failed) — never both. The Postgres
+ * `community_messages.attachments` jsonb carries whichever one the
+ * record has, verbatim, via insertCommunityMessage().
+ */
+type CommunityAttachmentWithStorage = CommunityAttachment & { storage_path?: string };
+
+/**
+ * Uploads item — community attachment bytes to Supabase Storage.
+ * Same contract as the persist helpers above: return early (null)
+ * when Supabase is unconfigured, never throw — on any upload error
+ * log a warning and return null, and the caller keeps the bytes in
+ * the JSON store's `file_data` instead, so a message is never lost
+ * because Storage is down. Returns the Storage object path on
+ * success. The 350 KB / size-cap / magic-byte validation is NOT
+ * touched here: it already ran in inspectCommunityUpload() before
+ * this is called, and only inspected bytes are ever uploaded.
+ */
+async function uploadCommunityAttachmentToStorage(
+  communityId: string,
+  attachmentId: string,
+  fileName: string,
+  bytes: Buffer,
+  mimeType: string,
+  logTag: string
+): Promise<string | null> {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    return await uploadCommunityFile(communityId, attachmentId, fileName, bytes, mimeType);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase Storage upload failed, keeping bytes in JSON store:`, err);
+    return null;
   }
 }
 
@@ -9316,20 +9410,27 @@ async function persistTeacherPinChangeToSupabase(
 
 /**
  * Supabase-first read of the server-side endorsement registry for one
- * application (captain record) id. Returns the Postgres registry entry,
- * or undefined when Supabase is unconfigured, when Postgres has no row
- * for that id, or when the query fails (warns once and the caller uses
- * the JSON registry instead). Never throws.
+ * application (captain record) id. Returns `{ status: 'postgres',
+ * endorsement }` when the Postgres lookup ran — `endorsement` is
+ * undefined when Postgres has no row for that id, and that answer is
+ * authoritative: the caller must NOT fall back to the JSON registry
+ * for it. Returns `{ status: 'fallback' }` only when Supabase is
+ * unconfigured or the query throws (warns once); only then does the
+ * caller use the JSON registry instead. Never throws.
  */
 async function getRegistryEndorsementFromSupabase(
   applicationId: string
-): Promise<CaptainRecord['teacherEndorsement'] | undefined> {
-  if (!isSupabaseConfigured()) return undefined;
+): Promise<
+  | { status: 'postgres'; endorsement: CaptainRecord['teacherEndorsement'] | undefined }
+  | { status: 'fallback' }
+> {
+  if (!isSupabaseConfigured()) return { status: 'fallback' };
   try {
-    return (await getPendingTeacherEndorsement(applicationId)) ?? undefined;
+    const endorsement = await getPendingTeacherEndorsement(applicationId);
+    return { status: 'postgres', endorsement: endorsement ?? undefined };
   } catch (err) {
     console.warn('[CaptainSync] Supabase endorsement lookup failed, using JSON registry:', err);
-    return undefined;
+    return { status: 'fallback' };
   }
 }
 
@@ -9427,6 +9528,84 @@ async function persistAttendanceSheetDeleteToSupabase(id: string, logTag: string
     }
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Routine write routes — dual-write a routine period to Postgres
+ * first (upsert: update when the id already has a Postgres row,
+ * insert when it does not), then the JSON store. Never throws: when
+ * Supabase is unconfigured it returns immediately, and on any query
+ * error it logs a warning and the caller carries on with the JSON
+ * write, so a Postgres outage can never fail a routine create /
+ * update. The `migration_review_reason` / `confidence` /
+ * `uncertainFields` fields have no Postgres columns and are dropped
+ * by `toRoutineRow()`; they survive in the JSON store only.
+ * The `created_at` column is never patched on update (it is the
+ * original creation time); `updated_at` is carried in the patch.
+ */
+async function persistRoutineToSupabase(routine: RoutinePeriod, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const row = toRoutineRow(routine);
+    const { id: _routineId, created_at: _routineCreatedAt, ...routinePatch } = row;
+    const updated = await updateRoutineById(routine.id, routinePatch);
+    if (!updated) {
+      await insertRoutine(routine);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistRoutineDeleteToSupabase(id: string, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const deleted = await deleteRoutineById(id);
+    if (!deleted) {
+      console.warn(`[${logTag}] Routine ${id} not found in Postgres; delete kept in JSON store only.`);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Batch-replace support for POST /api/routines/publish-batch: delete
+ * every Postgres routine of one cohort, using the route's own
+ * in-memory cohort predicate on the rows `listRoutines()` returns —
+ * never a SQL filter on college/department ids or display names
+ * (same trap as the GET /api/routines read: stored names/ids do not
+ * reliably equal the canonical resolver names, and the Phase 2 seed
+ * rows are the proof). The JSON path removes the same cohort with
+ * the identical predicate, so both stores stay in step. Never
+ * throws; a Postgres failure is logged and the JSON replace still
+ * runs.
+ */
+async function deleteCohortRoutinesFromSupabase(
+  group: { college_id: string; department_id: string; semester: number; shift: string; section: string },
+  logTag: string,
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const cohort = await listRoutines({
+      semester: Number(group.semester),
+      shift: group.shift,
+      section: group.section,
+    });
+    const toDelete = cohort.filter(
+      (r) =>
+        r.college_id === group.college_id &&
+        r.department_id === group.department_id &&
+        Number(r.semester) === Number(group.semester) &&
+        r.shift === group.shift &&
+        r.section === group.section,
+    );
+    for (const routine of toDelete) {
+      await deleteRoutineById(routine.id);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase cohort delete failed, continuing with JSON store:`, err);
   }
 }
 
@@ -10100,8 +10279,10 @@ app.get('/api/routines/:id', (req: Request, res: Response) => {
  * - Verifies Captain or Teacher server-side authorization for that exact group.
  * - Never trusts client-supplied `college_id`, `department_id`, or `semester` if they
  *   differ from the Captain's authorized academic group.
+ * - Phase 4 write route: dual-writes the new period to Postgres first
+ *   (`persistRoutineToSupabase()`), then the JSON store.
  */
-app.post('/api/routines', (req: Request, res: Response) => {
+app.post('/api/routines', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const body = req.body || {};
@@ -10192,6 +10373,7 @@ app.post('/api/routines', (req: Request, res: Response) => {
       updated_at: nowIso
     };
 
+    await persistRoutineToSupabase(newRoutine, 'RoutineCreate');
     academicStore.routines.push(newRoutine);
 
     let notification: RoutineNotificationRecord | null = null;
@@ -10226,8 +10408,13 @@ app.post('/api/routines', (req: Request, res: Response) => {
  * - Used when confirming OCR-extracted timetable periods or publishing all draft periods for a cohort.
  * - Strictly isolated to the verified academic group `(college_id, department_id, semester, shift, section)`.
  * - Never overwrites routines belonging to any other college, department, semester, shift, or section.
+ * - Phase 4 write route: dual-writes to Postgres first — the cohort
+ *   replace deletes the cohort's Postgres rows (`deleteCohortRoutinesFromSupabase()`,
+ *   in-memory cohort predicate, never SQL on college/department names)
+ *   and each sanitized period upserts (`persistRoutineToSupabase()`) —
+ *   then the JSON store.
  */
-app.post('/api/routines/publish-batch', (req: Request, res: Response) => {
+app.post('/api/routines/publish-batch', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const body = req.body || {};
@@ -10302,6 +10489,7 @@ app.post('/api/routines/publish-batch', (req: Request, res: Response) => {
 
     if (replaceExistingForCohort) {
       // Remove ONLY routines belonging to this exact (college_id, department_id, semester, shift, section)
+      await deleteCohortRoutinesFromSupabase(verifiedGroup, 'RoutinePublishBatch');
       academicStore.routines = academicStore.routines.filter(
         (r) =>
           !(
@@ -10314,6 +10502,9 @@ app.post('/api/routines/publish-batch', (req: Request, res: Response) => {
       );
     }
 
+    for (const period of sanitizedPeriods) {
+      await persistRoutineToSupabase(period, 'RoutinePublishBatch');
+    }
     academicStore.routines.push(...sanitizedPeriods);
 
     let notification: RoutineNotificationRecord | null = null;
@@ -10345,8 +10536,10 @@ app.post('/api/routines/publish-batch', (req: Request, res: Response) => {
  * 14F. UPDATE AN EXISTING ROUTINE PERIOD (`PUT /api/routines/:id`)
  * - Verifies Captain/Teacher authorization against the existing routine's target group
  *   AND any updated target group fields.
+ * - Phase 4 write route: dual-writes the updated period to Postgres first
+ *   (`persistRoutineToSupabase()`), then the JSON store.
  */
-app.put('/api/routines/:id', (req: Request, res: Response) => {
+app.put('/api/routines/:id', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const { id } = req.params;
@@ -10431,6 +10624,7 @@ app.put('/api/routines/:id', (req: Request, res: Response) => {
       updated_at: new Date().toISOString()
     };
 
+    await persistRoutineToSupabase(updatedRoutine, 'RoutineUpdate');
     academicStore.routines[idx] = updatedRoutine;
 
     let notification: RoutineNotificationRecord | null = null;
@@ -10459,8 +10653,10 @@ app.put('/api/routines/:id', (req: Request, res: Response) => {
 
 /**
  * 14G. DELETE A ROUTINE PERIOD (`DELETE /api/routines/:id`)
+ * - Phase 4 write route: deletes the Postgres row first
+ *   (`persistRoutineDeleteToSupabase()`), then the JSON store.
  */
-app.delete('/api/routines/:id', (req: Request, res: Response) => {
+app.delete('/api/routines/:id', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const { id } = req.params;
@@ -10490,6 +10686,7 @@ app.delete('/api/routines/:id', (req: Request, res: Response) => {
       });
     }
 
+    await persistRoutineDeleteToSupabase(id, 'RoutineDelete');
     academicStore.routines.splice(idx, 1);
     saveAcademicStore(academicStore);
 
@@ -10510,9 +10707,12 @@ app.delete('/api/routines/:id', (req: Request, res: Response) => {
  * - Phase 4 write route: the 2-per-section quota check reads Postgres first
  *   (`getApprovedCaptainsForGroupAsync()`, JSON fallback); the teacher-
  *   endorsement trust check reads the server-side endorsement registry
- *   from Postgres first (`pending_teacher_endorsements`, JSON-registry
- *   fallback); the synced captain record + linked student dual-write to
- *   Postgres first (`persistCaptainSyncToSupabase()`), then the JSON store.
+ *   from Postgres (`pending_teacher_endorsements`, dual-written by
+ *   `POST /api/verification/teacher-approve`) — Postgres alone decides,
+ *   with the JSON registry consulted only when Supabase is unconfigured
+ *   or the Postgres lookup throws; the synced captain record + linked
+ *   student dual-write to Postgres first
+ *   (`persistCaptainSyncToSupabase()`), then the JSON store.
  */
 app.post('/api/captains/sync', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -10572,30 +10772,38 @@ app.post('/api/captains/sync', requireAuth, async (req: Request, res: Response) 
     // endorsement cannot approve a captain. When the client sends no
     // endorsement, an existing server endorsement is kept, so the healing
     // sync cannot erase one.
-    // Phase 4: the registry is read from Postgres FIRST
-    // (`pending_teacher_endorsements` — the server-side source of truth),
-    // with the JSON registry as fallback. During the transition
-    // `POST /api/verification/teacher-approve` still writes the registry
-    // JSON-only, so an incoming endorsement is trusted when it matches
-    // EITHER store — a genuine endorsement must not be rejected just
-    // because its registry write has not migrated yet. Once
-    // teacher-approve dual-writes the registry, the JSON fallback here
-    // can go away and Postgres alone decides.
+    // Phase 4: the registry is read from Postgres
+    // (`pending_teacher_endorsements` — the server-side source of truth,
+    // dual-written by `POST /api/verification/teacher-approve`), and
+    // Postgres alone decides: when the Postgres lookup runs and finds no
+    // row, a JSON-only registry entry does NOT trust the endorsement. The
+    // JSON registry is consulted ONLY when Supabase is not configured or
+    // the Postgres lookup throws (the lookup then reports 'fallback') —
+    // the same JSON-fallback rule as the other routes — so a sync is never
+    // lost because Postgres is down, but a stale or client-seeded JSON
+    // entry can no longer approve a captain Postgres never endorsed.
     const incomingEndorsement = recordInput.teacherEndorsement;
     const existingEndorsement = existingIdx >= 0
       ? academicStore.captainRecords[existingIdx].teacherEndorsement
       : undefined;
-    const registryEndorsement = (recordInput.id && academicStore.pendingTeacherEndorsements[String(recordInput.id)])
-      || (existingIdx >= 0 ? academicStore.pendingTeacherEndorsements[academicStore.captainRecords[existingIdx].id] : undefined);
     const registryApplicationIds = [
       ...(recordInput.id ? [String(recordInput.id)] : []),
       ...(existingIdx >= 0 ? [academicStore.captainRecords[existingIdx].id] : [])
     ];
     const pgRegistryEndorsements: unknown[] = [];
+    let useJsonRegistry = false;
     for (const applicationId of [...new Set(registryApplicationIds)]) {
-      const pgEndorsement = await getRegistryEndorsementFromSupabase(applicationId);
-      if (pgEndorsement) pgRegistryEndorsements.push(pgEndorsement);
+      const lookup = await getRegistryEndorsementFromSupabase(applicationId);
+      if (lookup.status === 'fallback') {
+        useJsonRegistry = true;
+        break;
+      }
+      if (lookup.endorsement) pgRegistryEndorsements.push(lookup.endorsement);
     }
+    const registryEndorsement = useJsonRegistry
+      ? (recordInput.id && academicStore.pendingTeacherEndorsements[String(recordInput.id)])
+        || (existingIdx >= 0 ? academicStore.pendingTeacherEndorsements[academicStore.captainRecords[existingIdx].id] : undefined)
+      : undefined;
     const endorsementMatches = (candidate: unknown, reference: unknown): boolean => {
       if (!candidate || typeof candidate !== 'object' || !reference || typeof reference !== 'object') return false;
       const c = candidate as { teacherId?: unknown; endorsedAt?: unknown };
@@ -10723,6 +10931,8 @@ app.post('/api/captains/sync', requireAuth, async (req: Request, res: Response) 
  *   instead of guessing.
  * - `POST /api/admin/routines/:id/assign-group`: Allows a System Administrator to assign a verified
  *   target academic group to a quarantined routine and publish it.
+ * - Phase 4 write routes: `migrate-legacy` and `assign-group` dual-write to Postgres first
+ *   (`persistRoutineToSupabase()`), then the JSON store. `review-queue` is a read and is unchanged.
  */
 app.get('/api/admin/routines/review-queue', requireSystemAdmin, (_req: Request, res: Response) => {
   const reviewQueue = academicStore.routines.filter(
@@ -10735,7 +10945,7 @@ app.get('/api/admin/routines/review-queue', requireSystemAdmin, (_req: Request, 
   });
 });
 
-app.post('/api/admin/routines/migrate-legacy', requireSystemAdmin, (req: Request, res: Response) => {
+app.post('/api/admin/routines/migrate-legacy', requireSystemAdmin, async (req: Request, res: Response) => {
   try {
     const incomingRecords: any[] = Array.isArray(req.body?.records) ? req.body.records : [];
     const results = incomingRecords.map((raw) => migrateAndValidateRoutineRecord(raw));
@@ -10749,6 +10959,9 @@ app.post('/api/admin/routines/migrate-legacy', requireSystemAdmin, (req: Request
       } else {
         quarantinedCount++;
       }
+      // Phase 4 write route: dual-write each migrated record to
+      // Postgres first (upsert by id), then the JSON store.
+      await persistRoutineToSupabase(item.record, 'RoutineMigrateLegacy');
       const existingIdx = academicStore.routines.findIndex((r) => r.id === item.record.id);
       if (existingIdx >= 0) {
         academicStore.routines[existingIdx] = item.record;
@@ -10774,7 +10987,7 @@ app.post('/api/admin/routines/migrate-legacy', requireSystemAdmin, (req: Request
   }
 });
 
-app.post('/api/admin/routines/:id/assign-group', requireSystemAdmin, (req: Request, res: Response) => {
+app.post('/api/admin/routines/:id/assign-group', requireSystemAdmin, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const body = req.body || {};
@@ -10817,6 +11030,11 @@ app.post('/api/admin/routines/:id/assign-group', requireSystemAdmin, (req: Reque
       updated_at: new Date().toISOString()
     };
 
+    // Phase 4 write route: dual-write the re-targeted routine to
+    // Postgres first, then the JSON store. `migration_review_reason`
+    // is JSON-store-only (no Postgres column) and is dropped by
+    // toRoutineRow(); the JSON record keeps it cleared as before.
+    await persistRoutineToSupabase(updated, 'RoutineAssignGroup');
     academicStore.routines[idx] = updated;
     saveAcademicStore(academicStore);
 
@@ -11463,8 +11681,10 @@ app.get('/api/communities/:id/messages', (req: Request, res: Response) => {
 });
 
 // 15I. POST MESSAGE IN COMMUNITY (TEXT & ATTACHMENTS)
-// Attachments carry their file bytes in `file_data`, but message list /
-// post responses must stay light — the bytes are only served through the
+// Attachments carry EITHER a `storage_path` (bytes in the Supabase
+// Storage `community-files` bucket) OR their file bytes in `file_data`
+// (Storage unconfigured or the upload failed). Message list / post
+// responses must stay light — the bytes are only served through the
 // file download endpoint, never embedded in chat payloads.
 function publicAttachment(att: CommunityAttachment): CommunityAttachment {
   const { file_data: _fileData, ...rest } = att;
@@ -11617,12 +11837,16 @@ app.post('/api/communities/:id/messages', async (req: Request, res: Response) =>
     // Process attachments: the client claims a type / mime / size, but none
     // of it is trusted. inspectCommunityUpload decodes the real bytes,
     // detects the type from magic bytes, and enforces the size caps on the
-    // real decoded length. The bytes are persisted on the attachment record
-    // itself: files written to data/community-files/ are lost on every
-    // Render deploy and are not covered by the GitHub store backup, so disk
-    // storage alone meant every uploaded file came back as a fake
-    // placeholder PDF.
-    const processedAttachments: CommunityAttachment[] = [];
+    // real decoded length. The bytes then go to Supabase Storage
+    // (`community-files` bucket) when it is configured: the attachment
+    // record carries `storage_path` and no `file_data`, so the bytes stop
+    // bloating data/academic-store.json and its GitHub backup. When
+    // Storage is unconfigured or the upload throws, the bytes stay on the
+    // attachment record itself (`file_data`) — files written to
+    // data/community-files/ are lost on every Render deploy and are not
+    // covered by the GitHub store backup, so disk storage alone meant
+    // every uploaded file came back as a fake placeholder PDF.
+    const processedAttachments: CommunityAttachmentWithStorage[] = [];
     for (const att of rawAttachments) {
       const fileName = String(att.file_name || 'attachment.pdf').trim();
 
@@ -11649,6 +11873,21 @@ app.post('/api/communities/:id/messages', async (req: Request, res: Response) =>
 
       const attId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
+      // Uploads item: bytes to Supabase Storage first. On success the
+      // record keeps only the storage path; on any failure (or when
+      // Storage is unconfigured) the bytes stay in `file_data` and the
+      // message is still posted — the upload helper never throws.
+      const storagePath = inspected.fileData
+        ? await uploadCommunityAttachmentToStorage(
+            comm.id,
+            attId,
+            fileName,
+            Buffer.from(inspected.fileData, 'base64'),
+            inspected.mimeType,
+            'CommunityMessageUpload'
+          )
+        : null;
+
       processedAttachments.push({
         id: attId,
         file_name: fileName,
@@ -11656,7 +11895,8 @@ app.post('/api/communities/:id/messages', async (req: Request, res: Response) =>
         mime_type: inspected.mimeType,
         file_size_bytes: inspected.fileSizeBytes,
         file_url: `/api/communities/${comm.id}/files/${attId}`,
-        file_data: inspected.fileData || undefined,
+        file_data: storagePath ? undefined : inspected.fileData || undefined,
+        ...(storagePath ? { storage_path: storagePath } : {}),
         duration_seconds: durationSeconds
       });
     }
@@ -11861,7 +12101,7 @@ app.post('/api/communities/:id/report', (req: Request, res: Response) => {
 });
 
 // 15N. SECURE PRIVATE FILE ACCESS
-app.get('/api/communities/:id/files/:fileId', (req: Request, res: Response) => {
+app.get('/api/communities/:id/files/:fileId', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -11894,17 +12134,35 @@ app.get('/api/communities/:id/files/:fileId', (req: Request, res: Response) => {
       }
     }
 
+    const sendBytes = (buf: Buffer) => {
+      res.setHeader('Content-Type', foundAtt?.mime_type || 'application/octet-stream');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Disposition', `attachment; filename="${sanitizeDownloadFilename(foundAtt?.file_name || 'document')}"`);
+      return res.send(buf);
+    };
+
+    // Uploads item: bytes live in Supabase Storage when the upload
+    // landed there (`storage_path` on the attachment). A Storage
+    // failure falls through to the JSON `file_data` bytes below —
+    // the file is never lost because Storage is down, and a
+    // storage-backed file with no other copy is reported as
+    // unavailable (503) rather than served as a fake placeholder.
+    const storagePath = (foundAtt as CommunityAttachmentWithStorage | null)?.storage_path;
+    if (storagePath) {
+      try {
+        return sendBytes(await downloadCommunityFile(storagePath));
+      } catch (err) {
+        console.warn('[Community File Access] Supabase Storage download failed, trying JSON/disk fallbacks:', err);
+      }
+    }
+
     // Serve bytes stored on the attachment record itself — the durable path,
     // kept in the academic store (and its GitHub backup), so uploaded files
     // survive Render deploys. Always served as an attachment with a
     // sanitized filename and nosniff, so a stored file can never be
     // executed as a web page in the browser.
     if (foundAtt?.file_data) {
-      const buf = Buffer.from(foundAtt.file_data, 'base64');
-      res.setHeader('Content-Type', foundAtt.mime_type || 'application/octet-stream');
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('Content-Disposition', `attachment; filename="${sanitizeDownloadFilename(foundAtt.file_name || 'document')}"`);
-      return res.send(buf);
+      return sendBytes(Buffer.from(foundAtt.file_data, 'base64'));
     }
 
     // Look for matching file in data/community-files
@@ -11917,6 +12175,13 @@ app.get('/api/communities/:id/files/:fileId', (req: Request, res: Response) => {
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Content-Disposition', `attachment; filename="${sanitizeDownloadFilename(foundAtt?.file_name || 'document')}"`);
       return fs.createReadStream(diskPath).pipe(res);
+    }
+
+    // A real file whose bytes exist nowhere reachable (e.g. Storage
+    // is down and the record carries no file_data) must not come back
+    // as a fake placeholder PDF — report it unavailable instead.
+    if (foundAtt && (storagePath || (foundAtt.file_size_bytes || 0) > 0)) {
+      return res.status(503).json({ success: false, error: 'File temporarily unavailable. Please try again.' });
     }
 
     // If file was not yet persisted to disk (e.g. mock seed), serve mock PDF/text payload
