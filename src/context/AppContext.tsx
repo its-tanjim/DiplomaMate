@@ -45,18 +45,57 @@ import {
 } from '../data/mockData';
 import { nativeService } from '../services/nativeService';
 
+// Student authentication result (login rework): a login can succeed
+// outright, or pause for a one-time PIN setup (pre-PIN accounts) or an
+// SMS code (when SMS verification is enabled).
+export interface StudentAuthResult {
+  success: boolean;
+  message: string;
+  requiresPinSetup?: boolean;
+  pinSetupToken?: string;
+  requiresSmsVerification?: boolean;
+  smsChallengeId?: string;
+  maskedPhone?: string;
+  name?: string;
+}
+
+// Proof that the Cloudflare Turnstile widget rendered in the form.
+export interface TurnstileProof {
+  token: string | null;
+  enabled: boolean;
+}
+
 interface AppContextType {
   userProfile: StudentProfile;
   setUserProfile: React.Dispatch<React.SetStateAction<StudentProfile>>;
   activeScreen: ScreenType;
   setActiveScreen: (screen: ScreenType) => void;
   isLoggedIn: boolean;
-  login: (profile: StudentProfile) => Promise<{ success: boolean; message: string }>;
+  login: (profile: StudentProfile, pin?: string) => Promise<StudentAuthResult>;
   authenticateStudent: (
     boardRoll: string,
+    pin: string,
+    role: 'student' | 'class_captain',
+    turnstile?: TurnstileProof
+  ) => Promise<StudentAuthResult>;
+  requestPinSetup: (
+    boardRoll: string,
     regNumber: string,
+    role: 'student' | 'class_captain',
+    turnstile?: TurnstileProof
+  ) => Promise<StudentAuthResult>;
+  setupStudentPin: (
+    pinSetupToken: string,
+    pin: string,
     role: 'student' | 'class_captain'
-  ) => Promise<{ success: boolean; message: string }>;
+  ) => Promise<StudentAuthResult>;
+  verifySmsCode: (smsChallengeId: string, code: string) => Promise<StudentAuthResult>;
+  resendSmsCode: (smsChallengeId: string) => Promise<{ success: boolean; message: string; maskedPhone?: string }>;
+  socialLogin: (
+    provider: 'google' | 'facebook',
+    token: string,
+    role: 'student' | 'class_captain'
+  ) => Promise<StudentAuthResult>;
   logout: () => void;
   accountType: AccountType;
   setAccountType: (type: AccountType) => void;
@@ -75,8 +114,8 @@ interface AppContextType {
   // Teacher Authentication & Institutional Faculty State
   currentTeacherProfile: TeacherProfile | null;
   teachersList: TeacherProfile[];
-  teacherLogin: (phoneOrEmail: string, pin: string) => Promise<{ success: boolean; message: string; teacher?: TeacherProfile }>;
-  teacherRegister: (data: any) => Promise<{ success: boolean; message: string; teacher?: TeacherProfile }>;
+  teacherLogin: (phoneOrEmail: string, pin: string, turnstile?: TurnstileProof) => Promise<{ success: boolean; message: string; teacher?: TeacherProfile }>;
+  teacherRegister: (data: any, turnstile?: TurnstileProof) => Promise<{ success: boolean; message: string; teacher?: TeacherProfile }>;
   updateTeacherProfile: (profileUpdates: Partial<TeacherProfile>, contactDetails?: { room?: string; consultingHours?: string }) => Promise<{ success: boolean; message: string }>;
   adminVerifyTeacher: (teacherId: string, status: 'Verified' | 'Rejected', adminNotes?: string) => Promise<boolean>;
   adminResetTeacherLockout: (teacherId: string) => Promise<boolean>;
@@ -411,7 +450,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(`${STORAGE_KEY_PREFIX}shift_schedules`, JSON.stringify(shiftSchedules));
   }, [shiftSchedules]);
 
-  // Fetch verified teachers, contacts, and shift schedule configurations from backend on mount
+  // Fetch verified teachers, contacts, and shift schedule configurations from backend on mount.
+  // Re-runs when the session token changes: the server strips phone/email
+  // from the teacher directory for anonymous callers, so the full directory
+  // must reload once the user signs in.
   useEffect(() => {
     apiFetch('/api/teacher-contacts/access')
       .then(async response => {
@@ -425,7 +467,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.error('Teacher Contact access settings request failed:', error);
       });
 
-    apiFetch('/api/teachers')
+    const teachersToken = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+    apiFetch('/api/teachers', {
+      headers: teachersToken ? { Authorization: `Bearer ${teachersToken}` } : {}
+    })
       .then(res => res.json())
       .then(data => {
         if (data.success && Array.isArray(data.teachers)) {
@@ -463,7 +508,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       })
       .catch(() => {});
-  }, []);
+  }, [authToken]);
 
   // Ensure student / class_captain has a valid server session token whenever profile or academic group changes
   useEffect(() => {
@@ -779,66 +824,221 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     userProfile.accountType === 'class_captain' && 
     userProfile.captainVerificationStatus === 'Approved';
 
+  // Shared success path for every student sign-in flow (PIN, PIN setup,
+  // SMS code, social): build the profile from the server account and
+  // install the session.
+  const applyStudentSession = (data: any): StudentAuthResult => {
+    const account = data.account;
+    const savedProfileRaw = localStorage.getItem(`${STORAGE_KEY_PREFIX}profile`);
+    const savedProfile: StudentProfile | null = savedProfileRaw ? JSON.parse(savedProfileRaw) : null;
+    const sameAccount = savedProfile?.id === account.id;
+    const authenticatedProfile: StudentProfile = {
+      id: account.id,
+      name: account.name,
+      email: account.email || '',
+      college: account.college,
+      department: account.department,
+      boardRoll: account.boardRoll,
+      regNumber: account.regNumber,
+      semester: Number(account.semester) as StudentProfile['semester'],
+      section: account.section,
+      shift: account.shift,
+      session: sameAccount && savedProfile ? savedProfile.session : '',
+      accountType: data.session.role,
+      captainVerificationStatus: account.captainVerificationStatus,
+      isTeacherContactUnlocked: sameAccount && Boolean(savedProfile?.isTeacherContactUnlocked),
+      paymentRecord: sameAccount && savedProfile ? savedProfile.paymentRecord : undefined,
+      phone: account.phone || ''
+    };
+
+    setIsServerVerifiedAdmin(false);
+    setSystemAdminProfile(null);
+    setAuthToken(data.sessionToken);
+    setUserProfile(authenticatedProfile);
+    setSelectedShift(authenticatedProfile.shift);
+    setSelectedSection(authenticatedProfile.section);
+    setIsLoggedIn(true);
+    setActiveScreen('home');
+    showToast(`Welcome, ${authenticatedProfile.name}!`);
+    return { success: true, message: 'Signed in successfully.' };
+  };
+
   const authenticateStudent = async (
     boardRoll: string,
-    regNumber: string,
-    role: 'student' | 'class_captain'
-  ): Promise<{ success: boolean; message: string }> => {
+    pin: string,
+    role: 'student' | 'class_captain',
+    turnstile?: TurnstileProof
+  ): Promise<StudentAuthResult> => {
     try {
       const response = await apiFetch('/api/students/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ boardRoll, regNumber, role })
+        body: JSON.stringify({
+          boardRoll,
+          pin,
+          role,
+          turnstileToken: turnstile?.token || undefined,
+          turnstileEnabled: turnstile?.enabled || false
+        })
       });
       const data = await response.json();
+      if (data.requiresSmsVerification && data.smsChallengeId) {
+        return {
+          success: true,
+          message: 'SMS code sent.',
+          requiresSmsVerification: true,
+          smsChallengeId: data.smsChallengeId,
+          maskedPhone: data.maskedPhone,
+          name: data.name
+        };
+      }
+      if (data.requiresPinSetup && data.pinSetupToken) {
+        return {
+          success: true,
+          message: data.message || 'Please set a PIN.',
+          requiresPinSetup: true,
+          pinSetupToken: data.pinSetupToken,
+          name: data.studentName
+        };
+      }
       if (!response.ok || !data.success || !data.account || !data.sessionToken || !data.session) {
         return { success: false, message: data.error || 'Student authentication failed.' };
       }
-
-      const account = data.account;
-      const savedProfileRaw = localStorage.getItem(`${STORAGE_KEY_PREFIX}profile`);
-      const savedProfile: StudentProfile | null = savedProfileRaw ? JSON.parse(savedProfileRaw) : null;
-      const sameAccount = savedProfile?.id === account.id;
-      const authenticatedProfile: StudentProfile = {
-        id: account.id,
-        name: account.name,
-        email: account.email || '',
-        college: account.college,
-        department: account.department,
-        boardRoll: account.boardRoll,
-        regNumber: account.regNumber,
-        semester: Number(account.semester) as StudentProfile['semester'],
-        section: account.section,
-        shift: account.shift,
-        session: sameAccount && savedProfile ? savedProfile.session : '',
-        accountType: data.session.role,
-        captainVerificationStatus: account.captainVerificationStatus,
-        isTeacherContactUnlocked: sameAccount && Boolean(savedProfile?.isTeacherContactUnlocked),
-        paymentRecord: sameAccount && savedProfile ? savedProfile.paymentRecord : undefined,
-        phone: account.phone || ''
-      };
-
-      setIsServerVerifiedAdmin(false);
-      setSystemAdminProfile(null);
-      setAuthToken(data.sessionToken);
-      setUserProfile(authenticatedProfile);
-      setSelectedShift(authenticatedProfile.shift);
-      setSelectedSection(authenticatedProfile.section);
-      setIsLoggedIn(true);
-      setActiveScreen('home');
-      showToast(`Welcome, ${authenticatedProfile.name}!`);
-      return { success: true, message: 'Signed in successfully.' };
+      return applyStudentSession(data);
     } catch {
       return { success: false, message: 'Could not connect to the student authentication server.' };
     }
   };
 
-  const login = (profile: StudentProfile): Promise<{ success: boolean; message: string }> => {
+  // One-time migration for accounts created before PINs existed: a
+  // roll+reg login returns a PIN-setup token instead of a session.
+  const requestPinSetup = async (
+    boardRoll: string,
+    regNumber: string,
+    role: 'student' | 'class_captain',
+    turnstile?: TurnstileProof
+  ): Promise<StudentAuthResult> => {
+    try {
+      const response = await apiFetch('/api/students/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          boardRoll,
+          regNumber,
+          role,
+          turnstileToken: turnstile?.token || undefined,
+          turnstileEnabled: turnstile?.enabled || false
+        })
+      });
+      const data = await response.json();
+      if (data.requiresPinSetup && data.pinSetupToken) {
+        return {
+          success: true,
+          message: data.message || 'Please set a PIN.',
+          requiresPinSetup: true,
+          pinSetupToken: data.pinSetupToken,
+          name: data.studentName
+        };
+      }
+      return { success: false, message: data.error || 'Could not verify those details.' };
+    } catch {
+      return { success: false, message: 'Could not connect to the student authentication server.' };
+    }
+  };
+
+  const setupStudentPin = async (
+    pinSetupToken: string,
+    pin: string,
+    role: 'student' | 'class_captain'
+  ): Promise<StudentAuthResult> => {
+    try {
+      const response = await apiFetch('/api/students/setup-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinSetupToken, pin, role })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success || !data.account || !data.sessionToken || !data.session) {
+        return { success: false, message: data.error || 'Could not set your PIN.' };
+      }
+      return applyStudentSession(data);
+    } catch {
+      return { success: false, message: 'Could not connect to the student authentication server.' };
+    }
+  };
+
+  const verifySmsCode = async (smsChallengeId: string, code: string): Promise<StudentAuthResult> => {
+    try {
+      const response = await apiFetch('/api/students/sms/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ smsChallengeId, code })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success || !data.account || !data.sessionToken || !data.session) {
+        return { success: false, message: data.error || 'SMS verification failed.' };
+      }
+      return applyStudentSession(data);
+    } catch {
+      return { success: false, message: 'Could not connect to the student authentication server.' };
+    }
+  };
+
+  const resendSmsCode = async (
+    smsChallengeId: string
+  ): Promise<{ success: boolean; message: string; maskedPhone?: string }> => {
+    try {
+      const response = await apiFetch('/api/students/sms/resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ smsChallengeId })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        return { success: false, message: data.error || 'Could not resend the SMS code.' };
+      }
+      return { success: true, message: data.message || 'A new code was sent.', maskedPhone: data.maskedPhone };
+    } catch {
+      return { success: false, message: 'Could not connect to the student authentication server.' };
+    }
+  };
+
+  const socialLogin = async (
+    provider: 'google' | 'facebook',
+    token: string,
+    role: 'student' | 'class_captain'
+  ): Promise<StudentAuthResult> => {
+    try {
+      const endpoint = provider === 'google' ? '/api/auth/google' : '/api/auth/facebook';
+      const body =
+        provider === 'google' ? { idToken: token, role } : { accessToken: token, role };
+      const response = await apiFetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success || !data.account || !data.sessionToken || !data.session) {
+        return {
+          success: false,
+          message: data.error || `${provider === 'google' ? 'Google' : 'Facebook'} sign-in failed.`
+        };
+      }
+      return applyStudentSession(data);
+    } catch {
+      return { success: false, message: 'Could not connect to the student authentication server.' };
+    }
+  };
+
+  const login = (profile: StudentProfile, pin?: string): Promise<StudentAuthResult> => {
     const role =
       profile.accountType === 'class_captain' && profile.captainVerificationStatus === 'Approved'
         ? 'class_captain'
         : 'student';
-    return authenticateStudent(profile.boardRoll, profile.regNumber, role);
+    if (pin) return authenticateStudent(profile.boardRoll, pin, role);
+    // No PIN (legacy callers such as post-signup onboarding without a
+    // stored PIN): fall back to the one-time PIN-setup path.
+    return requestPinSetup(profile.boardRoll, profile.regNumber, role);
   };
 
   const logout = () => {
@@ -968,13 +1168,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // TEACHER AUTHENTICATION & MANAGEMENT
   const teacherLogin = async (
     phoneOrEmail: string, 
-    pin: string
+    pin: string,
+    turnstile?: TurnstileProof
   ): Promise<{ success: boolean; message: string; teacher?: TeacherProfile }> => {
     try {
       const response = await apiFetch('/api/teachers/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneOrEmail, pin })
+        body: JSON.stringify({
+          phoneOrEmail,
+          pin,
+          turnstileToken: turnstile?.token || undefined,
+          turnstileEnabled: turnstile?.enabled || false
+        })
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
@@ -1029,12 +1235,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const teacherRegister = async (regData: any): Promise<{ success: boolean; message: string; teacher?: TeacherProfile }> => {
+  const teacherRegister = async (regData: any, turnstile?: TurnstileProof): Promise<{ success: boolean; message: string; teacher?: TeacherProfile }> => {
     try {
       const response = await apiFetch('/api/teachers/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(regData)
+        body: JSON.stringify({
+          ...regData,
+          turnstileToken: turnstile?.token || undefined,
+          turnstileEnabled: turnstile?.enabled || false
+        })
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
@@ -1118,9 +1328,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         consultingHours: contactDetails?.consultingHours || 'Mon & Wed: 11:00 AM - 01:00 PM'
       };
 
+      const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
       const res = await apiFetch('/api/teacher-contacts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
+        },
         body: JSON.stringify({
           requesterRole: 'teacher',
           requesterId: mergedTeacher.id,
@@ -1205,9 +1419,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const teacherChangePin = async (currentPin: string, newPin: string): Promise<{ success: boolean; message: string }> => {
     if (!currentTeacherProfile) return { success: false, message: 'No teacher signed in.' };
     try {
+      const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
       const response = await apiFetch('/api/teachers/change-pin', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
+        },
         body: JSON.stringify({ teacherId: currentTeacherProfile.id, currentPin, newPin })
       });
       const data = await response.json();
@@ -1249,9 +1467,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // blocks the local action; the healing effect below retries it.
   const syncCaptainRecordToServer = async (record: CaptainApplication): Promise<boolean> => {
     try {
+      const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
       const res = await apiFetch('/api/captains/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
+        },
         body: JSON.stringify({ captainRecord: record })
       });
       if (!res.ok) {
@@ -2178,9 +2400,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
+      const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
       const response = await apiFetch('/api/teacher-contacts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
+        },
         body: JSON.stringify({
           requesterRole: userProfile.accountType,
           requesterId: userProfile.id,
@@ -2232,9 +2458,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
+      const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
       const response = await apiFetch(`/api/teacher-contacts/${contactId}/archive`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
+        },
         body: JSON.stringify({
           requesterRole: userProfile.accountType,
           requesterId: userProfile.id,
@@ -2382,9 +2612,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     try {
+      const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
       const res = await apiFetch('/api/schedule-config/reset', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
+        },
         body: JSON.stringify({
           shift: targetShift,
           scopeKey: current.scopeKey || 'default',
@@ -2443,6 +2677,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isLoggedIn,
         login,
         authenticateStudent,
+        requestPinSetup,
+        setupStudentPin,
+        verifySmsCode,
+        resendSmsCode,
+        socialLogin,
         logout,
         accountType: userProfile.accountType,
         setAccountType,

@@ -112,6 +112,15 @@ import {
 
 dotenv.config();
 
+// Startup guard: refuse to run unless the environment is explicit. Without
+// NODE_ENV=production the server mounts the Vite dev middleware (source
+// serving + HMR) and Express leaks stack traces — that must never happen on
+// a public host. Render sets NODE_ENV=production by default and the VPS
+// .env sets it explicitly; local development must use NODE_ENV=development.
+if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'development') {
+  throw new Error('Refusing to start: NODE_ENV must be explicitly set to "production" or "development".');
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -158,6 +167,226 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// ---------------------------------------------------------------------------
+// Security headers (defence in depth; no new dependencies).
+// CSP allows the app's own result viewers in iframes (BTEB Result Zone and
+// the official BTEB portal), Google Fonts, the GitHub update-checker API,
+// and the jsDelivr CDN used by the client-side Tesseract OCR worker.
+// Login rework: also allows Google Identity Services, the Facebook JS SDK
+// and Cloudflare Turnstile (scripts + frames + API calls) so the social
+// login buttons and the CAPTCHA widget can load when configured.
+// ---------------------------------------------------------------------------
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  const cspConnectSrc = [
+    "'self'",
+    ...Array.from(allowedAppOrigins),
+    'https://api.github.com',
+    'https://raw.githubusercontent.com',
+    'https://cdn.jsdelivr.net',
+    'https://accounts.google.com',
+    'https://oauth2.googleapis.com',
+    'https://graph.facebook.com',
+    'https://challenges.cloudflare.com'
+  ].join(' ');
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com https://connect.facebook.net https://challenges.cloudflare.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      'font-src \'self\' https://fonts.gstatic.com data:',
+      "img-src 'self' data: blob: https:",
+      "media-src 'self' blob: data:",
+      `connect-src ${cspConnectSrc}`,
+      "frame-src 'self' https://btebresultszone.com https://result.bteb.gov.bd https://accounts.google.com https://www.facebook.com https://challenges.cloudflare.com",
+      "worker-src 'self' blob:",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'"
+    ].join('; ')
+  );
+  next();
+});
+
+// ---------------------------------------------------------------------------
+// In-memory rate limiting (no new dependencies).
+// The client IP comes from X-Forwarded-For when a trusted proxy sets it
+// (Render does); otherwise it falls back to the socket address. Note the
+// VPS nginx template does not forward the client IP yet, so anonymous
+// traffic from the VPS currently shares one bucket — see the deployment
+// note in the summary; authenticated traffic is keyed by session token
+// and is unaffected.
+// ---------------------------------------------------------------------------
+function getClientIp(req: Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+}
+
+function createRateLimiter(options: {
+  windowMs: number;
+  max: number;
+  key: (req: Request) => string;
+  message: string;
+}) {
+  const buckets = new Map<string, RateLimitBucket>();
+  const pruneTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [key, bucket] of buckets) {
+      if (bucket.resetAt <= now) buckets.delete(key);
+    }
+  }, 10 * 60 * 1000);
+  if (typeof (pruneTimer as unknown as { unref?: unknown }).unref === 'function') {
+    (pruneTimer as unknown as { unref: () => void }).unref();
+  }
+  return (req: Request, res: Response, next: NextFunction) => {
+    const key = options.key(req);
+    const now = Date.now();
+    let bucket = buckets.get(key);
+    if (!bucket || bucket.resetAt <= now) {
+      bucket = { count: 0, resetAt: now + options.windowMs };
+      buckets.set(key, bucket);
+    }
+    bucket.count += 1;
+    if (bucket.count > options.max) {
+      res.setHeader('Retry-After', String(Math.ceil((bucket.resetAt - now) / 1000)));
+      return res.status(429).json({ success: false, error: options.message });
+    }
+    return next();
+  };
+}
+
+// Global API limit: ~100 requests / 15 min per logged-in session; anonymous
+// (no session token) traffic shares a 300 / 15 min bucket per client IP.
+const sessionApiRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  key: (req) => `sess:${(extractBearerToken(req) || '').slice(0, 16)}`,
+  message: 'Too many requests. Please wait a few minutes and try again.'
+});
+const anonymousApiRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  key: (req) => `ip:${getClientIp(req)}`,
+  message: 'Too many requests. Please wait a few minutes and try again.'
+});
+function apiRateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
+  if (!req.path.startsWith('/api')) return next();
+  if (req.method === 'OPTIONS') return next();
+  return extractBearerToken(req)
+    ? sessionApiRateLimiter(req, res, next)
+    : anonymousApiRateLimiter(req, res, next);
+}
+
+// Strict limit for login / PIN / auth endpoints: 5 attempts / 15 min per
+// (client IP + account identifier), so one attacker's guessing against many
+// accounts still hits the IP bucket while a single account is protected.
+const authRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  key: (req) => {
+    const body = (req.body || {}) as Record<string, unknown>;
+    const identifier = String(
+      body.email || body.phoneOrEmail || body.boardRoll || body.teacherId || body.userId || ''
+    ).trim().toLowerCase() || 'unknown';
+    return `auth:${getClientIp(req)}:${identifier}`;
+  },
+  message: 'Too many login attempts. Please wait 15 minutes and try again.'
+});
+
+// Second layer for auth endpoints: 30 attempts / 15 min per client IP, so
+// an attacker cannot dodge the per-account limit by rotating identifiers.
+const authIpRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  key: (req) => `authip:${getClientIp(req)}`,
+  message: 'Too many login attempts from this network. Please wait 15 minutes and try again.'
+});
+
+// Strict limit for the Gemini-backed scan endpoints: 10 scans / 15 min per
+// session (or per IP when anonymous) so the GEMINI_API_KEY quota cannot be
+// burned by automated calls.
+const aiRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  key: (req) => {
+    const token = extractBearerToken(req);
+    return token ? `ai:sess:${token.slice(0, 16)}` : `ai:ip:${getClientIp(req)}`;
+  },
+  message: 'Too many document scans. Please wait a few minutes and try again.'
+});
+
+// ---------------------------------------------------------------------------
+// Global authentication for mutating API routes.
+// Every POST/PUT/PATCH/DELETE under /api requires a valid session, except
+// the explicit public allow-list below (login / registration / bootstrap /
+// PIN-verified teacher endorsement / public result lookup / the payment
+// stub, which is out of scope for this change). GET reads keep their
+// existing per-handler checks.
+// ---------------------------------------------------------------------------
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const session = getAuthenticatedSession(req);
+  if (!session) {
+    return res.status(401).json({ success: false, error: 'Authentication required. Please sign in.' });
+  }
+  (req as unknown as { session: ServerSession }).session = session;
+  return next();
+}
+
+// System administrators and verified teachers only. The schedule config
+// (and other admin/teacher writes) must not be changeable by students.
+function requireAdminOrTeacher(req: Request, res: Response, next: NextFunction) {
+  const existing = (req as unknown as { session?: ServerSession }).session;
+  const session = existing || getAuthenticatedSession(req);
+  if (!session) {
+    return res.status(401).json({ success: false, error: 'Authentication required. Please sign in.' });
+  }
+  if (session.role !== 'system_admin' && session.role !== 'teacher') {
+    return res.status(403).json({ success: false, error: 'Forbidden: Only a System Administrator or a verified Teacher can do this.' });
+  }
+  (req as unknown as { session: ServerSession }).session = session;
+  return next();
+}
+
+const PUBLIC_MUTATING_ROUTES = new Set([
+  'POST /api/payments/verify', // out of scope: fake-payment stub left as-is
+  'POST /api/teachers/register',
+  'POST /api/students/register',
+  'POST /api/students/setup-pin', // one-time PIN setup, token-authenticated internally
+  'POST /api/students/sms/verify', // login step, challenge-authenticated internally
+  'POST /api/students/sms/resend', // login step, challenge-authenticated internally
+  'POST /api/auth/google', // Google ID-token verification, server-side
+  'POST /api/auth/facebook', // Facebook token verification, server-side
+  'POST /api/auth/session',
+  'POST /api/auth/logout',
+  'POST /api/students/login',
+  'POST /api/admin/bootstrap',
+  'POST /api/admin/login',
+  'POST /api/teachers/login',
+  'POST /api/verification/teacher-approve', // PIN-authenticated internally
+  'POST /api/results/group' // public result lookup
+]);
+
+function requireAuthForMutations(req: Request, res: Response, next: NextFunction) {
+  if (!req.path.startsWith('/api')) return next();
+  if (req.method === 'OPTIONS' || req.method === 'GET' || req.method === 'HEAD') return next();
+  if (PUBLIC_MUTATING_ROUTES.has(`${req.method} ${req.path}`)) return next();
+  return requireAuth(req, res, next);
+}
+
+app.use(apiRateLimitMiddleware);
+app.use(requireAuthForMutations);
+
 // In-memory verified transaction storage to prevent replay attacks / duplicate payments
 const verifiedTransactions = new Set<string>();
 
@@ -179,6 +408,11 @@ export interface StoredSystemAdmin {
   email: string;
   passwordHash: string;
   passwordSalt: string;
+  // Hash scheme version: undefined/1 = PBKDF2-SHA256 10,000 iterations
+  // (legacy), 2 = PBKDF2-SHA256 600,000 iterations. Verification stays
+  // compatible with stored legacy hashes; a successful legacy login
+  // transparently upgrades the hash to v2 (see verifyAdminPassword).
+  passwordHashVersion?: number;
   role: 'system_admin';
   failedAttempts: number;
   lockoutUntil: number | null;
@@ -208,9 +442,29 @@ const AUTH_DATA_DIR = path.resolve(__dirname, 'data');
 const ADMINS_STORE_FILE = path.join(AUTH_DATA_DIR, 'system-admins.json');
 const BOOTSTRAP_TOKEN_FILE = path.join(AUTH_DATA_DIR, '.admin-bootstrap-token');
 
-// Cryptographic PBKDF2 helper for administrator passwords (10,000 iterations, SHA-256)
-function hashAdminPassword(password: string, salt: string): string {
-  return crypto.pbkdf2Sync(password, salt, 10000, 32, 'sha256').toString('hex');
+// Cryptographic PBKDF2 helper for administrator passwords.
+// Legacy hashes use 10,000 iterations; new hashes (v2) use 600,000.
+// The iteration count is a parameter (default legacy) so verification of
+// already-stored hashes keeps working — see verifyAdminPassword.
+const ADMIN_PASSWORD_ITERATIONS_V2 = 600000;
+function hashAdminPassword(password: string, salt: string, iterations = 10000): string {
+  return crypto.pbkdf2Sync(password, salt, iterations, 32, 'sha256').toString('hex');
+}
+
+// Verify an admin password against the hash scheme the stored record uses.
+// On a successful legacy login the caller should upgrade the stored hash
+// to v2 via upgradeAdminPasswordHash (persisted by the existing save call).
+function verifyAdminPassword(password: string, admin: StoredSystemAdmin): boolean {
+  const iterations = admin.passwordHashVersion === 2 ? ADMIN_PASSWORD_ITERATIONS_V2 : 10000;
+  return hashAdminPassword(password, admin.passwordSalt, iterations) === admin.passwordHash;
+}
+
+function upgradeAdminPasswordHash(admin: StoredSystemAdmin, password: string): void {
+  if (admin.passwordHashVersion === 2) return;
+  const salt = generateSalt();
+  admin.passwordSalt = salt;
+  admin.passwordHash = hashAdminPassword(password, salt, ADMIN_PASSWORD_ITERATIONS_V2);
+  admin.passwordHashVersion = 2;
 }
 
 function sanitizeSystemAdmin(admin: StoredSystemAdmin): SystemAdminProfile {
@@ -284,13 +538,14 @@ function initializeAdminProvisioning(): void {
     }
     if (!exists) {
       const salt = crypto.randomBytes(16).toString('hex');
-      const passwordHash = hashAdminPassword(envPassword, salt);
+      const passwordHash = hashAdminPassword(envPassword, salt, ADMIN_PASSWORD_ITERATIONS_V2);
       const newAdmin: StoredSystemAdmin = {
         id: `sysadmin_${Date.now()}`,
         name: 'Academic System Administrator',
         email: envEmail,
         passwordHash,
         passwordSalt: salt,
+        passwordHashVersion: 2,
         role: 'system_admin',
         failedAttempts: 0,
         lockoutUntil: null,
@@ -345,6 +600,18 @@ initializeAdminProvisioning();
 // Server-side opaque session token store
 const serverSessions = new Map<string, ServerSession>();
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// Student login failure tracking (mirrors the admin/teacher lockout: 5
+// failed attempts -> 15 minute lockout). In-memory like the teacher
+// lockout; keyed by student id once the account is found, otherwise by
+// board roll so unknown roll+reg pairs cannot be enumerated freely.
+interface StudentLoginFailure {
+  count: number;
+  lockoutUntil: number | null;
+}
+const studentLoginFailures = new Map<string, StudentLoginFailure>();
+const STUDENT_LOGIN_MAX_FAILURES = 5;
+const STUDENT_LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
 
 function createServerSession(params: {
   userId: string;
@@ -455,6 +722,139 @@ function requireCommunityCreator(req: Request, res: Response, next: NextFunction
   return next();
 }
 
+// ---------------------------------------------------------------------------
+// Cloudflare Turnstile verification helper (CAPTCHA for public forms).
+// TODO (login rework): call verifyTurnstileToken() on registration, login
+// and OCR/scan routes before processing the request. Enforcement is NOT
+// enabled yet — this helper only exists so the wiring can land with the
+// login rework. Requires env TURNSTILE_SECRET_KEY (and the matching site
+// key in the frontend form). Returns false when no secret is configured.
+// ---------------------------------------------------------------------------
+async function verifyTurnstileToken(token: string, remoteIp?: string): Promise<boolean> {
+  const secret = (process.env.TURNSTILE_SECRET_KEY || '').trim();
+  if (!secret || !token) return false;
+  try {
+    const params = new URLSearchParams({ secret, response: token });
+    if (remoteIp) params.set('remoteip', remoteIp);
+    const verification = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    });
+    const data = (await verification.json()) as { success?: boolean };
+    return data.success === true;
+  } catch (err) {
+    console.error('[Turnstile] verification request failed:', err);
+    return false;
+  }
+}
+
+// Enforce Turnstile on a public form when the server secret is configured.
+// Half-configuration never locks users out: if the secret is set but the
+// client did not render the widget (no VITE_TURNSTILE_SITE_KEY in the
+// build), the request is allowed and a warning is logged; if the widget
+// WAS rendered (client sends turnstileEnabled=true) a missing/invalid
+// token is rejected. Returns { ok, error? }.
+async function enforceTurnstileIfConfigured(req: Request): Promise<{ ok: boolean; error?: string }> {
+  const secret = (process.env.TURNSTILE_SECRET_KEY || '').trim();
+  if (!secret) return { ok: true };
+  const token = String(req.body?.turnstileToken || '').trim();
+  const clientEnabled = req.body?.turnstileEnabled === true;
+  if (!token) {
+    if (clientEnabled) {
+      return { ok: false, error: 'Please complete the security check and try again.' };
+    }
+    console.warn('[Turnstile] Secret is configured but the client did not render the widget (missing VITE_TURNSTILE_SITE_KEY?) — allowing request without CAPTCHA.');
+    return { ok: true };
+  }
+  let valid = false;
+  try {
+    valid = await verifyTurnstileToken(token, getClientIp(req));
+  } catch {
+    valid = false;
+  }
+  if (!valid) return { ok: false, error: 'Security check failed. Please try again.' };
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// SMS verification for student login (login rework, 2026-11-23).
+// Pluggable provider behind the SMS_VERIFICATION_ENABLED feature flag
+// (default off). When enabled, a successful roll+PIN login issues a
+// 6-digit code (10-minute expiry, max 3 attempts) instead of a session;
+// the client completes it via POST /api/students/sms/verify.
+// Provider selection (env SMS_PROVIDER):
+//   - unset/empty: not configured — login FAILS with a clear error when
+//     the flag is on (never silently skips SMS).
+//   - "log": dev/test provider — prints the code to the server console.
+//   - anything else: generic HTTP JSON provider — POSTs
+//     { to, message, sender } to SMS_API_URL with
+//     `Authorization: Bearer SMS_API_KEY` and SMS_SENDER_ID as sender.
+//     If your provider needs a different payload shape, add a provider
+//     adapter in sendSms() instead of changing the login flow.
+// Codes live in memory: a deploy/restart invalidates pending codes.
+// ---------------------------------------------------------------------------
+const SMS_VERIFICATION_ENABLED = process.env.SMS_VERIFICATION_ENABLED === 'true';
+const SMS_CODE_TTL_MS = 10 * 60 * 1000;
+const SMS_CODE_MAX_ATTEMPTS = 3;
+
+interface SmsChallenge {
+  id: string;
+  studentId: string;
+  role: AccountType;
+  phone: string;
+  code: string;
+  expiresAt: number;
+  attempts: number;
+}
+const smsChallenges = new Map<string, SmsChallenge>();
+
+function isSmsProviderConfigured(): boolean {
+  return Boolean((process.env.SMS_PROVIDER || '').trim());
+}
+
+async function sendSms(phone: string, message: string): Promise<boolean> {
+  const provider = (process.env.SMS_PROVIDER || '').trim().toLowerCase();
+  if (!provider) return false;
+  if (provider === 'log') {
+    console.log(`[SMS:log] to ${phone}: ${message}`);
+    return true;
+  }
+  const url = (process.env.SMS_API_URL || '').trim();
+  const apiKey = (process.env.SMS_API_KEY || '').trim();
+  const sender = (process.env.SMS_SENDER_ID || '').trim();
+  if (!url) return false;
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
+      },
+      body: JSON.stringify({ to: phone, message, sender: sender || undefined })
+    });
+    if (!response.ok) {
+      console.error('[SMS] Provider request failed:', response.status);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[SMS] Provider request error:', err);
+    return false;
+  }
+}
+
+// One-time PIN-setup tokens for accounts created before PINs existed.
+// Issued after a successful roll+reg login; 15-minute expiry.
+interface PinSetupToken {
+  token: string;
+  studentId: string;
+  role: AccountType;
+  expiresAt: number;
+}
+const pinSetupTokens = new Map<string, PinSetupToken>();
+const PIN_SETUP_TOKEN_TTL_MS = 15 * 60 * 1000;
+
 
 
 
@@ -473,6 +873,11 @@ export interface ServerTeacher {
   verificationStatus: 'Pending' | 'Verified' | 'Rejected';
   pinHash: string;
   pinSalt: string;
+  // Hash scheme version: undefined/1 = PBKDF2-SHA256 1,000 iterations
+  // (legacy), 2 = PBKDF2-SHA256 100,000 iterations. Verification stays
+  // compatible with stored legacy hashes; a successful legacy login
+  // transparently upgrades the hash to v2 (see verifyTeacherPin).
+  pinHashVersion?: number;
   failedPinAttempts: number;
   lockoutUntil: number | null;
   createdAt: string;
@@ -480,9 +885,74 @@ export interface ServerTeacher {
   isRegisteredAccount?: boolean;
 }
 
-// PBKDF2 helper for secure PIN hashing
-function hashPinWithSalt(pin: string, salt: string): string {
-  return crypto.pbkdf2Sync(pin.trim(), salt, 1000, 32, 'sha256').toString('hex');
+// PBKDF2 helper for secure PIN hashing.
+// Legacy hashes use 1,000 iterations; new hashes (v2) use 100,000.
+// The iteration count is a parameter (default legacy) so verification of
+// already-stored hashes keeps working — see verifyTeacherPin.
+const TEACHER_PIN_ITERATIONS_V2 = 100000;
+function hashPinWithSalt(pin: string, salt: string, iterations = 1000): string {
+  return crypto.pbkdf2Sync(pin.trim(), salt, iterations, 32, 'sha256').toString('hex');
+}
+
+// Verify a teacher PIN against the hash scheme the stored record uses.
+function verifyTeacherPin(pin: string, teacher: ServerTeacher): boolean {
+  const iterations = teacher.pinHashVersion === 2 ? TEACHER_PIN_ITERATIONS_V2 : 1000;
+  return hashPinWithSalt(pin, teacher.pinSalt, iterations) === teacher.pinHash;
+}
+
+// Transparently upgrade a legacy PIN hash to v2 after a successful login.
+// The caller must persist the record (saveAcademicStore) for the upgrade
+// to stick; if it is not persisted the old hash still verifies next time.
+function upgradeTeacherPinHash(teacher: ServerTeacher, pin: string): void {
+  if (teacher.pinHashVersion === 2) return;
+  const salt = generateSalt();
+  teacher.pinSalt = salt;
+  teacher.pinHash = hashPinWithSalt(pin, salt, TEACHER_PIN_ITERATIONS_V2);
+  teacher.pinHashVersion = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Student login PINs (login rework, 2026-11-23).
+// Same PBKDF2-SHA256 scheme as teacher PINs: new hashes use 100,000
+// iterations (v2). A student PIN is 4–6 digits. PIN hashes must NEVER be
+// sent to the client — use sanitizeStudent() for every response that
+// includes a student record (login, register, roster, admin details).
+// ---------------------------------------------------------------------------
+const STUDENT_PIN_ITERATIONS_V2 = 100000;
+const STUDENT_PIN_REGEX = /^\d{4,6}$/;
+
+function isValidStudentPin(pin: string): boolean {
+  return STUDENT_PIN_REGEX.test(String(pin || '').trim());
+}
+
+function hashStudentPin(pin: string, salt: string): string {
+  return hashPinWithSalt(pin, salt, STUDENT_PIN_ITERATIONS_V2);
+}
+
+function verifyStudentPin(pin: string, student: EnrolledStudent): boolean {
+  if (!student.pinHash || !student.pinSalt) return false;
+  return hashPinWithSalt(pin, student.pinSalt, STUDENT_PIN_ITERATIONS_V2) === student.pinHash;
+}
+
+function setStudentPin(student: EnrolledStudent, pin: string): void {
+  const salt = generateSalt();
+  student.pinSalt = salt;
+  student.pinHash = hashStudentPin(pin, salt);
+  student.pinHashVersion = 2;
+}
+
+function sanitizeStudent(student: EnrolledStudent) {
+  const { pinHash, pinSalt, ...safeStudent } = student;
+  return {
+    ...safeStudent,
+    hasPin: Boolean(student.pinHash)
+  };
+}
+
+function maskPhone(phone: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length <= 3) return '***';
+  return `****-***${digits.slice(-3)}`;
 }
 
 // Generate random salt
@@ -590,6 +1060,7 @@ app.post('/api/payments/verify', (req: Request, res: Response) => {
 
     // Prevent duplicate transaction replay
     if (verifiedTransactions.has(cleanTxnId)) {
+      appendSystemAudit('payment_replay_blocked', cleanTxnId, String(rollNumber), `Duplicate ${provider} transaction rejected.`);
       return res.status(409).json({ 
         success: false, 
         error: 'This transaction ID has already been redeemed and verified.' 
@@ -597,6 +1068,8 @@ app.post('/api/payments/verify', (req: Request, res: Response) => {
     }
 
     verifiedTransactions.add(cleanTxnId);
+    appendSystemAudit('payment_verified', cleanTxnId, String(rollNumber), `BDT 10 via ${provider} (student ${studentId}).`);
+    saveAcademicStore(academicStore);
 
     const now = new Date();
     const paidAt = `${now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
@@ -628,8 +1101,13 @@ app.post('/api/payments/verify', (req: Request, res: Response) => {
  * 2. TEACHER REGISTRATION ENDPOINT
  * Creates a new teacher account with status: 'Pending'. Salt and hash PIN with PBKDF2.
  */
-app.post('/api/teachers/register', (req: Request, res: Response) => {
+app.post('/api/teachers/register', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
   try {
+    // Turnstile (only enforced when TURNSTILE_SECRET_KEY is configured).
+    const turnstile = await enforceTurnstileIfConfigured(req);
+    if (!turnstile.ok) {
+      return res.status(403).json({ success: false, error: turnstile.error });
+    }
     const { 
       name, 
       email, 
@@ -671,7 +1149,7 @@ app.post('/api/teachers/register', (req: Request, res: Response) => {
 
     const teacherId = `tch_${Date.now()}`;
     const salt = generateSalt();
-    const pinHash = hashPinWithSalt(cleanPin, salt);
+    const pinHash = hashPinWithSalt(cleanPin, salt, TEACHER_PIN_ITERATIONS_V2);
 
     const newTeacher: ServerTeacher = {
       id: teacherId,
@@ -687,6 +1165,7 @@ app.post('/api/teachers/register', (req: Request, res: Response) => {
       verificationStatus: 'Pending', // Strictly requires administrator approval before teacher can verify captains
       pinHash,
       pinSalt: salt,
+      pinHashVersion: 2,
       failedPinAttempts: 0,
       lockoutUntil: null,
       createdAt: new Date().toISOString(),
@@ -711,7 +1190,7 @@ app.post('/api/teachers/register', (req: Request, res: Response) => {
  * 2B. PUBLIC SESSION ISSUANCE FOR STUDENT & CLASS CAPTAIN ACCOUNTS
  * Strictly forbids issuing `system_admin` or `teacher` sessions via public client state.
  */
-app.post('/api/auth/session', (req: Request, res: Response) => {
+app.post('/api/auth/session', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
   try {
     const { userId, role } = req.body;
 
@@ -782,18 +1261,55 @@ app.post('/api/auth/session', (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/students/login', (req: Request, res: Response) => {
+app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
+  // Turnstile (only enforced when TURNSTILE_SECRET_KEY is configured).
+  try {
+    const turnstile = await enforceTurnstileIfConfigured(req);
+    if (!turnstile.ok) {
+      return res.status(403).json({ success: false, error: turnstile.error });
+    }
+  } catch {
+    return res.status(503).json({ success: false, error: 'Security check is unavailable. Please try again.' });
+  }
+
   const boardRoll = String(req.body?.boardRoll || '').trim();
+  const pin = String(req.body?.pin || '').trim();
   const regNumber = String(req.body?.regNumber || '').trim();
   const requestedRole = req.body?.role === 'class_captain' ? 'class_captain' : 'student';
-  if (!boardRoll || !regNumber) {
-    return res.status(400).json({ success: false, error: 'Board Roll and Registration Number are required.' });
+  if (!boardRoll) {
+    return res.status(400).json({ success: false, error: 'Board Roll is required.' });
   }
 
   const student = academicStore.students.find(
-    account => account.boardRoll === boardRoll && account.regNumber === regNumber && account.isRegisteredAccount === true
+    account => account.boardRoll === boardRoll && account.isRegisteredAccount === true
   );
+  // Lockout key: the student id once the account is found, otherwise the
+  // board roll, so unknown roll+reg pairs cannot be enumerated freely.
+  const lockoutKey = student ? `student:${student.id}` : `roll:${boardRoll}`;
+  const failure = studentLoginFailures.get(lockoutKey);
+  if (failure?.lockoutUntil && Date.now() < failure.lockoutUntil) {
+    const remainingMinutes = Math.ceil((failure.lockoutUntil - Date.now()) / 60000);
+    return res.status(429).json({
+      success: false,
+      error: `Security Lockout: Too many failed login attempts. Try again in ${remainingMinutes} minute(s).`
+    });
+  }
+  const recordLoginFailure = (): boolean => {
+    const current = studentLoginFailures.get(lockoutKey) || { count: 0, lockoutUntil: null };
+    current.count += 1;
+    if (current.count >= STUDENT_LOGIN_MAX_FAILURES) {
+      current.lockoutUntil = Date.now() + STUDENT_LOGIN_LOCKOUT_MS;
+      studentLoginFailures.set(lockoutKey, current);
+      return true;
+    }
+    studentLoginFailures.set(lockoutKey, current);
+    return false;
+  };
+
   if (!student) {
+    if (recordLoginFailure()) {
+      return res.status(429).json({ success: false, error: 'Maximum failed login attempts exceeded (5/5). Account locked for 15 minutes.' });
+    }
     return res.status(401).json({ success: false, error: 'No registered account matches those credentials.' });
   }
   if (deletedAccountIds.has(student.id)) {
@@ -805,6 +1321,86 @@ app.post('/api/students/login', (req: Request, res: Response) => {
     (student.accountType !== 'class_captain' || student.captainVerificationStatus !== 'Approved')
   ) {
     return res.status(403).json({ success: false, error: 'Class Captain access requires administrator approval.' });
+  }
+
+  // Credential check. Accounts with a PIN log in with Board Roll + PIN
+  // only — the registration number is no longer accepted once a PIN
+  // exists. Accounts created before PINs existed get one last roll+reg
+  // login, which issues a short-lived PIN-setup token instead of a
+  // session (see POST /api/students/setup-pin).
+  if (student.pinHash) {
+    if (!pin) {
+      return res.status(400).json({ success: false, error: 'Please enter your PIN. If you have not set a PIN yet, use "Set up my PIN" below.' });
+    }
+    if (!verifyStudentPin(pin, student)) {
+      if (recordLoginFailure()) {
+        return res.status(429).json({ success: false, error: 'Maximum failed login attempts exceeded (5/5). Account locked for 15 minutes.' });
+      }
+      return res.status(401).json({ success: false, error: 'Incorrect Board Roll or PIN.' });
+    }
+  } else {
+    if (!regNumber) {
+      return res.status(400).json({ success: false, error: 'Please enter your Registration Number to set up your PIN.' });
+    }
+    if (student.regNumber !== regNumber) {
+      if (recordLoginFailure()) {
+        return res.status(429).json({ success: false, error: 'Maximum failed login attempts exceeded (5/5). Account locked for 15 minutes.' });
+      }
+      return res.status(401).json({ success: false, error: 'No registered account matches those credentials.' });
+    }
+    const setupToken = crypto.randomBytes(32).toString('hex');
+    pinSetupTokens.set(setupToken, {
+      token: setupToken,
+      studentId: student.id,
+      role: requestedRole,
+      expiresAt: Date.now() + PIN_SETUP_TOKEN_TTL_MS
+    });
+    return res.status(200).json({
+      success: false,
+      requiresPinSetup: true,
+      pinSetupToken: setupToken,
+      studentName: student.name,
+      boardRoll: student.boardRoll,
+      message: 'Please set a 4–6 digit PIN for your account.'
+    });
+  }
+
+  studentLoginFailures.delete(lockoutKey);
+
+  // SMS code verification (only when the feature flag is on). When the
+  // flag is on but no provider is configured, login FAILS with a clear
+  // error — it never silently skips SMS.
+  if (SMS_VERIFICATION_ENABLED) {
+    if (!isSmsProviderConfigured()) {
+      return res.status(503).json({ success: false, error: 'SMS verification is enabled but no SMS provider is configured. Please contact the administrator.' });
+    }
+    const phone = String(student.phone || '').trim();
+    if (!phone) {
+      return res.status(403).json({ success: false, error: 'No phone number is linked to this account. Please ask your administrator to add one before signing in.' });
+    }
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const challengeId = crypto.randomBytes(16).toString('hex');
+    smsChallenges.set(challengeId, {
+      id: challengeId,
+      studentId: student.id,
+      role: requestedRole,
+      phone,
+      code,
+      expiresAt: Date.now() + SMS_CODE_TTL_MS,
+      attempts: 0
+    });
+    const sent = await sendSms(phone, `Your DiplomaMate login code is ${code}. It expires in 10 minutes. Do not share it with anyone.`);
+    if (!sent) {
+      smsChallenges.delete(challengeId);
+      return res.status(503).json({ success: false, error: 'Could not send the SMS code. Please try again.' });
+    }
+    return res.status(200).json({
+      success: true,
+      requiresSmsVerification: true,
+      smsChallengeId: challengeId,
+      maskedPhone: maskPhone(phone),
+      name: student.name
+    });
   }
 
   const sessionRole: AccountType = requestedRole === 'class_captain' ? 'class_captain' : 'student';
@@ -825,10 +1421,307 @@ app.post('/api/students/login', (req: Request, res: Response) => {
 
   return res.status(200).json({
     success: true,
-    account: student,
+    account: sanitizeStudent(student),
     sessionToken: session.token,
     session: { userId: session.userId, role: session.role }
   });
+});
+
+/**
+ * Helper: mint a student session from a verified student record.
+ * Shared by PIN setup, SMS verification and social login.
+ */
+function mintStudentSession(student: EnrolledStudent, role: AccountType): ServerSession {
+  return createServerSession({
+    userId: student.id,
+    role,
+    name: student.name,
+    email: student.email || '',
+    college: student.college,
+    department: student.department,
+    boardRoll: student.boardRoll,
+    classRoll: student.classRoll,
+    regNumber: student.regNumber,
+    semester: Number(student.semester) as SemesterNumber,
+    shift: student.shift,
+    section: student.section
+  });
+}
+
+/**
+ * 2B1. ONE-TIME STUDENT PIN SETUP (`POST /api/students/setup-pin`)
+ * Completes the migration for accounts created before PINs existed: the
+ * caller presents the short-lived token issued by a roll+reg login and a
+ * new 4–6 digit PIN. Sets the PIN (PBKDF2 v2) and signs the student in
+ * immediately. The token is single-use.
+ */
+app.post('/api/students/setup-pin', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
+  const token = String(req.body?.pinSetupToken || '').trim();
+  const pin = String(req.body?.pin || '').trim();
+  const requestedRole = req.body?.role === 'class_captain' ? 'class_captain' : 'student';
+  if (!token || !pin) {
+    return res.status(400).json({ success: false, error: 'PIN setup token and a new PIN are required.' });
+  }
+  if (!isValidStudentPin(pin)) {
+    return res.status(400).json({ success: false, error: 'PIN must be 4–6 digits.' });
+  }
+  const stored = pinSetupTokens.get(token);
+  if (!stored || Date.now() > stored.expiresAt) {
+    pinSetupTokens.delete(token);
+    return res.status(401).json({ success: false, error: 'This PIN setup link has expired. Please sign in again with your Board Roll and Registration Number.' });
+  }
+  const student = academicStore.students.find(account => account.id === stored.studentId);
+  if (!student || student.isRegisteredAccount !== true) {
+    pinSetupTokens.delete(token);
+    return res.status(404).json({ success: false, error: 'Account not found.' });
+  }
+  if (deletedAccountIds.has(student.id)) {
+    pinSetupTokens.delete(token);
+    return res.status(403).json({ success: false, error: 'This account has been deactivated.' });
+  }
+  if (student.pinHash) {
+    pinSetupTokens.delete(token);
+    return res.status(409).json({ success: false, error: 'This account already has a PIN. Please sign in with Board Roll + PIN.' });
+  }
+  const role: AccountType =
+    stored.role === 'class_captain' && student.accountType === 'class_captain' && student.captainVerificationStatus === 'Approved'
+      ? 'class_captain'
+      : 'student';
+  pinSetupTokens.delete(token);
+  setStudentPin(student, pin);
+  saveAcademicStore(academicStore);
+  studentLoginFailures.delete(`student:${student.id}`);
+  const session = mintStudentSession(student, role);
+  return res.status(200).json({
+    success: true,
+    message: 'PIN set successfully. You are now signed in.',
+    account: sanitizeStudent(student),
+    sessionToken: session.token,
+    session: { userId: session.userId, role: session.role }
+  });
+});
+
+/**
+ * 2B2. SMS CODE VERIFICATION (`POST /api/students/sms/verify`)
+ * Completes a login when SMS verification is enabled: the caller presents
+ * the challenge id from the login response and the 6-digit code. 10-minute
+ * expiry, max 3 attempts. On success mints the session.
+ */
+app.post('/api/students/sms/verify', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
+  const challengeId = String(req.body?.smsChallengeId || '').trim();
+  const code = String(req.body?.code || '').trim();
+  if (!challengeId || !code) {
+    return res.status(400).json({ success: false, error: 'Verification code is required.' });
+  }
+  const challenge = smsChallenges.get(challengeId);
+  if (!challenge) {
+    return res.status(401).json({ success: false, error: 'This SMS verification has expired. Please sign in again.' });
+  }
+  if (Date.now() > challenge.expiresAt) {
+    smsChallenges.delete(challengeId);
+    return res.status(401).json({ success: false, error: 'The SMS code has expired. Please sign in again to get a new code.' });
+  }
+  if (challenge.attempts >= SMS_CODE_MAX_ATTEMPTS) {
+    smsChallenges.delete(challengeId);
+    return res.status(429).json({ success: false, error: 'Too many wrong codes. Please sign in again to get a new code.' });
+  }
+  if (challenge.code !== code) {
+    challenge.attempts += 1;
+    const remaining = SMS_CODE_MAX_ATTEMPTS - challenge.attempts;
+    if (remaining <= 0) {
+      smsChallenges.delete(challengeId);
+      return res.status(429).json({ success: false, error: 'Too many wrong codes. Please sign in again to get a new code.' });
+    }
+    return res.status(401).json({ success: false, error: `Incorrect code. ${remaining} attempt(s) left.` });
+  }
+  const student = academicStore.students.find(account => account.id === challenge.studentId);
+  smsChallenges.delete(challengeId);
+  if (!student || student.isRegisteredAccount !== true || deletedAccountIds.has(student.id)) {
+    return res.status(404).json({ success: false, error: 'Account not found.' });
+  }
+  const role: AccountType =
+    challenge.role === 'class_captain' && student.accountType === 'class_captain' && student.captainVerificationStatus === 'Approved'
+      ? 'class_captain'
+      : 'student';
+  const session = mintStudentSession(student, role);
+  return res.status(200).json({
+    success: true,
+    account: sanitizeStudent(student),
+    sessionToken: session.token,
+    session: { userId: session.userId, role: session.role }
+  });
+});
+
+/**
+ * 2B3. RESEND SMS CODE (`POST /api/students/sms/resend`)
+ * Issues a fresh code for an unexpired challenge (resets attempts and the
+ * 10-minute expiry). Rate-limited by the auth limiters.
+ */
+app.post('/api/students/sms/resend', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
+  const challengeId = String(req.body?.smsChallengeId || '').trim();
+  if (!challengeId) {
+    return res.status(400).json({ success: false, error: 'SMS challenge id is required.' });
+  }
+  const challenge = smsChallenges.get(challengeId);
+  if (!challenge || Date.now() > challenge.expiresAt) {
+    smsChallenges.delete(challengeId);
+    return res.status(401).json({ success: false, error: 'This SMS verification has expired. Please sign in again.' });
+  }
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  challenge.code = code;
+  challenge.attempts = 0;
+  challenge.expiresAt = Date.now() + SMS_CODE_TTL_MS;
+  const sent = await sendSms(challenge.phone, `Your DiplomaMate login code is ${code}. It expires in 10 minutes. Do not share it with anyone.`);
+  if (!sent) {
+    return res.status(503).json({ success: false, error: 'Could not send the SMS code. Please try again.' });
+  }
+  return res.status(200).json({
+    success: true,
+    message: 'A new code was sent.',
+    maskedPhone: maskPhone(challenge.phone)
+  });
+});
+
+/**
+ * Helper: resolve a social (Google/Facebook) sign-in to an existing
+ * registered student by verified email. Linking happens by email only —
+ * there is no separate social-account table yet, so an account must exist
+ * first (created with Board Roll + PIN); linking from Settings is a
+ * later step.
+ */
+function resolveSocialStudent(email: string, requestedRole: AccountType): { student?: EnrolledStudent; error?: string; status?: number } {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (!cleanEmail) return { error: 'No email address was shared by the social account.', status: 401 };
+  const student = academicStore.students.find(
+    account => (account.email || '').trim().toLowerCase() === cleanEmail && account.isRegisteredAccount === true
+  );
+  if (!student) {
+    return { error: 'No DiplomaMate account is linked to this email. Sign in with Board Roll + PIN first, then link your social account from Settings.', status: 404 };
+  }
+  if (deletedAccountIds.has(student.id)) {
+    return { error: 'This account has been deactivated.', status: 403 };
+  }
+  if (
+    requestedRole === 'class_captain' &&
+    (student.accountType !== 'class_captain' || student.captainVerificationStatus !== 'Approved')
+  ) {
+    return { error: 'Class Captain access requires administrator approval.', status: 403 };
+  }
+  return { student };
+}
+
+/**
+ * 2B4. GOOGLE SIGN-IN (`POST /api/auth/google`)
+ * Verifies a Google ID token server-side (tokeninfo endpoint) and signs
+ * in the linked student. Requires env GOOGLE_CLIENT_ID. The button only
+ * appears in the app when VITE_GOOGLE_CLIENT_ID is set at build time.
+ */
+app.post('/api/auth/google', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
+  const idToken = String(req.body?.idToken || '').trim();
+  const requestedRole = req.body?.role === 'class_captain' ? 'class_captain' : 'student';
+  if (!idToken) {
+    return res.status(400).json({ success: false, error: 'Google sign-in token is required.' });
+  }
+  const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
+  if (!clientId) {
+    return res.status(503).json({ success: false, error: 'Google sign-in is not configured yet.' });
+  }
+  try {
+    const verification = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+    if (!verification.ok) {
+      return res.status(401).json({ success: false, error: 'Google sign-in verification failed.' });
+    }
+    const payload = (await verification.json()) as { aud?: string; email?: string; email_verified?: string; exp?: string };
+    if (payload.aud !== clientId) {
+      return res.status(401).json({ success: false, error: 'Google sign-in verification failed.' });
+    }
+    if (payload.email_verified !== 'true') {
+      return res.status(401).json({ success: false, error: 'Your Google email is not verified.' });
+    }
+    if (Number(payload.exp) * 1000 < Date.now()) {
+      return res.status(401).json({ success: false, error: 'Google sign-in has expired. Please try again.' });
+    }
+    const resolved = resolveSocialStudent(payload.email || '', requestedRole);
+    if (!resolved.student) {
+      return res.status(resolved.status || 401).json({ success: false, error: resolved.error });
+    }
+    const student = resolved.student;
+    const role: AccountType =
+      requestedRole === 'class_captain' && student.accountType === 'class_captain' && student.captainVerificationStatus === 'Approved'
+        ? 'class_captain'
+        : 'student';
+    const session = mintStudentSession(student, role);
+    return res.status(200).json({
+      success: true,
+      account: sanitizeStudent(student),
+      sessionToken: session.token,
+      session: { userId: session.userId, role: session.role }
+    });
+  } catch (err) {
+    console.error('[Google] sign-in verification error:', err);
+    return res.status(500).json({ success: false, error: 'Google sign-in is unavailable right now. Please try again.' });
+  }
+});
+
+/**
+ * 2B5. FACEBOOK SIGN-IN (`POST /api/auth/facebook`)
+ * Verifies a Facebook user access token server-side (debug_token with the
+ * app access token, then the user's email from Graph API) and signs in
+ * the linked student. Requires env FACEBOOK_APP_ID + FACEBOOK_APP_SECRET.
+ * The button only appears in the app when VITE_FACEBOOK_APP_ID is set.
+ */
+app.post('/api/auth/facebook', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
+  const accessToken = String(req.body?.accessToken || '').trim();
+  const requestedRole = req.body?.role === 'class_captain' ? 'class_captain' : 'student';
+  if (!accessToken) {
+    return res.status(400).json({ success: false, error: 'Facebook sign-in token is required.' });
+  }
+  const appId = (process.env.FACEBOOK_APP_ID || '').trim();
+  const appSecret = (process.env.FACEBOOK_APP_SECRET || '').trim();
+  if (!appId || !appSecret) {
+    return res.status(503).json({ success: false, error: 'Facebook sign-in is not configured yet.' });
+  }
+  try {
+    const debugRes = await fetch(
+      `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(`${appId}|${appSecret}`)}`
+    );
+    if (!debugRes.ok) {
+      return res.status(401).json({ success: false, error: 'Facebook sign-in verification failed.' });
+    }
+    const debugData = (await debugRes.json()) as { data?: { is_valid?: boolean; app_id?: string; user_id?: string } };
+    if (!debugData.data?.is_valid || debugData.data.app_id !== appId || !debugData.data.user_id) {
+      return res.status(401).json({ success: false, error: 'Facebook sign-in verification failed.' });
+    }
+    const meRes = await fetch(
+      `https://graph.facebook.com/${encodeURIComponent(debugData.data.user_id)}?fields=email,name&access_token=${encodeURIComponent(accessToken)}`
+    );
+    if (!meRes.ok) {
+      return res.status(401).json({ success: false, error: 'Facebook sign-in verification failed.' });
+    }
+    const me = (await meRes.json()) as { email?: string };
+    if (!me.email) {
+      return res.status(401).json({ success: false, error: 'Facebook did not share an email address. Please allow email access and try again.' });
+    }
+    const resolved = resolveSocialStudent(me.email, requestedRole);
+    if (!resolved.student) {
+      return res.status(resolved.status || 401).json({ success: false, error: resolved.error });
+    }
+    const student = resolved.student;
+    const role: AccountType =
+      requestedRole === 'class_captain' && student.accountType === 'class_captain' && student.captainVerificationStatus === 'Approved'
+        ? 'class_captain'
+        : 'student';
+    const session = mintStudentSession(student, role);
+    return res.status(200).json({
+      success: true,
+      account: sanitizeStudent(student),
+      sessionToken: session.token,
+      session: { userId: session.userId, role: session.role }
+    });
+  } catch (err) {
+    console.error('[Facebook] sign-in verification error:', err);
+    return res.status(500).json({ success: false, error: 'Facebook sign-in is unavailable right now. Please try again.' });
+  }
 });
 
 /**
@@ -883,12 +1776,40 @@ app.get('/api/admin/bootstrap-status', (_req: Request, res: Response) => {
   });
 });
 
+// Admin audit-log viewer (paginated). The audit log was previously
+// write-only — entries were recorded but no endpoint could read them.
+app.get('/api/admin/audit-logs', requireSystemAdmin, (req: Request, res: Response) => {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+  const actionFilter = typeof req.query.action === 'string' && req.query.action.trim()
+    ? req.query.action.trim()
+    : null;
+  const adminFilter = typeof req.query.adminId === 'string' && req.query.adminId.trim()
+    ? req.query.adminId.trim()
+    : null;
+  const allLogs = academicStore.adminAuditLogs || [];
+  const filtered = allLogs.filter(entry =>
+    (!actionFilter || entry.action === actionFilter) &&
+    (!adminFilter || entry.adminId === adminFilter)
+  );
+  const total = filtered.length;
+  const start = (page - 1) * limit;
+  return res.status(200).json({
+    success: true,
+    logs: filtered.slice(start, start + limit),
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit))
+  });
+});
+
 /**
  * 2F. ONE-TIME FIRST SYSTEM ADMINISTRATOR BOOTSTRAP (`POST /api/admin/bootstrap`)
  * Only works when zero admins exist in `data/system-admins.json` AND the caller supplies
  * the valid server-side `bootstrapToken` (from `process.env.ADMIN_BOOTSTRAP_TOKEN` or `data/.admin-bootstrap-token`).
  */
-app.post('/api/admin/bootstrap', (req: Request, res: Response) => {
+app.post('/api/admin/bootstrap', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
   try {
     systemAdmins = loadSystemAdminsFromDisk();
     if (systemAdmins.size > 0) {
@@ -936,7 +1857,7 @@ app.post('/api/admin/bootstrap', (req: Request, res: Response) => {
     }
 
     const salt = crypto.randomBytes(16).toString('hex');
-    const passwordHash = hashAdminPassword(cleanPassword, salt);
+    const passwordHash = hashAdminPassword(cleanPassword, salt, ADMIN_PASSWORD_ITERATIONS_V2);
     const nowIso = new Date().toISOString();
 
     const newAdmin: StoredSystemAdmin = {
@@ -945,6 +1866,7 @@ app.post('/api/admin/bootstrap', (req: Request, res: Response) => {
       email: cleanEmail,
       passwordHash,
       passwordSalt: salt,
+      passwordHashVersion: 2,
       role: 'system_admin',
       failedAttempts: 0,
       lockoutUntil: null,
@@ -987,7 +1909,7 @@ app.post('/api/admin/bootstrap', (req: Request, res: Response) => {
  * 2G. SYSTEM ADMINISTRATOR LOGIN (`POST /api/admin/login`)
  * Authenticates against `data/system-admins.json` with PBKDF2 verification and 5-attempt lockout.
  */
-app.post('/api/admin/login', (req: Request, res: Response) => {
+app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
   try {
     systemAdmins = loadSystemAdminsFromDisk();
     const { email, password } = req.body;
@@ -1020,20 +1942,22 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
     // Check rate-limit lockout
     if (targetAdmin.lockoutUntil && Date.now() < targetAdmin.lockoutUntil) {
       const remainingMinutes = Math.ceil((targetAdmin.lockoutUntil - Date.now()) / 60000);
+      appendSystemAudit('admin_login_locked_out', targetAdmin.id, targetAdmin.email, `Login attempt while locked out (${remainingMinutes} min remaining).`, targetAdmin.id);
       return res.status(429).json({
         success: false,
         error: `Security Lockout: Administrator account locked due to 5 failed login attempts. Try again in ${remainingMinutes} minute(s).`
       });
     }
 
-    const inputHash = hashAdminPassword(cleanPassword, targetAdmin.passwordSalt);
-    if (inputHash !== targetAdmin.passwordHash) {
+    if (!verifyAdminPassword(cleanPassword, targetAdmin)) {
       targetAdmin.failedAttempts = (targetAdmin.failedAttempts || 0) + 1;
       const attemptsLeft = 5 - targetAdmin.failedAttempts;
 
       if (targetAdmin.failedAttempts >= 5) {
         targetAdmin.lockoutUntil = Date.now() + 15 * 60 * 1000;
         saveSystemAdminsToDisk(systemAdmins);
+        appendSystemAudit('admin_login_locked_out', targetAdmin.id, targetAdmin.email, 'Account locked after 5 failed login attempts.', targetAdmin.id);
+        saveAcademicStore(academicStore);
         return res.status(429).json({
           success: false,
           error: 'Maximum failed login attempts exceeded (5/5). Administrator account locked for 15 minutes.'
@@ -1041,6 +1965,8 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
       }
 
       saveSystemAdminsToDisk(systemAdmins);
+      appendSystemAudit('admin_login_failed', targetAdmin.id, targetAdmin.email, `Failed login attempt (${targetAdmin.failedAttempts}/5).`, targetAdmin.id);
+      saveAcademicStore(academicStore);
       return res.status(401).json({
         success: false,
         error: `Invalid System Administrator email or password. ${attemptsLeft} attempt(s) remaining.`
@@ -1050,7 +1976,12 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
     targetAdmin.failedAttempts = 0;
     targetAdmin.lockoutUntil = null;
     targetAdmin.lastLoginAt = new Date().toISOString();
+    // Transparent hash upgrade: a successful legacy (10k-iteration) login
+    // re-hashes the password with the v2 scheme (600k iterations).
+    upgradeAdminPasswordHash(targetAdmin, cleanPassword);
     saveSystemAdminsToDisk(systemAdmins);
+    appendSystemAudit('admin_login_success', targetAdmin.id, targetAdmin.email, 'Administrator signed in.', targetAdmin.id);
+    saveAcademicStore(academicStore);
 
     const session = createServerSession({
       userId: targetAdmin.id,
@@ -1075,8 +2006,13 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
  * 3. TEACHER SIGN IN / AUTHENTICATION ENDPOINT
  * Checks credentials, rate limits failed PIN attempts (locks for 15 minutes after 5 failures).
  */
-app.post('/api/teachers/login', (req: Request, res: Response) => {
+app.post('/api/teachers/login', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
   try {
+    // Turnstile (only enforced when TURNSTILE_SECRET_KEY is configured).
+    const turnstile = await enforceTurnstileIfConfigured(req);
+    if (!turnstile.ok) {
+      return res.status(403).json({ success: false, error: turnstile.error });
+    }
     const { phoneOrEmail, pin } = req.body;
 
     if (!phoneOrEmail || !pin) {
@@ -1111,20 +2047,22 @@ app.post('/api/teachers/login', (req: Request, res: Response) => {
       });
     }
 
-    // Verify PIN with PBKDF2 hash
-    const inputHash = hashPinWithSalt(cleanPin, targetTeacher.pinSalt);
-    if (inputHash !== targetTeacher.pinHash) {
+    // Verify PIN with PBKDF2 hash (version-aware: legacy 1,000-iteration
+    // hashes still verify; a success upgrades the hash to v2 below).
+    if (!verifyTeacherPin(cleanPin, targetTeacher)) {
       targetTeacher.failedPinAttempts += 1;
       const attemptsLeft = 5 - targetTeacher.failedPinAttempts;
 
       if (targetTeacher.failedPinAttempts >= 5) {
         targetTeacher.lockoutUntil = Date.now() + 15 * 60 * 1000; // 15 minutes lockout
+        saveAcademicStore(academicStore); // persist the lockout across restarts
         return res.status(429).json({
           success: false,
           error: 'Maximum failed PIN attempts exceeded (5/5). Account has been locked for 15 minutes.'
         });
       }
 
+      saveAcademicStore(academicStore); // persist the failed-attempt count
       return res.status(401).json({
         success: false,
         error: `Invalid Teacher PIN. ${attemptsLeft} attempt(s) remaining before security lockout.`
@@ -1141,6 +2079,10 @@ app.post('/api/teachers/login', (req: Request, res: Response) => {
     // Reset failed counter on successful login
     targetTeacher.failedPinAttempts = 0;
     targetTeacher.lockoutUntil = null;
+    // Transparent hash upgrade: a successful legacy (1,000-iteration) login
+    // re-hashes the PIN with the v2 scheme (100,000 iterations).
+    upgradeTeacherPinHash(targetTeacher, cleanPin);
+    saveAcademicStore(academicStore);
 
     const session = createServerSession({
       userId: targetTeacher.id,
@@ -1166,10 +2108,20 @@ app.post('/api/teachers/login', (req: Request, res: Response) => {
 /**
  * 4. GET ALL TEACHERS (Sanitized)
  */
-app.get('/api/teachers', (_req: Request, res: Response) => {
+app.get('/api/teachers', (req: Request, res: Response) => {
+  const session = getAuthenticatedSession(req);
   const list = Array.from(serverTeachers.values())
     .filter(teacher => !deletedAccountIds.has(teacher.id))
-    .map(sanitizeTeacher);
+    .map(teacher => {
+      const safe = sanitizeTeacher(teacher);
+      // Phone numbers and email addresses are only for signed-in users.
+      // Anonymous callers (the public teacher directory) get names,
+      // colleges and subjects only — contact details stay private.
+      if (!session) {
+        return { ...safe, phone: '', email: '' };
+      }
+      return safe;
+    });
   return res.status(200).json({ success: true, teachers: list });
 });
 
@@ -1238,18 +2190,19 @@ app.post('/api/teachers/reset-lockout', requireSystemAdmin, (req: Request, res: 
 /**
  * 7. TEACHER PIN UPDATE
  */
-app.post('/api/teachers/change-pin', (req: Request, res: Response) => {
+// Change a teacher's own security PIN. Requires the teacher's own session
+// (the teacherId in the body may NOT identify a different teacher), the
+// current PIN, and is rate-limited + locked out after 5 failed attempts —
+// the same protections as teacher login. Previously this endpoint took any
+// teacherId with no session at all, and it never saved the store, so a PIN
+// change was lost on the next server restart.
+app.post('/api/teachers/change-pin', authRateLimiter, authIpRateLimiter, requireAuth, (req: Request, res: Response) => {
   try {
     const { teacherId, currentPin, newPin } = req.body;
-    const teacher = serverTeachers.get(teacherId);
-    if (!teacher) {
-      return res.status(404).json({ success: false, error: 'Teacher not found' });
-    }
+    const session = (req as unknown as { session: ServerSession }).session;
 
-    // Verify current PIN
-    const currHash = hashPinWithSalt(String(currentPin).trim(), teacher.pinSalt);
-    if (currHash !== teacher.pinHash) {
-      return res.status(401).json({ success: false, error: 'Current PIN is incorrect.' });
+    if (!currentPin || !newPin) {
+      return res.status(400).json({ success: false, error: 'Current PIN and new PIN are required.' });
     }
 
     const cleanNewPin = String(newPin).trim();
@@ -1257,11 +2210,53 @@ app.post('/api/teachers/change-pin', (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'New PIN must be between 4 and 8 digits.' });
     }
 
+    // Identity comes from the session only. A body-supplied teacherId may
+    // not point at anyone else.
+    if (teacherId && String(teacherId) !== session.userId) {
+      return res.status(403).json({ success: false, error: 'You can only change your own PIN.' });
+    }
+    if (session.role !== 'teacher') {
+      return res.status(403).json({ success: false, error: 'Only a signed-in teacher can change a teacher PIN.' });
+    }
+    const teacher = serverTeachers.get(session.userId);
+    if (!teacher) {
+      return res.status(404).json({ success: false, error: 'Teacher not found' });
+    }
+
+    // Check lockout
+    if (teacher.lockoutUntil && Date.now() < teacher.lockoutUntil) {
+      const remainingMinutes = Math.ceil((teacher.lockoutUntil - Date.now()) / 60000);
+      return res.status(429).json({
+        success: false,
+        error: `Security Lockout: Too many failed PIN attempts. Try again in ${remainingMinutes} minute(s).`
+      });
+    }
+
+    // Verify current PIN
+    const cleanCurrentPin = String(currentPin).trim();
+    if (!verifyTeacherPin(cleanCurrentPin, teacher)) {
+      teacher.failedPinAttempts += 1;
+      if (teacher.failedPinAttempts >= 5) {
+        teacher.lockoutUntil = Date.now() + 15 * 60 * 1000;
+        saveAcademicStore(academicStore);
+        return res.status(429).json({ success: false, error: 'Maximum failed PIN attempts exceeded (5/5). Account locked for 15 minutes.' });
+      }
+      saveAcademicStore(academicStore);
+      return res.status(401).json({
+        success: false,
+        error: `Current PIN is incorrect. ${5 - teacher.failedPinAttempts} attempt(s) remaining.`
+      });
+    }
+
     const newSalt = generateSalt();
     teacher.pinSalt = newSalt;
-    teacher.pinHash = hashPinWithSalt(cleanNewPin, newSalt);
+    teacher.pinHash = hashPinWithSalt(cleanNewPin, newSalt, TEACHER_PIN_ITERATIONS_V2);
+    teacher.pinHashVersion = 2;
     teacher.failedPinAttempts = 0;
     teacher.lockoutUntil = null;
+    saveAcademicStore(academicStore);
+    appendSystemAudit('teacher_pin_changed', teacher.id, teacher.name, 'Teacher changed their own security PIN.', teacher.id);
+    saveAcademicStore(academicStore);
 
     return res.status(200).json({ success: true, message: 'Teacher Security PIN updated successfully.' });
   } catch (error) {
@@ -1696,7 +2691,7 @@ app.post('/api/admin/captains/decision', requireSystemAdmin, (req: Request, res:
  * Validates institutional teacher faculty PIN, enforces PBKDF2 hash, rate limits failed PINs,
  * validates cohort match (college, dept, semester, shift), and checks teacher verification status.
  */
-app.post('/api/verification/teacher-approve', (req: Request, res: Response) => {
+app.post('/api/verification/teacher-approve', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
   try {
     const { 
       teacherId, 
@@ -1713,15 +2708,16 @@ app.post('/api/verification/teacher-approve', (req: Request, res: Response) => {
 
     const cleanPin = String(teacherPin).trim();
 
-    // Find teacher by teacherId or legacy PIN match
+    // Find teacher by teacherId or legacy PIN match (version-aware verify:
+    // legacy 1,000-iteration hashes still verify; a success upgrades the
+    // hash to v2 on the teacher record — see the login handler).
     let teacher: ServerTeacher | undefined;
     if (teacherId && serverTeachers.has(teacherId)) {
       teacher = serverTeachers.get(teacherId);
     } else {
-      // Search all teachers for matching PIN
+      // Search all teachers for a matching PIN
       for (const t of serverTeachers.values()) {
-        const testHash = hashPinWithSalt(cleanPin, t.pinSalt);
-        if (testHash === t.pinHash) {
+        if (verifyTeacherPin(cleanPin, t)) {
           teacher = t;
           break;
         }
@@ -1744,16 +2740,17 @@ app.post('/api/verification/teacher-approve', (req: Request, res: Response) => {
       });
     }
 
-    const checkHash = hashPinWithSalt(cleanPin, teacher.pinSalt);
-    if (checkHash !== teacher.pinHash) {
+    if (!verifyTeacherPin(cleanPin, teacher)) {
       teacher.failedPinAttempts += 1;
       if (teacher.failedPinAttempts >= 5) {
         teacher.lockoutUntil = Date.now() + 15 * 60 * 1000;
+        saveAcademicStore(academicStore); // persist the lockout across restarts
         return res.status(429).json({
           success: false,
           error: 'Maximum PIN attempts reached (5/5). Account locked for 15 minutes.'
         });
       }
+      saveAcademicStore(academicStore); // persist the failed-attempt count
       return res.status(401).json({
         success: false,
         error: `Incorrect Teacher PIN. ${5 - teacher.failedPinAttempts} attempt(s) remaining.`
@@ -1763,6 +2760,7 @@ app.post('/api/verification/teacher-approve', (req: Request, res: Response) => {
     // Reset failed attempts on valid PIN
     teacher.failedPinAttempts = 0;
     teacher.lockoutUntil = null;
+    saveAcademicStore(academicStore);
 
     // Check Teacher Verification Status: Only VERIFIED teachers can approve Class Captains!
     if (teacher.verificationStatus !== 'Verified') {
@@ -1833,8 +2831,16 @@ app.post('/api/verification/teacher-approve', (req: Request, res: Response) => {
       } else {
         serverRecord.teacherEndorsement = endorsement;
       }
-      saveAcademicStore(academicStore);
     }
+    if (action !== 'reject') {
+      // Registry write: remember this endorsement independently of the
+      // captain record, so POST /api/captains/sync can tell a genuine
+      // server-side endorsement apart from a client-forged one. This
+      // matters when the captain record itself was created client-side
+      // and is not on the server yet — the registry entry is the proof.
+      academicStore.pendingTeacherEndorsements[applicationId] = endorsement;
+    }
+    saveAcademicStore(academicStore);
 
     if (action === 'reject') {
       return res.status(200).json({
@@ -1862,7 +2868,7 @@ app.post('/api/verification/teacher-approve', (req: Request, res: Response) => {
  * 3. CLASS ROUTINE DOCUMENT OCR & TIMETABLE EXTRACTION
  * Uses Gemini 3.8 Flash Vision to extract periods, times, teachers, subjects, and rooms.
  */
-app.post('/api/routine/ocr', async (req: Request, res: Response) => {
+app.post('/api/routine/ocr', requireAuth, aiRateLimiter, async (req: Request, res: Response) => {
   try {
     const {
       fileDataUrl,
@@ -1953,7 +2959,7 @@ app.post('/api/routine/ocr', async (req: Request, res: Response) => {
  * 8B. UNIFIED SHARED DOCUMENT INTELLIGENCE ENDPOINT (`POST /api/documents/scan`)
  * Supports: routine, assignment, note, notice, job, roster, captain_form, bteb_result, video
  */
-app.post('/api/documents/scan', async (req: Request, res: Response) => {
+app.post('/api/documents/scan', requireAuth, aiRateLimiter, async (req: Request, res: Response) => {
   try {
     const {
       feature = 'note',
@@ -3604,6 +4610,17 @@ interface PersistentAcademicStore {
   campusNotices: CampusNoticeItem[];
   campusNoticeReports: CampusNoticeReportRecord[];
   teacherContactAccessLocked: boolean;
+  // Endorsements created by teacher-approve, keyed by application id.
+  // This is the server-side proof that an endorsement is genuine, so
+  // POST /api/captains/sync can reject client-forged endorsements while
+  // still accepting a healing sync that replays a real one.
+  pendingTeacherEndorsements: Record<string, {
+    teacherId: string;
+    teacherName: string;
+    teacherDesignation: string;
+    endorsedAt: string;
+    comments: string;
+  }>;
 }
 
 const ACADEMIC_STORE_FILE = path.join(DATA_DIR, 'academic-store.json');
@@ -3835,7 +4852,8 @@ function buildInitialAcademicStore(): PersistentAcademicStore {
     jobs: [...(INITIAL_JOBS as JobCircular[])],
     campusNotices: [...(INITIAL_CAMPUS_NOTICES as CampusNoticeItem[])],
     campusNoticeReports: [],
-    teacherContactAccessLocked: false
+    teacherContactAccessLocked: false,
+    pendingTeacherEndorsements: {}
   };
 }
 
@@ -3924,7 +4942,10 @@ function loadAcademicStore(): PersistentAcademicStore {
         jobs: loadedJobs,
         campusNotices: loadedCampusNotices,
         campusNoticeReports: Array.isArray(parsed.campusNoticeReports) ? parsed.campusNoticeReports : [],
-        teacherContactAccessLocked: parsed.teacherContactAccessLocked === true
+        teacherContactAccessLocked: parsed.teacherContactAccessLocked === true,
+        pendingTeacherEndorsements: (parsed.pendingTeacherEndorsements && typeof parsed.pendingTeacherEndorsements === 'object')
+          ? parsed.pendingTeacherEndorsements
+          : {}
       };
       saveAcademicStore(storeObj);
       return storeObj;
@@ -4122,11 +5143,22 @@ function ensureStudentAccountForSession(body: Record<string, unknown>): { error?
   return { userId: existing.id };
 }
 
-app.post('/api/students/register', (req: Request, res: Response) => {
+app.post('/api/students/register', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
+  // Turnstile (only enforced when TURNSTILE_SECRET_KEY is configured).
+  try {
+    const turnstile = await enforceTurnstileIfConfigured(req);
+    if (!turnstile.ok) {
+      return res.status(403).json({ success: false, error: turnstile.error });
+    }
+  } catch {
+    return res.status(503).json({ success: false, error: 'Security check is unavailable. Please try again.' });
+  }
+
   const body = req.body || {};
   const name = String(body.name || '').trim();
   const boardRoll = String(body.boardRoll || '').trim();
   const regNumber = String(body.regNumber || '').trim();
+  const pin = String(body.pin || '').trim();
   const semester = Number(body.semester);
   const role = body.accountType === 'class_captain' ? 'class_captain' : 'student';
   const section = String(body.section || 'A1');
@@ -4135,6 +5167,9 @@ app.post('/api/students/register', (req: Request, res: Response) => {
 
   if (!name || !boardRoll || !regNumber || !body.college || !body.department) {
     return res.status(400).json({ success: false, error: 'Name, roll, registration number, college, and department are required.' });
+  }
+  if (!isValidStudentPin(pin)) {
+    return res.status(400).json({ success: false, error: 'Please choose a 4–6 digit PIN for your account. You will sign in with Board Roll + PIN.' });
   }
   if (!college || !department) {
     return res.status(400).json({ success: false, error: 'Select a valid canonical college and department.' });
@@ -4166,11 +5201,12 @@ app.post('/api/students/register', (req: Request, res: Response) => {
       existingByRoll.captainVerificationStatus = 'NotApplied';
     }
     existingByRoll.isRegisteredAccount = true;
+    setStudentPin(existingByRoll, pin);
     saveAcademicStore(academicStore);
     return res.status(200).json({
       success: true,
       message: role === 'class_captain' ? 'Account created; captain approval is pending.' : 'Student account created.',
-      account: existingByRoll
+      account: sanitizeStudent(existingByRoll)
     });
   }
 
@@ -4193,12 +5229,13 @@ app.post('/api/students/register', (req: Request, res: Response) => {
     createdAt: new Date().toISOString(),
     isRegisteredAccount: true
   };
+  setStudentPin(account, pin);
   academicStore.students.push(account);
   saveAcademicStore(academicStore);
   return res.status(201).json({
     success: true,
     message: role === 'class_captain' ? 'Account created; captain approval is pending.' : 'Student account created.',
-    account
+    account: sanitizeStudent(account)
   });
 });
 
@@ -4445,7 +5482,7 @@ app.get('/api/roster', (req: Request, res: Response) => {
         shift,
         section
       },
-      students: roster
+      students: roster.map(student => sanitizeStudent(student))
     });
   } catch (error) {
     console.error('Get roster error:', error);
@@ -4629,7 +5666,7 @@ function extractStudentRowsFromText(text: string): Array<{
  * - Matches against existing cohort students by Board Roll / Registration Number
  * - Flags duplicates and uncertain/incomplete records for teacher review
  */
-app.post('/api/attendance/roster-ocr', async (req: Request, res: Response) => {
+app.post('/api/attendance/roster-ocr', requireAuth, aiRateLimiter, async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const {
@@ -5943,28 +6980,24 @@ app.post('/api/assignments/:id/submit', (req: Request, res: Response) => {
       attachmentUrl,
       attachmentName,
       attachmentType,
-      attachmentSize,
-      boardRoll: bodyBoardRoll,
-      classRoll: bodyClassRoll,
-      regNumber: bodyRegNumber,
-      college: bodyCollege,
-      department: bodyDepartment,
-      semester: bodySemester,
-      shift: bodyShift,
-      section: bodySection
+      attachmentSize
     } = req.body;
 
-    // Look up student record in roster if available
+    // Identity is derived from the session (and the server roster) ONLY.
+    // Body-supplied board roll / class roll / registration number / college
+    // / department / semester / shift / section are ignored: a caller must
+    // not be able to submit an assignment as somebody else, and the server
+    // must not fabricate placeholder rolls or registration numbers.
     const studentInRoster = academicStore.students.find(
-      s => s.id === session.userId || (session.boardRoll && s.boardRoll === session.boardRoll) || (bodyBoardRoll && s.boardRoll === String(bodyBoardRoll).trim())
+      s => s.id === session.userId || (session.boardRoll && s.boardRoll === session.boardRoll)
     );
 
-    const studentCollege = studentInRoster?.college || session.college || bodyCollege || 'Dhaka Polytechnic Institute';
-    const studentDept = studentInRoster?.department || session.department || bodyDepartment || 'Computer Science and Technology (CST)';
-    const studentSemester = Number(studentInRoster?.semester || session.semester || bodySemester || 6) as SemesterNumber;
-    const studentShift = (studentInRoster?.shift || session.shift || bodyShift || 'Morning') as Shift;
-    const studentSection = (studentInRoster?.section || session.section || bodySection || 'A1') as Section;
-    const studentBoardRoll = studentInRoster?.boardRoll || session.boardRoll || String(bodyBoardRoll || '542891').trim();
+    const studentCollege = studentInRoster?.college || session.college || 'Dhaka Polytechnic Institute';
+    const studentDept = studentInRoster?.department || session.department || 'Computer Science and Technology (CST)';
+    const studentSemester = Number(studentInRoster?.semester || session.semester || 6) as SemesterNumber;
+    const studentShift = (studentInRoster?.shift || session.shift || 'Morning') as Shift;
+    const studentSection = (studentInRoster?.section || session.section || 'A1') as Section;
+    const studentBoardRoll = studentInRoster?.boardRoll || session.boardRoll || '';
 
     // Check cohort eligibility against the assignment targeting
     const asgCollege = asg.college || 'Dhaka Polytechnic Institute';
@@ -5988,9 +7021,9 @@ app.post('/api/assignments/:id/submit', (req: Request, res: Response) => {
       academicStore.students.push({
         id: session.userId,
         name: session.name,
-        classRoll: String(bodyClassRoll || '99'),
+        classRoll: '',
         boardRoll: studentBoardRoll,
-        regNumber: String(bodyRegNumber || `1502${studentBoardRoll}`),
+        regNumber: '',
         college: normalizeCollege(studentCollege).name,
         department: normalizeTechnology(studentDept).name,
         semester: studentSemester,
@@ -6036,8 +7069,8 @@ app.post('/api/assignments/:id/submit', (req: Request, res: Response) => {
         studentId: session.userId,
         studentName: studentInRoster?.name || session.name,
         boardRoll: studentBoardRoll,
-        classRoll: studentInRoster?.classRoll || String(bodyClassRoll || '01'),
-        regNumber: studentInRoster?.regNumber || String(bodyRegNumber || ''),
+        classRoll: studentInRoster?.classRoll || '',
+        regNumber: studentInRoster?.regNumber || '',
         college: normalizeCollege(studentCollege).name,
         department: normalizeTechnology(studentDept).name,
         semester: studentSemester,
@@ -7247,9 +8280,9 @@ app.get('/api/schedule-config', (req: Request, res: Response) => {
   }
 });
 
-app.put('/api/schedule-config', (req: Request, res: Response) => {
+app.put('/api/schedule-config', requireAdminOrTeacher, (req: Request, res: Response) => {
   try {
-    const session = getAuthenticatedSession(req);
+    const session = (req as unknown as { session: ServerSession }).session;
     const body = req.body || {};
     const shift: Shift = body.shift === 'Day' ? 'Day' : 'Morning';
     const scopeKey = String(body.scopeKey || 'default').trim() || 'default';
@@ -7312,7 +8345,9 @@ app.put('/api/schedule-config', (req: Request, res: Response) => {
       periods: recalculatedPeriods,
       breaks,
       updatedAt: new Date().toISOString(),
-      updatedBy: session ? `${session.name} (${session.role})` : body.updatedBy || 'user'
+      // updatedBy is derived from the authenticated session only — a
+      // body-supplied value must not be able to impersonate anyone.
+      updatedBy: `${session.name} (${session.role})`
     };
 
     academicStore.shiftSchedules[key] = updatedConfig;
@@ -7339,7 +8374,7 @@ app.put('/api/schedule-config', (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/schedule-config/reset', (req: Request, res: Response) => {
+app.post('/api/schedule-config/reset', requireAdminOrTeacher, (req: Request, res: Response) => {
   try {
     const body = req.body || {};
     const shift: Shift = body.shift === 'Day' ? 'Day' : 'Morning';
@@ -8751,7 +9786,7 @@ app.delete('/api/routines/:id', (req: Request, res: Response) => {
  * - Synchronizes CaptainRecord state on the server and enforces the maximum of 2
  *   verified (`Approved`) Class Captains per `(college_id, department_id, semester, shift, section)`.
  */
-app.post('/api/captains/sync', (req: Request, res: Response) => {
+app.post('/api/captains/sync', requireAuth, (req: Request, res: Response) => {
   try {
     const body = req.body || {};
     const recordInput = body.captainRecord || body;
@@ -8761,6 +9796,13 @@ app.post('/api/captains/sync', (req: Request, res: Response) => {
         success: false,
         error: 'studentId, college, department, and semester are required for captain record synchronization.'
       });
+    }
+
+    // Identity comes from the session only: a caller may only sync their
+    // own captain record.
+    const session = (req as unknown as { session: ServerSession }).session;
+    if (String(recordInput.studentId) !== session.userId) {
+      return res.status(403).json({ success: false, error: 'You can only sync your own captain record.' });
     }
 
     const groupRes = resolveExplicitAcademicGroupInput({
@@ -8795,6 +9837,30 @@ app.post('/api/captains/sync', (req: Request, res: Response) => {
       }
     }
 
+    // Teacher endorsements are NEVER trusted from the client. An incoming
+    // endorsement is accepted only when the server already holds a matching
+    // one — on the existing captain record or in the endorsement registry
+    // (written by teacher-approve). Otherwise it is stripped, so a forged
+    // endorsement cannot approve a captain. When the client sends no
+    // endorsement, an existing server endorsement is kept, so the healing
+    // sync cannot erase one.
+    const incomingEndorsement = recordInput.teacherEndorsement;
+    const existingEndorsement = existingIdx >= 0
+      ? academicStore.captainRecords[existingIdx].teacherEndorsement
+      : undefined;
+    const registryEndorsement = (recordInput.id && academicStore.pendingTeacherEndorsements[String(recordInput.id)])
+      || (existingIdx >= 0 ? academicStore.pendingTeacherEndorsements[academicStore.captainRecords[existingIdx].id] : undefined);
+    const endorsementMatches = (candidate: unknown, reference: unknown): boolean => {
+      if (!candidate || typeof candidate !== 'object' || !reference || typeof reference !== 'object') return false;
+      const c = candidate as { teacherId?: unknown; endorsedAt?: unknown };
+      const r = reference as { teacherId?: unknown; endorsedAt?: unknown };
+      return c.teacherId === r.teacherId && c.endorsedAt === r.endorsedAt;
+    };
+    const trustedEndorsement = incomingEndorsement && (endorsementMatches(incomingEndorsement, existingEndorsement) || endorsementMatches(incomingEndorsement, registryEndorsement))
+      ? incomingEndorsement
+      : undefined;
+    const teacherEndorsement = trustedEndorsement || existingEndorsement;
+
     const normalizedCaptain: CaptainRecord = {
       id: existingIdx >= 0
         ? academicStore.captainRecords[existingIdx].id
@@ -8816,7 +9882,7 @@ app.post('/api/captains/sync', (req: Request, res: Response) => {
       appliedAt: String(recordInput.appliedAt || new Date().toISOString()),
       verificationFormUrl: recordInput.verificationFormUrl,
       verificationFormName: recordInput.verificationFormName,
-      teacherEndorsement: recordInput.teacherEndorsement,
+      teacherEndorsement,
       adminDecision: existingIdx >= 0
         ? academicStore.captainRecords[existingIdx].adminDecision
         : undefined,
@@ -9564,6 +10630,117 @@ function publicCommunityMessage(msg: CommunityMessageRecord): CommunityMessageRe
   return { ...msg, attachments: (msg.attachments || []).map(publicAttachment) };
 }
 
+// ---------------------------------------------------------------------------
+// Community attachment validation (magic-byte inspection).
+// The client claims a file type / mime / size, but none of it is trusted:
+// the bytes are decoded, the real type is detected from magic bytes, the
+// real byte length is capped (10 MB, 15 MB video), and HTML/SVG/scripts
+// and executables are rejected outright so a stored file can never be
+// served back as executable content in a browser.
+// ---------------------------------------------------------------------------
+function sanitizeDownloadFilename(name: string): string {
+  const base = String(name || 'document').split(/[\\/]/).pop() || 'document';
+  const cleaned = base.replace(/["\r\n\x00-\x1f\x7f]/g, '').trim();
+  return cleaned || 'document';
+}
+
+interface InspectedCommunityUpload {
+  mimeType: string;
+  fileType: 'image' | 'video' | 'pdf' | 'document';
+  fileSizeBytes: number;
+  fileData: string; // base64 payload, or '' when the client sent no bytes
+}
+
+function isPrintableTextBuffer(buf: Buffer): boolean {
+  const sample = buf.subarray(0, Math.min(buf.length, 8192));
+  for (const byte of sample) {
+    if (byte === 0x09 || byte === 0x0a || byte === 0x0d) continue;
+    if (byte < 0x20 || byte === 0x7f) return false;
+  }
+  return true;
+}
+
+function inspectCommunityUpload(rawDataUrl: string, claimedFileName: string): InspectedCommunityUpload {
+  const fileData = rawDataUrl.includes('base64,') ? rawDataUrl.split('base64,')[1] : '';
+  if (!fileData) {
+    // No bytes sent (legacy / seeded attachment). Never trust the claimed
+    // mime type; serve a safe generic type instead.
+    return { mimeType: 'application/octet-stream', fileType: 'document', fileSizeBytes: 0, fileData: '' };
+  }
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(fileData, 'base64');
+  } catch {
+    throw new Error('Attachment is not valid base64 data.');
+  }
+  if (buf.length === 0) {
+    throw new Error('Attachment is empty.');
+  }
+
+  // Reject active content masquerading as a document.
+  const head = buf.subarray(0, 512).toString('utf8').replace(/^\uFEFF/, '').trimStart().toLowerCase();
+  if (
+    head.startsWith('<html') || head.startsWith('<!doctype html') || head.startsWith('<head') ||
+    head.startsWith('<script') || head.startsWith('<svg')
+  ) {
+    throw new Error(`File ${claimedFileName} looks like a web page or script and cannot be uploaded.`);
+  }
+  if (buf[0] === 0x4d && buf[1] === 0x5a) { // 'MZ' Windows executable
+    throw new Error(`File ${claimedFileName} is an executable and cannot be uploaded.`);
+  }
+  if (buf[0] === 0x7f && buf[1] === 0x45 && buf[2] === 0x4c && buf[3] === 0x46) { // ELF binary
+    throw new Error(`File ${claimedFileName} is an executable and cannot be uploaded.`);
+  }
+  if (head.startsWith('#!')) {
+    throw new Error(`File ${claimedFileName} is a script and cannot be uploaded.`);
+  }
+
+  const ext = claimedFileName.split('.').pop()?.toLowerCase() || '';
+  let mimeType = 'application/octet-stream';
+  let fileType: InspectedCommunityUpload['fileType'] = 'document';
+
+  if (buf.subarray(0, 4).toString('ascii') === '%PDF') {
+    mimeType = 'application/pdf';
+    fileType = 'pdf';
+  } else if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+    mimeType = 'image/png';
+    fileType = 'image';
+  } else if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    mimeType = 'image/jpeg';
+    fileType = 'image';
+  } else if (buf.subarray(0, 6).toString('ascii') === 'GIF87a' || buf.subarray(0, 6).toString('ascii') === 'GIF89a') {
+    mimeType = 'image/gif';
+    fileType = 'image';
+  } else if (buf.subarray(0, 4).toString('ascii') === 'RIFF' && buf.subarray(8, 12).toString('ascii') === 'WEBP') {
+    mimeType = 'image/webp';
+    fileType = 'image';
+  } else if (buf.subarray(4, 8).toString('ascii') === 'ftyp') {
+    mimeType = 'video/mp4';
+    fileType = 'video';
+  } else if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) {
+    mimeType = 'video/webm';
+    fileType = 'video';
+  } else if (buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04) {
+    // ZIP container: Office documents and archives. The extension decides
+    // the mime; an unknown extension stays a generic archive.
+    if (ext === 'docx') mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    else if (ext === 'xlsx') mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    else if (ext === 'pptx') mimeType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    else mimeType = 'application/zip';
+    fileType = 'document';
+  } else if (isPrintableTextBuffer(buf)) {
+    mimeType = 'text/plain';
+    fileType = 'document';
+  }
+
+  const fileSizeBytes = buf.length;
+  const maxBytes = fileType === 'video' ? 15 * 1024 * 1024 : 10 * 1024 * 1024;
+  if (fileSizeBytes > maxBytes) {
+    throw new Error(`File ${claimedFileName} exceeds the ${fileType === 'video' ? '15MB' : '10MB'} size limit.`);
+  }
+  return { mimeType, fileType, fileSizeBytes, fileData };
+}
+
 app.post('/api/communities/:id/messages', (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
@@ -9592,54 +10769,49 @@ app.post('/api/communities/:id/messages', (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Message content or attachment is required.' });
     }
 
-    // Process attachments with strict file size and type validation
+    // Process attachments: the client claims a type / mime / size, but none
+    // of it is trusted. inspectCommunityUpload decodes the real bytes,
+    // detects the type from magic bytes, and enforces the size caps on the
+    // real decoded length. The bytes are persisted on the attachment record
+    // itself: files written to data/community-files/ are lost on every
+    // Render deploy and are not covered by the GitHub store backup, so disk
+    // storage alone meant every uploaded file came back as a fake
+    // placeholder PDF.
     const processedAttachments: CommunityAttachment[] = [];
     for (const att of rawAttachments) {
       const fileName = String(att.file_name || 'attachment.pdf').trim();
-      const fileType = att.file_type === 'video' ? 'video' : att.file_type === 'image' ? 'image' : att.file_type === 'pdf' ? 'pdf' : 'document';
-      const fileSizeBytes = Number(att.file_size_bytes || 0);
-
-      // File limits: Video max 15MB, other files max 10MB
-      if (fileType === 'video' && fileSizeBytes > 15 * 1024 * 1024) {
-        return res.status(400).json({ success: false, error: `Video ${fileName} exceeds the 15MB size limit.` });
-      }
-      if (fileType !== 'video' && fileSizeBytes > 10 * 1024 * 1024) {
-        return res.status(400).json({ success: false, error: `File ${fileName} exceeds the 10MB size limit.` });
-      }
-
-      // Small video duration validation: max 60 seconds
-      const durationSeconds = att.duration_seconds ? Math.round(Number(att.duration_seconds)) : undefined;
-      if (fileType === 'video' && durationSeconds && durationSeconds > 60) {
-        return res.status(400).json({ success: false, error: 'Video duration exceeds maximum allowed length of 60 seconds.' });
-      }
-
-      const attId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
       // The client sends the file bytes as a base64 data URL in `file_url`
-      // (older clients may send `base64_data`). Persist the bytes on the
-      // attachment record itself: files written to data/community-files/
-      // are lost on every Render deploy and are not covered by the GitHub
-      // store backup, so disk storage alone meant every uploaded file came
-      // back as a fake placeholder PDF. The old code read only
-      // `att.base64_data`, so the bytes were never saved at all.
+      // (older clients may send `base64_data`).
       const rawDataUrl =
         typeof att.base64_data === 'string' && att.base64_data
           ? att.base64_data
           : typeof att.file_url === 'string' && att.file_url.startsWith('data:')
             ? att.file_url
             : '';
-      const fileData = rawDataUrl.includes('base64,')
-        ? rawDataUrl.split('base64,')[1]
-        : '';
+      let inspected: InspectedCommunityUpload;
+      try {
+        inspected = inspectCommunityUpload(rawDataUrl, fileName);
+      } catch (err) {
+        return res.status(400).json({ success: false, error: (err as Error).message || 'Invalid attachment.' });
+      }
+
+      // Small video duration validation: max 60 seconds
+      const durationSeconds = att.duration_seconds ? Math.round(Number(att.duration_seconds)) : undefined;
+      if (inspected.fileType === 'video' && durationSeconds && durationSeconds > 60) {
+        return res.status(400).json({ success: false, error: 'Video duration exceeds maximum allowed length of 60 seconds.' });
+      }
+
+      const attId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
       processedAttachments.push({
         id: attId,
         file_name: fileName,
-        file_type: fileType,
-        mime_type: att.mime_type || (fileType === 'pdf' ? 'application/pdf' : fileType === 'video' ? 'video/mp4' : 'application/octet-stream'),
-        file_size_bytes: fileSizeBytes,
+        file_type: inspected.fileType,
+        mime_type: inspected.mimeType,
+        file_size_bytes: inspected.fileSizeBytes,
         file_url: `/api/communities/${comm.id}/files/${attId}`,
-        file_data: fileData || undefined,
+        file_data: inspected.fileData || undefined,
         duration_seconds: durationSeconds
       });
     }
@@ -9874,11 +11046,14 @@ app.get('/api/communities/:id/files/:fileId', (req: Request, res: Response) => {
 
     // Serve bytes stored on the attachment record itself — the durable path,
     // kept in the academic store (and its GitHub backup), so uploaded files
-    // survive Render deploys.
+    // survive Render deploys. Always served as an attachment with a
+    // sanitized filename and nosniff, so a stored file can never be
+    // executed as a web page in the browser.
     if (foundAtt?.file_data) {
       const buf = Buffer.from(foundAtt.file_data, 'base64');
       res.setHeader('Content-Type', foundAtt.mime_type || 'application/octet-stream');
-      res.setHeader('Content-Disposition', `inline; filename="${foundAtt.file_name || 'document'}"`);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Disposition', `attachment; filename="${sanitizeDownloadFilename(foundAtt.file_name || 'document')}"`);
       return res.send(buf);
     }
 
@@ -9889,13 +11064,15 @@ app.get('/api/communities/:id/files/:fileId', (req: Request, res: Response) => {
     if (matchDiskFile) {
       const diskPath = path.join(COMMUNITY_FILES_DIR, matchDiskFile);
       res.setHeader('Content-Type', foundAtt?.mime_type || 'application/octet-stream');
-      res.setHeader('Content-Disposition', `inline; filename="${foundAtt?.file_name || 'document'}"`);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Disposition', `attachment; filename="${sanitizeDownloadFilename(foundAtt?.file_name || 'document')}"`);
       return fs.createReadStream(diskPath).pipe(res);
     }
 
     // If file was not yet persisted to disk (e.g. mock seed), serve mock PDF/text payload
-    res.setHeader('Content-Type', foundAtt?.mime_type || 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${foundAtt?.file_name || 'document.pdf'}"`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', `attachment; filename="${sanitizeDownloadFilename(foundAtt?.file_name || 'document.pdf')}"`);
     return res.send(Buffer.from(`%PDF-1.4\n% DiplomaMate Study File: ${foundAtt?.file_name || fileId}\nCommunity: ${comm.name}`));
   } catch (err) {
     console.error('[Community File Access] Error:', err);
@@ -10041,16 +11218,16 @@ function getAdminManagedAccounts(): AdminManagedAccount[] {
   return Array.from(accounts.values());
 }
 
-function appendAdminAudit(
-  admin: ServerSession,
+function appendSystemAudit(
   action: string,
   targetId: string,
   targetName: string,
-  details?: string
+  details?: string,
+  adminId = 'system'
 ): void {
   academicStore.adminAuditLogs.unshift({
     id: `audit_${crypto.randomUUID()}`,
-    adminId: admin.userId,
+    adminId,
     action,
     targetId,
     targetName,
@@ -10058,6 +11235,16 @@ function appendAdminAudit(
     details
   });
   academicStore.adminAuditLogs = academicStore.adminAuditLogs.slice(0, 5000);
+}
+
+function appendAdminAudit(
+  admin: ServerSession,
+  action: string,
+  targetId: string,
+  targetName: string,
+  details?: string
+): void {
+  appendSystemAudit(action, targetId, targetName, details, admin.userId);
 }
 
 // 15P. ADMIN ACCOUNT AND COMMUNITY MANAGEMENT ENDPOINTS
@@ -10091,7 +11278,7 @@ app.get('/api/admin/accounts/:id', requireSystemAdmin, (req: Request, res: Respo
     success: true,
     account: {
       ...account,
-      details: student ? { ...student } : teacher ? sanitizeTeacher(teacher) : application || null,
+      details: student ? sanitizeStudent(student) : teacher ? sanitizeTeacher(teacher) : application || null,
       application: application || null
     }
   });
@@ -11035,7 +12222,7 @@ app.get('/api/notices/bteb', async (req: Request, res: Response) => {
 /**
  * 16A-2. TRIGGER ON-DEMAND BTEB NOTICE SYNC OR ADMIN ASSISTED IMPORT (`POST /api/notices/bteb/sync`)
  */
-app.post('/api/notices/bteb/sync', async (req: Request, res: Response) => {
+app.post('/api/notices/bteb/sync', requireAuth, async (req: Request, res: Response) => {
   try {
     const { simulateOutage, manualNotices } = req.body || {};
 
@@ -12289,7 +13476,7 @@ app.delete('/api/jobs/:id', (req: Request, res: Response) => {
 /**
  * 16C-5. SYNC / REFRESH JOB CIRCULARS (`POST /api/jobs/sync`)
  */
-app.post('/api/jobs/sync', async (_req: Request, res: Response) => {
+app.post('/api/jobs/sync', requireAuth, async (_req: Request, res: Response) => {
   try {
     const result = await syncCareerjetJobs();
     return res.status(200).json({
@@ -12302,6 +13489,21 @@ app.post('/api/jobs/sync', async (_req: Request, res: Response) => {
     console.error('[POST /api/jobs/sync] Error:', err);
     return res.status(500).json({ success: false, error: 'Failed to refresh job circulars.' });
   }
+});
+
+// Global error handler: never leak stack traces (or other internals) to
+// clients in production. Async route errors land here via next(err).
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[Server] Unhandled error:', err);
+  if (res.headersSent) return;
+  if (process.env.NODE_ENV === 'development') {
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error.',
+      details: err instanceof Error ? err.message : String(err)
+    });
+  }
+  return res.status(500).json({ success: false, error: 'Internal server error.' });
 });
 
 // Mount Vite middleware in development

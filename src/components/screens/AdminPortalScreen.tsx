@@ -49,6 +49,7 @@ import {
 } from '../../types';
 import { TECHNOLOGIES_DIRECTORY } from '../../data/directoryData';
 import { AdminManagementScreen } from './AdminManagementScreen';
+import { LiquidFillLoader } from '../LiquidFillLoader';
 
 export const AdminPortalScreen: React.FC = () => {
   const { 
@@ -609,10 +610,7 @@ export const AdminPortalScreen: React.FC = () => {
   if (isCheckingAdminSession) {
     return (
       <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs space-y-2">
-        <RefreshCw className="w-6 h-6 text-brand-blue animate-spin mx-auto" />
-        <p className="text-xs font-semibold text-slate-600">
-          Verifying System Administrator session with server...
-        </p>
+        <LiquidFillLoader size={44} label="Verifying System Administrator session with server..." />
       </div>
     );
   }

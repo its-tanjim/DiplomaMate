@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../services/apiClient';
+import { LiquidFillLoader } from '../LiquidFillLoader';
 import {
   AcademicCommunity,
   CommunityMembershipRecord
@@ -430,7 +431,7 @@ export const AdminManagementScreen: React.FC = () => {
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-surface p-10 text-sm text-slate-600">
-          <LoaderCircle className="h-5 w-5 animate-spin" /> Loading management data...
+          <LiquidFillLoader size={36} label="Loading management data..." />
         </div>
       ) : (
         <>

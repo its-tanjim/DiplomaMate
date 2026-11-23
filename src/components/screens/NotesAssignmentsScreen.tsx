@@ -466,7 +466,10 @@ export const NotesAssignmentsScreen: React.FC = () => {
   const handleTriggerJobSync = async () => {
     setIsSyncingJobs(true);
     try {
-      const res = await apiFetch('/api/jobs/sync', { method: 'POST' });
+      const res = await apiFetch('/api/jobs/sync', {
+        method: 'POST',
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
+      });
       const data = await res.json();
       if (data.message) {
         showToast(data.message);

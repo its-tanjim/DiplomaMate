@@ -726,6 +726,11 @@ export interface EnrolledStudent {
   attendanceRate: string;
   createdAt?: string;
   isRegisteredAccount?: boolean;
+  // Student login PIN (PBKDF2-SHA256, 100,000 iterations = v2).
+  // Never sent to the client — see sanitizeStudent() in server.ts.
+  pinHash?: string;
+  pinSalt?: string;
+  pinHashVersion?: number;
 }
 
 export const MOCK_ENROLLED_STUDENTS: EnrolledStudent[] = [

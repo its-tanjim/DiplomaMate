@@ -1,5 +1,6 @@
 import { apiFetch } from '../../services/apiClient';
 import { nativeService } from '../../services/nativeService';
+import { LiquidFillLoader } from '../LiquidFillLoader';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -1165,10 +1166,7 @@ export const BTEBResultsScreen: React.FC = () => {
         <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-surface shadow-xs">
           {isZoneFrameLoading && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-surface p-6 text-center">
-              <div className="w-10 h-10 rounded-full bg-blue-50 border-2 border-brand-blue border-t-transparent animate-spin" />
-              <p className="text-xs text-slate-500 font-semibold">
-                Loading result from BTEB Result Zone...
-              </p>
+              <LiquidFillLoader size={44} label="Loading result from BTEB Result Zone..." />
             </div>
           )}
           <iframe
@@ -1267,10 +1265,7 @@ export const BTEBResultsScreen: React.FC = () => {
         <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-surface shadow-xs">
           {isOfficialFrameLoading && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-surface p-6 text-center">
-              <div className="w-10 h-10 rounded-full bg-blue-50 border-2 border-brand-blue border-t-transparent animate-spin" />
-              <p className="text-xs text-slate-500 font-semibold">
-                Loading the official BTEB result portal...
-              </p>
+              <LiquidFillLoader size={44} label="Loading the official BTEB result portal..." />
             </div>
           )}
           <iframe
@@ -1574,7 +1569,7 @@ export const BTEBResultsScreen: React.FC = () => {
           {/* Loading State Banner */}
           {searchStatus === 'loading' && (
             <div className="p-6 bg-surface rounded-2xl border border-blue-100 text-center space-y-3 shadow-xs">
-              <div className="w-10 h-10 rounded-full bg-blue-50 border-2 border-brand-blue border-t-transparent animate-spin mx-auto" />
+              <LiquidFillLoader size={44} />
               <div className="space-y-1">
                 <h3 className="text-sm font-bold text-text-primary">
                   Checking DiplomaMate’s Imported Gazette...

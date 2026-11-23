@@ -27,9 +27,21 @@ import { CommunityScreen } from './components/screens/CommunityScreen';
 import { CheckCircle2 } from 'lucide-react';
 import { nativeService } from './services/nativeService';
 import { AppUpdateBanner } from './components/AppUpdateBanner';
+import { SplashScreen } from './components/SplashScreen';
 
 const AppContent: React.FC = () => {
   const { isLoggedIn, activeScreen, setActiveScreen, toastMessage, accountType, isServerVerifiedAdmin, openNotesSection } = useApp();
+  const [showSplash, setShowSplash] = React.useState(true);
+
+  // App-open splash: centred 3D-animated logo for ~1.2s (tappable to skip)
+  React.useEffect(() => {
+    const timer = setTimeout(() => setShowSplash(false), 1200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (showSplash) {
+    return <SplashScreen onDone={() => setShowSplash(false)} />;
+  }
 
   // Initialize Android status bar and notification channels on mount
   React.useEffect(() => {

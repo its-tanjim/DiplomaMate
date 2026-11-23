@@ -1,6 +1,14 @@
 import { apiFetch } from '../../services/apiClient';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { LiquidFillLoader } from '../LiquidFillLoader';
+import { TurnstileWidget, isTurnstileEnabled } from '../TurnstileWidget';
+import {
+  renderGoogleButton,
+  signInWithFacebook,
+  isGoogleSignInEnabled,
+  isFacebookSignInEnabled
+} from '../../services/socialAuth';
 import { 
   POLYTECHNIC_COLLEGES,
   DEPARTMENTS,
@@ -34,7 +42,9 @@ import {
   Lock,
   Building,
   ArrowRight,
-  Users
+  Users,
+  Smartphone,
+  Facebook
 } from 'lucide-react';
 
 const BANGLA_DIGIT_MAP: Record<string, string> = {
@@ -49,17 +59,53 @@ const normalizeDigits = (val: string): string =>
     .replace(/[\s\-_]+/g, '');
 
 export const WelcomeScreen: React.FC = () => {
-  const { login, authenticateStudent, teacherLogin, teacherRegister, setActiveScreen, showToast } = useApp();
+  const {
+    login,
+    authenticateStudent,
+    requestPinSetup,
+    setupStudentPin,
+    verifySmsCode,
+    resendSmsCode,
+    socialLogin,
+    teacherLogin,
+    teacherRegister,
+    setActiveScreen,
+    showToast
+  } = useApp();
   const [tab, setTab] = useState<'signin' | 'signup'>('signin');
   const [selectedRole, setSelectedRole] = useState<AccountType>('student');
 
   // Sign In Form State
   const [signInRoll, setSignInRoll] = useState('');
-  const [signInReg, setSignInReg] = useState('');
+  const [signInPin, setSignInPin] = useState('');
   const [teacherPhoneOrEmail, setTeacherPhoneOrEmail] = useState('');
   const [teacherPin, setTeacherPin] = useState('');
   const [signInError, setSignInError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // One-time PIN setup (migration for accounts created before PINs)
+  const [showPinSetup, setShowPinSetup] = useState(false);
+  const [pinSetupReg, setPinSetupReg] = useState('');
+  const [pinSetupToken, setPinSetupToken] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+
+  // SMS code verification step (when SMS_VERIFICATION_ENABLED on the server)
+  const [smsChallenge, setSmsChallenge] = useState<{ id: string; maskedPhone?: string; name?: string } | null>(null);
+  const [smsCode, setSmsCode] = useState('');
+
+  // Turnstile CAPTCHA proof (only rendered when a site key is configured)
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileKey, setTurnstileKey] = useState(0);
+  const turnstileProof = { token: turnstileToken, enabled: isTurnstileEnabled };
+  const resetTurnstile = () => {
+    setTurnstileToken(null);
+    setTurnstileKey(k => k + 1);
+  };
+
+  // Social sign-in (buttons only render when the client ids are configured)
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+  const [socialLoading, setSocialLoading] = useState(false);
 
   // Student / Captain Sign Up Form State
   const [signUpData, setSignUpData] = useState<Partial<StudentProfile>>({
@@ -76,6 +122,8 @@ export const WelcomeScreen: React.FC = () => {
     accountType: 'student',
     phone: ''
   });
+  const [signUpPin, setSignUpPin] = useState('');
+  const [signUpConfirmPin, setSignUpConfirmPin] = useState('');
 
   // Teacher Sign Up Form State
   const [teacherName, setTeacherName] = useState('');
@@ -119,19 +167,24 @@ export const WelcomeScreen: React.FC = () => {
           return;
         }
 
-        const res = await teacherLogin(teacherPhoneOrEmail.trim(), teacherPin.trim());
+        const res = await teacherLogin(teacherPhoneOrEmail.trim(), teacherPin.trim(), turnstileProof);
+        resetTurnstile();
         if (!res.success) {
           setSignInError(res.message);
         }
       } else {
         const cleanRoll = normalizeDigits(signInRoll);
-        const cleanReg = normalizeDigits(signInReg);
-        if (!cleanRoll || !cleanReg) {
-          setSignInError('Please enter both Board Roll and Registration Number.');
+        const cleanPin = normalizeDigits(signInPin);
+        if (!cleanRoll || !cleanPin) {
+          setSignInError('Please enter both Board Roll and your 4–6 digit PIN.');
           return;
         }
         if (!/^\d{4,8}$/.test(cleanRoll)) {
           setSignInError('Board Roll must be a valid 4 to 8 digit number.');
+          return;
+        }
+        if (!/^\d{4,6}$/.test(cleanPin)) {
+          setSignInError('PIN must be 4 to 6 digits.');
           return;
         }
         if (selectedRole !== 'student' && selectedRole !== 'class_captain') {
@@ -139,7 +192,17 @@ export const WelcomeScreen: React.FC = () => {
           return;
         }
 
-        const result = await authenticateStudent(cleanRoll, cleanReg, selectedRole);
+        const result = await authenticateStudent(cleanRoll, cleanPin, selectedRole, turnstileProof);
+        resetTurnstile();
+        if (result.requiresSmsVerification && result.smsChallengeId) {
+          setSmsChallenge({
+            id: result.smsChallengeId,
+            maskedPhone: result.maskedPhone,
+            name: result.name
+          });
+          setSmsCode('');
+          return;
+        }
         if (!result.success) {
           setSignInError(result.message);
         }
@@ -148,6 +211,140 @@ export const WelcomeScreen: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
+  // One-time PIN setup for accounts created before PINs existed:
+  // verify Board Roll + Registration Number, then choose a PIN.
+  const handlePinSetupRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSignInError('');
+    setIsSubmitting(true);
+    try {
+      const cleanRoll = normalizeDigits(signInRoll);
+      const cleanReg = normalizeDigits(pinSetupReg);
+      if (!cleanRoll || !cleanReg) {
+        setSignInError('Please enter both Board Roll and Registration Number.');
+        return;
+      }
+      const role = selectedRole === 'class_captain' ? 'class_captain' : 'student';
+      const result = await requestPinSetup(cleanRoll, cleanReg, role, turnstileProof);
+      resetTurnstile();
+      if (result.requiresPinSetup && result.pinSetupToken) {
+        setPinSetupToken(result.pinSetupToken);
+        setNewPin('');
+        setConfirmPin('');
+        return;
+      }
+      setSignInError(result.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePinSetupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSignInError('');
+    const cleanPin = normalizeDigits(newPin);
+    if (!/^\d{4,6}$/.test(cleanPin)) {
+      setSignInError('PIN must be 4 to 6 digits.');
+      return;
+    }
+    if (cleanPin !== normalizeDigits(confirmPin)) {
+      setSignInError('PIN confirmation does not match.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const role = selectedRole === 'class_captain' ? 'class_captain' : 'student';
+      const result = await setupStudentPin(pinSetupToken, cleanPin, role);
+      if (!result.success) {
+        setSignInError(result.message);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // SMS code step (only shown when the server has SMS verification on).
+  const handleSmsVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!smsChallenge) return;
+    const code = normalizeDigits(smsCode);
+    if (!/^\d{6}$/.test(code)) {
+      setSignInError('Please enter the 6-digit code sent to your phone.');
+      return;
+    }
+    setSignInError('');
+    setIsSubmitting(true);
+    try {
+      const result = await verifySmsCode(smsChallenge.id, code);
+      if (!result.success) {
+        setSignInError(result.message);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSmsResend = async () => {
+    if (!smsChallenge) return;
+    setSignInError('');
+    const result = await resendSmsCode(smsChallenge.id);
+    if (!result.success) {
+      setSignInError(result.message);
+    } else {
+      showToast('A new SMS code was sent.');
+    }
+  };
+
+  const handleSocialLogin = async (provider: 'google' | 'facebook', token: string) => {
+    setSignInError('');
+    setSocialLoading(true);
+    try {
+      const role = selectedRole === 'class_captain' ? 'class_captain' : 'student';
+      const result = await socialLogin(provider, token, role);
+      if (!result.success) {
+        setSignInError(result.message);
+      }
+    } finally {
+      setSocialLoading(false);
+    }
+  };
+
+  const handleFacebookLogin = async () => {
+    setSignInError('');
+    setSocialLoading(true);
+    try {
+      const accessToken = await signInWithFacebook();
+      const role = selectedRole === 'class_captain' ? 'class_captain' : 'student';
+      const result = await socialLogin('facebook', accessToken, role);
+      if (!result.success) {
+        setSignInError(result.message);
+      }
+    } catch (err) {
+      setSignInError(err instanceof Error ? err.message : 'Facebook sign-in failed.');
+    } finally {
+      setSocialLoading(false);
+    }
+  };
+
+  // Render the official Google button when it is configured and visible.
+  useEffect(() => {
+    if (tab !== 'signin' || selectedRole === 'teacher' || !isGoogleSignInEnabled) return;
+    const container = googleButtonRef.current;
+    if (!container) return;
+    let cancelled = false;
+    container.innerHTML = '';
+    renderGoogleButton(container, idToken => {
+      if (cancelled) return;
+      void handleSocialLogin('google', idToken);
+    }).catch(err => {
+      console.error('Google sign-in failed to load:', err);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, selectedRole]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,7 +389,8 @@ export const WelcomeScreen: React.FC = () => {
           semestersTaught: teacherSemesters,
           shift: teacherShift,
           pin: teacherNewPin.trim()
-        });
+        }, turnstileProof);
+        resetTurnstile();
 
         if (!res.success) {
           setSignInError(res.message);
@@ -211,6 +409,15 @@ export const WelcomeScreen: React.FC = () => {
         }
         if (!/^\d{4,8}$/.test(cleanRoll)) {
           setSignInError('Board Roll must be a valid 4 to 8 digit number.');
+          return;
+        }
+        const cleanPin = normalizeDigits(signUpPin);
+        if (!/^\d{4,6}$/.test(cleanPin)) {
+          setSignInError('Please choose a 4–6 digit PIN. You will sign in with Board Roll + PIN.');
+          return;
+        }
+        if (cleanPin !== normalizeDigits(signUpConfirmPin)) {
+          setSignInError('PIN confirmation does not match.');
           return;
         }
 
@@ -236,8 +443,14 @@ export const WelcomeScreen: React.FC = () => {
           const response = await apiFetch('/api/students/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newProfile)
+            body: JSON.stringify({
+              ...newProfile,
+              pin: cleanPin,
+              turnstileToken: turnstileToken || undefined,
+              turnstileEnabled: isTurnstileEnabled
+            })
           });
+          resetTurnstile();
           const data = await response.json();
           if (!response.ok || !data.success || !data.account) {
             setSignInError(data.error || 'Could not create your account.');
@@ -328,7 +541,7 @@ export const WelcomeScreen: React.FC = () => {
 
   const handleFinishOnboarding = async () => {
     if (onboardingProfile) {
-      const result = await login(onboardingProfile);
+      const result = await login(onboardingProfile, normalizeDigits(signUpPin));
       if (!result.success) {
         showToast(result.message);
         return;
@@ -378,9 +591,8 @@ export const WelcomeScreen: React.FC = () => {
               </div>
 
               {loadingRecommendations ? (
-                <div className="py-8 text-center text-xs text-slate-400">
-                  <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                  <span>Finding your cohort study groups...</span>
+                <div className="py-8 flex justify-center">
+                  <LiquidFillLoader size={44} label="Finding your cohort study groups..." />
                 </div>
               ) : recommendedCommunities.length === 0 ? (
                 <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 text-center space-y-1.5">
@@ -442,9 +654,9 @@ export const WelcomeScreen: React.FC = () => {
   return (
     <div className="min-h-screen bg-app-bg flex flex-col justify-center py-8 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        {/* App Logo & Header */}
+        {/* App Logo & Header (the splash screen carries the big logo moment) */}
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white shadow-lg shadow-blue-500/20 mb-3 overflow-hidden">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-white shadow-lg shadow-blue-500/20 mb-3 overflow-hidden">
             <img src="/diploma-mate-logo.png" alt="" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
@@ -531,97 +743,312 @@ export const WelcomeScreen: React.FC = () => {
           </div>
 
           {signInError && (
-            <div className="mb-4 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+            <div role="alert" className="mb-4 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>{signInError}</span>
             </div>
           )}
 
-          {/* SIGN IN FORM */}
+          {/* SIGN IN — Board Roll + PIN, with SMS-code and PIN-setup steps */}
           {tab === 'signin' && (
-            <form onSubmit={handleSignIn} className="space-y-3.5">
-              {selectedRole === 'teacher' ? (
-                <>
-                  <div>
-                    <label className="block text-xs font-semibold text-text-primary mb-1">
-                      Faculty Phone Number or Institutional Email
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="+880 1819-334455 or teacher@dpi.gov.bd"
-                      value={teacherPhoneOrEmail}
-                      onChange={(e) => setTeacherPhoneOrEmail(e.target.value)}
-                      className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-text-primary mb-1 flex items-center justify-between">
-                      <span>Faculty Security PIN</span>
-                    </label>
-                    <input
-                      type="password"
-                      required
-                      maxLength={8}
-                      placeholder="Enter 4-8 digit PIN"
-                      value={teacherPin}
-                      onChange={(e) => setTeacherPin(e.target.value)}
-                      className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <p className="text-[11px] text-slate-500 bg-blue-50/60 border border-blue-100 p-2 rounded-xl">
-                    Institutional faculty PIN is salt-hashed on the server with 5-attempt rate-limiting lockout.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-xs font-semibold text-text-primary mb-1">
-                      BTEB Board Roll Number
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Enter your Board Roll Number"
-                      value={signInRoll}
-                      onChange={(e) => setSignInRoll(e.target.value)}
-                      className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-text-primary mb-1">
-                      Registration Number
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Enter your Registration Number"
-                      value={signInReg}
-                      onChange={(e) => setSignInReg(e.target.value)}
-                      className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  {selectedRole === 'class_captain' && (
-                    <p className="text-[11px] text-teal-700 bg-teal-50/70 border border-teal-200 p-2 rounded-xl">
-                      ★ Class Captain login requires prior Guide Teacher and administrator verification.
+            <>
+              {smsChallenge ? (
+                <form onSubmit={handleSmsVerify} className="space-y-3.5">
+                  <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-center space-y-1">
+                    <Smartphone className="w-5 h-5 text-blue-600 mx-auto" />
+                    <p className="text-xs font-bold text-slate-800">
+                      {smsChallenge.name ? `Hi ${smsChallenge.name}, a code was sent` : 'A code was sent'}
+                      {smsChallenge.maskedPhone ? ` to ${smsChallenge.maskedPhone}` : ' to your phone'}
                     </p>
+                    <p className="text-[11px] text-slate-500">
+                      Enter the 6-digit code. It expires in 10 minutes.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text-primary mb-1">
+                      SMS Verification Code
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={6}
+                      inputMode="numeric"
+                      placeholder="• • • • • •"
+                      value={smsCode}
+                      onChange={(e) => setSmsCode(e.target.value)}
+                      className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 tracking-[0.5em] font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="dm-primary-action w-full py-3 px-4 text-sm font-bold shadow-sm flex items-center justify-center gap-2"
+                  >
+                    {isSubmitting && <LiquidFillLoader size={18} />}
+                    <span>{isSubmitting ? 'Verifying...' : 'Verify Code & Sign In'}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => { setSmsChallenge(null); setSmsCode(''); setSignInError(''); }}
+                      className="font-semibold text-slate-500 hover:text-text-primary cursor-pointer"
+                    >
+                      ← Back to Sign In
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSmsResend}
+                      className="font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
+                    >
+                      Resend Code
+                    </button>
+                  </div>
+                </form>
+              ) : showPinSetup ? (
+                pinSetupToken ? (
+                  <form onSubmit={handlePinSetupSubmit} className="space-y-3.5">
+                    <div className="p-3 rounded-xl bg-teal-50/70 border border-teal-200 text-center">
+                      <p className="text-xs font-bold text-teal-800">Almost there — choose your PIN</p>
+                      <p className="text-[11px] text-teal-700 mt-0.5">
+                        From now on you will sign in with Board Roll + this PIN.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-text-primary mb-1">
+                          New PIN (4–6 digits)
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          maxLength={6}
+                          inputMode="numeric"
+                          placeholder="Choose a PIN"
+                          value={newPin}
+                          onChange={(e) => setNewPin(e.target.value)}
+                          className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-text-primary mb-1">
+                          Confirm PIN
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          maxLength={6}
+                          inputMode="numeric"
+                          placeholder="Re-enter PIN"
+                          value={confirmPin}
+                          onChange={(e) => setConfirmPin(e.target.value)}
+                          className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="dm-primary-action w-full py-3 px-4 text-sm font-bold shadow-sm flex items-center justify-center gap-2"
+                    >
+                      {isSubmitting && <LiquidFillLoader size={18} />}
+                      <span>{isSubmitting ? 'Setting PIN...' : 'Set PIN & Sign In'}</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowPinSetup(false); setPinSetupToken(''); setSignInError(''); }}
+                      className="w-full text-center text-[11px] font-semibold text-slate-500 hover:text-text-primary cursor-pointer"
+                    >
+                      ← Back to Sign In
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handlePinSetupRequest} className="space-y-3.5">
+                    <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-center">
+                      <p className="text-xs font-bold text-slate-800">Set up your PIN</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Accounts created before PINs existed sign in once with Board Roll +
+                        Registration Number to set a PIN.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">
+                        BTEB Board Roll Number
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Enter your Board Roll Number"
+                        value={signInRoll}
+                        onChange={(e) => setSignInRoll(e.target.value)}
+                        className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">
+                        Registration Number
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Enter your Registration Number"
+                        value={pinSetupReg}
+                        onChange={(e) => setPinSetupReg(e.target.value)}
+                        className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <TurnstileWidget key={turnstileKey} onToken={setTurnstileToken} />
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="dm-primary-action w-full py-3 px-4 text-sm font-bold shadow-sm flex items-center justify-center gap-2"
+                    >
+                      {isSubmitting && <LiquidFillLoader size={18} />}
+                      <span>{isSubmitting ? 'Verifying...' : 'Continue to Set PIN'}</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowPinSetup(false); setSignInError(''); }}
+                      className="w-full text-center text-[11px] font-semibold text-slate-500 hover:text-text-primary cursor-pointer"
+                    >
+                      ← Back to Sign In
+                    </button>
+                  </form>
+                )
+              ) : (
+                <form onSubmit={handleSignIn} className="space-y-3.5">
+                  {selectedRole === 'teacher' ? (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-text-primary mb-1">
+                          Faculty Phone Number or Institutional Email
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="+880 1819-334455 or teacher@dpi.gov.bd"
+                          value={teacherPhoneOrEmail}
+                          onChange={(e) => setTeacherPhoneOrEmail(e.target.value)}
+                          className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-text-primary mb-1 flex items-center justify-between">
+                          <span>Faculty Security PIN</span>
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          maxLength={8}
+                          placeholder="Enter 4-8 digit PIN"
+                          value={teacherPin}
+                          onChange={(e) => setTeacherPin(e.target.value)}
+                          className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <p className="text-[11px] text-slate-500 bg-blue-50/60 border border-blue-100 p-2 rounded-xl">
+                        Institutional faculty PIN is salt-hashed on the server with 5-attempt rate-limiting lockout.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-text-primary mb-1">
+                          BTEB Board Roll Number
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Enter your Board Roll Number"
+                          value={signInRoll}
+                          onChange={(e) => setSignInRoll(e.target.value)}
+                          className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-text-primary mb-1">
+                          Security PIN
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          maxLength={6}
+                          inputMode="numeric"
+                          placeholder="Enter your 4–6 digit PIN"
+                          value={signInPin}
+                          onChange={(e) => setSignInPin(e.target.value)}
+                          className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      {selectedRole === 'class_captain' && (
+                        <p className="text-[11px] text-teal-700 bg-teal-50/70 border border-teal-200 p-2 rounded-xl">
+                          ★ Class Captain login requires prior Guide Teacher and administrator verification.
+                        </p>
+                      )}
+                    </>
                   )}
-                </>
+
+                  <TurnstileWidget key={turnstileKey} onToken={setTurnstileToken} />
+
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="dm-primary-action w-full py-3 px-4 text-sm font-bold shadow-sm flex items-center justify-center gap-2"
+                  >
+                    {isSubmitting && <LiquidFillLoader size={18} />}
+                    <span>{isSubmitting ? 'Authenticating...' : `Sign In as ${selectedRole === 'teacher' ? 'Teacher' : selectedRole === 'class_captain' ? 'Class Captain' : 'Student'}`}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </form>
               )}
 
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="dm-primary-action w-full py-3 px-4 text-sm font-bold shadow-sm flex items-center justify-center gap-2"
-              >
-                <span>{isSubmitting ? 'Authenticating...' : `Sign In as ${selectedRole === 'teacher' ? 'Teacher' : selectedRole === 'class_captain' ? 'Class Captain' : 'Student'}`}</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </form>
+              {/* Social sign-in (only when the OAuth apps are configured) */}
+              {!smsChallenge && !showPinSetup && selectedRole !== 'teacher' && (isGoogleSignInEnabled || isFacebookSignInEnabled) && (
+                <div className="mt-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="flex-1 h-px bg-slate-200" />
+                    <span className="text-[11px] font-semibold text-slate-400">or continue with</span>
+                    <span className="flex-1 h-px bg-slate-200" />
+                  </div>
+                  <div className="space-y-2.5">
+                    {isGoogleSignInEnabled && (
+                      <div ref={googleButtonRef} className="flex justify-center [&>div]:w-full [&>div]:flex [&>div]:justify-center" />
+                    )}
+                    {isFacebookSignInEnabled && (
+                      <button
+                        type="button"
+                        onClick={handleFacebookLogin}
+                        disabled={socialLoading}
+                        className="w-full py-2.5 rounded-xl bg-[#1877f2] hover:bg-[#1667d6] text-white text-sm font-bold shadow-sm flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-60"
+                      >
+                        {socialLoading ? <LiquidFillLoader size={18} /> : <Facebook className="w-4 h-4" />}
+                        <span>Continue with Facebook</span>
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 text-center mt-2">
+                    Social sign-in works with the email on your existing DiplomaMate account.
+                  </p>
+                </div>
+              )}
+
+              {/* One-time PIN setup for pre-PIN accounts */}
+              {!smsChallenge && !showPinSetup && selectedRole !== 'teacher' && (
+                <button
+                  type="button"
+                  onClick={() => { setShowPinSetup(true); setSignInError(''); }}
+                  className="w-full mt-4 text-center text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
+                >
+                  First time here? Set up my PIN →
+                </button>
+              )}
+            </>
           )}
 
           {/* SIGN UP FORM */}
@@ -838,6 +1265,50 @@ export const WelcomeScreen: React.FC = () => {
                     </div>
                   </div>
 
+                  <div>
+                    <label className="block text-xs font-semibold text-text-primary mb-1">Phone Number (for SMS login verification)</label>
+                    <input
+                      type="tel"
+                      placeholder="+880 1XXX-XXXXXX"
+                      value={signUpData.phone}
+                      onChange={(e) => setSignUpData({ ...signUpData, phone: e.target.value })}
+                      className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">Security PIN (4–6 digits) *</label>
+                      <input
+                        type="password"
+                        required
+                        maxLength={6}
+                        inputMode="numeric"
+                        placeholder="Choose a PIN"
+                        value={signUpPin}
+                        onChange={(e) => setSignUpPin(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-center font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">Confirm PIN *</label>
+                      <input
+                        type="password"
+                        required
+                        maxLength={6}
+                        inputMode="numeric"
+                        placeholder="Re-enter PIN"
+                        value={signUpConfirmPin}
+                        onChange={(e) => setSignUpConfirmPin(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-center font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 bg-blue-50/60 border border-blue-100 p-2 rounded-xl">
+                    You will sign in with your Board Roll + this PIN. Keep it secret — never share it with anyone.
+                  </p>
+
                   <SearchableCollegeSelect
                     value={signUpData.college || ''}
                     onChange={(name) => setSignUpData({ ...signUpData, college: name })}
@@ -915,6 +1386,8 @@ export const WelcomeScreen: React.FC = () => {
                 </>
               )}
 
+              <TurnstileWidget key={turnstileKey} onToken={setTurnstileToken} />
+
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -926,6 +1399,7 @@ export const WelcomeScreen: React.FC = () => {
                       : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
+                {isSubmitting && <LiquidFillLoader size={18} />}
                 <span>{isSubmitting ? 'Registering...' : `Complete ${selectedRole === 'teacher' ? 'Teacher' : selectedRole === 'class_captain' ? 'Captain' : 'Student'} Registration`}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
