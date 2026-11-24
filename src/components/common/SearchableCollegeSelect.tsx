@@ -118,9 +118,6 @@ export const SearchableCollegeSelect: React.FC<SearchableCollegeSelectProps> = (
             <span>{label}</span>
             {required && <span className="text-rose-500">*</span>}
           </span>
-          <span className="text-[10px] text-slate-400 font-normal">
-            46 Govt Institutions
-          </span>
         </label>
       )}
 

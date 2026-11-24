@@ -32,6 +32,7 @@ export const TeachersContactsScreen: React.FC = () => {
   const { 
     teachers, 
     addTeacher, 
+    updateTeacherContact,
     archiveTeacherContact,
     accountType, 
     userProfile,
@@ -42,6 +43,8 @@ export const TeachersContactsScreen: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDeptFilter, setSelectedDeptFilter] = useState('All');
   const [showAddModal, setShowAddModal] = useState(false);
+  // Contact being edited by the admin (null = adding a new contact)
+  const [editingContact, setEditingContact] = useState<TeacherContact | null>(null);
 
   // Archive / Removal confirmation modal state
   const [contactToArchive, setContactToArchive] = useState<TeacherContact | null>(null);
@@ -81,6 +84,8 @@ export const TeachersContactsScreen: React.FC = () => {
   const isStudent = accountType === 'student';
   const isCaptain = accountType === 'class_captain';
   const isTeacher = accountType === 'teacher';
+  // System Administrator has full access: add / edit / archive ANY contact.
+  const isAdmin = accountType === 'system_admin';
 
   // Helper to check if captain is permitted to manage this contact based on cohort scope
   const isWithinCaptainScope = (tch: TeacherContact): boolean => {
@@ -116,6 +121,48 @@ export const TeachersContactsScreen: React.FC = () => {
     return matchesSearch && t.department.toLowerCase().includes(selectedDeptFilter.toLowerCase());
   });
 
+  const resetNewTeacherForm = () => {
+    setNewTeacher({
+      name: '',
+      designation: 'Senior Instructor',
+      collegeName: userProfile.college || 'Dhaka Polytechnic Institute',
+      department: userProfile.department || 'Computer Science and Technology (CST)',
+      regulation: userProfile.regulation || '2022',
+      semester: userProfile.semester || 6,
+      subject: '',
+      phone: '',
+      email: '',
+      room: 'Academic Bldg 2, Room 304',
+      consultingHours: 'Mon & Wed: 11:00 AM - 12:30 PM'
+    });
+  };
+
+  const closeContactModal = () => {
+    setShowAddModal(false);
+    setEditingContact(null);
+    setAddFormError(null);
+  };
+
+  // Admin: open the form prefilled with this contact's data for editing
+  const openEditContactModal = (tch: TeacherContact) => {
+    setNewTeacher({
+      name: tch.name,
+      designation: tch.designation,
+      collegeName: tch.collegeName || (tch as unknown as { college?: string }).college || userProfile.college || 'Dhaka Polytechnic Institute',
+      department: tch.department,
+      regulation: userProfile.regulation || '2022',
+      semester: userProfile.semester || 6,
+      subject: tch.subject,
+      phone: tch.phone,
+      email: tch.email || '',
+      room: tch.room,
+      consultingHours: tch.consultingHours
+    });
+    setEditingContact(tch);
+    setAddFormError(null);
+    setShowAddModal(true);
+  };
+
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddFormError(null);
@@ -133,6 +180,27 @@ export const TeachersContactsScreen: React.FC = () => {
       return;
     }
 
+    // Admin editing an existing contact → PUT, not a new contact
+    if (editingContact) {
+      const res = await updateTeacherContact(editingContact.id, {
+        name: newTeacher.name.trim(),
+        designation: newTeacher.designation,
+        collegeName: newTeacher.collegeName,
+        department: newTeacher.department,
+        subject: newTeacher.subject.trim() || 'Core Curriculum Subject',
+        phone: newTeacher.phone.trim(),
+        email: newTeacher.email.trim(),
+        room: newTeacher.room.trim(),
+        consultingHours: newTeacher.consultingHours.trim()
+      });
+      if (res.success) {
+        closeContactModal();
+      } else {
+        setAddFormError(res.message);
+      }
+      return;
+    }
+
     const res = await addTeacher({
       name: newTeacher.name.trim(),
       designation: newTeacher.designation,
@@ -146,20 +214,8 @@ export const TeachersContactsScreen: React.FC = () => {
     });
 
     if (res.success) {
-      setNewTeacher({
-        name: '',
-        designation: 'Senior Instructor',
-        collegeName: userProfile.college || 'Dhaka Polytechnic Institute',
-        department: userProfile.department || 'Computer Science and Technology (CST)',
-        regulation: userProfile.regulation || '2022',
-        semester: userProfile.semester || 6,
-        subject: '',
-        phone: '',
-        email: '',
-        room: 'Academic Bldg 2, Room 304',
-        consultingHours: 'Mon & Wed: 11:00 AM - 12:30 PM'
-      });
-      setShowAddModal(false);
+      resetNewTeacherForm();
+      closeContactModal();
     } else {
       setAddFormError(res.message);
     }
@@ -210,8 +266,20 @@ export const TeachersContactsScreen: React.FC = () => {
             </p>
           </div>
 
-          {/* Action Button: Strictly forbidden for students! */}
-          {isCaptain ? (
+          {/* Action Button: Strictly forbidden for students! Admin has full access. */}
+          {isAdmin ? (
+            <button
+              onClick={() => {
+                resetNewTeacherForm();
+                setEditingContact(null);
+                setShowAddModal(true);
+              }}
+              className="bg-brand-teal hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Teacher</span>
+            </button>
+          ) : isCaptain ? (
             <button
               onClick={() => {
                 setNewTeacher({
@@ -227,6 +295,7 @@ export const TeachersContactsScreen: React.FC = () => {
                   room: 'Academic Bldg 2, Room 304',
                   consultingHours: 'Mon & Wed: 11:00 AM - 12:30 PM'
                 });
+                setEditingContact(null);
                 setShowAddModal(true);
               }}
               className="bg-brand-teal hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
@@ -362,6 +431,26 @@ export const TeachersContactsScreen: React.FC = () => {
                         Edit
                       </button>
                     )}
+
+                    {/* System Administrator: full edit + archive on ANY contact */}
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={() => openEditContactModal(tch)}
+                          className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors cursor-pointer"
+                          title="Edit contact (Admin)"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => setContactToArchive(tch)}
+                          className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs transition-colors cursor-pointer"
+                          title="Archive contact (Admin)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -390,8 +479,8 @@ export const TeachersContactsScreen: React.FC = () => {
         )}
       </div>
 
-      {/* Class Captain Add Teacher Modal */}
-      {showAddModal && isCaptain && (
+      {/* Class Captain / Admin Add & Edit Teacher Modal */}
+      {showAddModal && (isCaptain || isAdmin) && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -400,12 +489,12 @@ export const TeachersContactsScreen: React.FC = () => {
                   <Contact2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-text-primary text-base">Add Teacher Contact</h3>
-                  <p className="text-[10px] text-slate-500">Scoped to your Class Captain authority</p>
+                  <h3 className="font-bold text-text-primary text-base">{editingContact ? 'Edit Teacher Contact' : 'Add Teacher Contact'}</h3>
+                  <p className="text-[10px] text-slate-500">{isAdmin ? 'Full admin access — any college & department' : 'Scoped to your Class Captain authority'}</p>
                 </div>
               </div>
               <button 
-                onClick={() => setShowAddModal(false)}
+                onClick={closeContactModal}
                 className="text-slate-400 hover:text-slate-600 p-1"
               >
                 ✕
@@ -437,7 +526,7 @@ export const TeachersContactsScreen: React.FC = () => {
               <SearchableCollegeSelect
                 value={newTeacher.collegeName}
                 onChange={(name) => setNewTeacher({ ...newTeacher, collegeName: name })}
-                label="College (Auto-set to your institution)"
+                label={isAdmin ? 'College' : 'College (Auto-set to your institution)'}
                 required
               />
 
@@ -560,7 +649,7 @@ export const TeachersContactsScreen: React.FC = () => {
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowAddModal(false)}
+                  onClick={closeContactModal}
                   className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   Cancel
@@ -569,7 +658,7 @@ export const TeachersContactsScreen: React.FC = () => {
                   type="submit"
                   className="flex-1 py-2 rounded-xl bg-brand-teal text-white text-xs font-semibold hover:bg-teal-700 shadow-xs cursor-pointer"
                 >
-                  Save Contact
+                  {editingContact ? 'Save Changes' : 'Save Contact'}
                 </button>
               </div>
             </form>

@@ -116,9 +116,6 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
             <span>{label}</span>
             {required && <span className="text-rose-500">*</span>}
           </span>
-          <span className="text-[10px] text-slate-400 font-normal">
-            19 BTEB Curriculum Technologies
-          </span>
         </label>
       )}
 

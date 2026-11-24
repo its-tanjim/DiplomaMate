@@ -2880,7 +2880,26 @@ app.put('/api/teacher-contacts/:id', (req: Request, res: Response) => {
       }
     }
 
-    // Apply updates
+    // 3b. Class Captains may not move a contact outside their own
+    // college/department (system_admin is unrestricted).
+    if (effectiveRole === 'class_captain') {
+      const newCollege = typeof updates?.college === 'string' && updates.college.trim() ? updates.college : contact.college;
+      const newDept = typeof updates?.department === 'string' && updates.department.trim() ? updates.department : contact.department;
+      if (
+        !areCollegesEquivalent(requesterCollege, newCollege) ||
+        !areDepartmentsEquivalent(requesterDepartment, newDept)
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: 'Scope Restriction: You can only keep faculty contacts within your assigned college and department.'
+        });
+      }
+    }
+
+    // Apply updates (college/department included so the System
+    // Administrator can fully edit any contact)
+    if (updates.college) contact.college = updates.college.trim();
+    if (updates.department) contact.department = updates.department.trim();
     if (updates.name) contact.name = updates.name.trim();
     if (updates.designation) contact.designation = updates.designation.trim();
     if (updates.phone) contact.phone = updates.phone.trim();
@@ -5406,7 +5425,19 @@ function loadAcademicStore(): PersistentAcademicStore {
           ? parsed.pendingTeacherEndorsements
           : {}
       };
-      saveAcademicStore(storeObj);
+      // Only persist when the loaded content actually differs from disk.
+      // An unconditional save on every startup schedules a GitHub backup
+      // on every restart; Render auto-deploys on backup commits (it does
+      // not honour [skip ci]), so a rewrite-on-every-boot turns any
+      // restart into a redeploy, which wipes in-memory sessions. The
+      // loader is idempotent (backfills/migrations stabilize after the
+      // first save), so a byte-identical store must not be rewritten.
+      // saveAcademicStore re-applies the same teacherAccounts /
+      // deletedAccountIds normalizations already applied above, so this
+      // comparison matches exactly what a save would write.
+      if (JSON.stringify(storeObj, null, 2) !== raw) {
+        saveAcademicStore(storeObj);
+      }
       return storeObj;
     }
   } catch (err) {

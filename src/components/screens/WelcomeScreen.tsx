@@ -303,7 +303,7 @@ export const WelcomeScreen: React.FC = () => {
         }
 
         if (!/^\d{4,6}$/.test(normalizeDigits(teacherNewPin))) {
-          setSignInError('PIN must be 4 to 6 digits. Ei PIN diye login korte hobe — mone rakho.');
+          setSignInError('PIN must be 4 to 6 digits.');
           return;
         }
 
@@ -1036,10 +1036,6 @@ export const WelcomeScreen: React.FC = () => {
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 p-2 rounded-xl">
-                    <strong>Ei PIN diye login korte hobe — mone rakho.</strong> You will sign in with this PIN. Keep it secret — never share it with anyone.
-                  </p>
-
                   <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] space-y-1">
                     <p className="font-semibold flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
@@ -1128,10 +1124,6 @@ export const WelcomeScreen: React.FC = () => {
                       />
                     </div>
                   </div>
-
-                  <p className="text-[11px] text-slate-500 bg-blue-50/60 border border-blue-100 p-2 rounded-xl">
-                    <strong>Ei PIN diye login korte hobe — mone rakho.</strong> You will sign in with your Board Roll + this PIN. Keep it secret — never share it with anyone.
-                  </p>
 
                   <SearchableCollegeSelect
                     value={signUpData.college || ''}

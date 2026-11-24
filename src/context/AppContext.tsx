@@ -171,6 +171,7 @@ interface AppContextType {
   // Teacher Contact access. Payments are currently disabled, so contacts are free for everyone.
   teachers: TeacherContact[];
   addTeacher: (teacher: Omit<TeacherContact, 'id'>) => Promise<{ success: boolean; message: string }>;
+  updateTeacherContact: (contactId: string, updates: Partial<TeacherContact>) => Promise<{ success: boolean; message: string }>;
   archiveTeacherContact: (contactId: string, reason: string) => Promise<{ success: boolean; message: string }>;
   isTeacherContactUnlocked: boolean;
   isTeacherContactAccessLocked: boolean;
@@ -2408,6 +2409,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Admin / authorized edit of ANY teacher contact (PUT). Students are
+  // read-only; the server enforces captain scope and teacher ownership,
+  // while system_admin has full access to every contact.
+  const updateTeacherContact = async (
+    contactId: string,
+    updates: Partial<TeacherContact>
+  ): Promise<{ success: boolean; message: string }> => {
+    if (userProfile.accountType === 'student') {
+      showToast('Forbidden: Students have read-only access to the Faculty Directory.');
+      return { success: false, message: 'Students cannot edit teacher contacts.' };
+    }
+
+    try {
+      const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+      const response = await apiFetch(`/api/teacher-contacts/${contactId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
+        },
+        body: JSON.stringify({
+          requesterRole: userProfile.accountType,
+          requesterId: userProfile.id,
+          requesterName: userProfile.name,
+          requesterCollege: userProfile.college,
+          requesterDepartment: userProfile.department,
+          updates: {
+            name: updates.name,
+            designation: updates.designation,
+            phone: updates.phone,
+            email: updates.email,
+            room: updates.room,
+            consultingHours: updates.consultingHours,
+            subject: updates.subject,
+            college: (updates as { collegeName?: string }).collegeName,
+            department: updates.department
+          }
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        showToast(data.error || 'Failed to update teacher contact.');
+        return { success: false, message: data.error || 'Update failed.' };
+      }
+
+      // Server contacts carry `college`; the client shape uses `collegeName`.
+      setTeachers(prev => prev.map(t => {
+        if (t.id !== contactId) return t;
+        const updated = data.contact || {};
+        return {
+          ...t,
+          ...updated,
+          collegeName: updated.college ?? (updates as { collegeName?: string }).collegeName ?? t.collegeName,
+          id: contactId
+        };
+      }));
+      showToast(data.message || 'Teacher contact updated.');
+      return { success: true, message: data.message };
+    } catch (err) {
+      showToast('Failed to reach update service.');
+      return { success: false, message: 'Server communication error.' };
+    }
+  };
+
   const addAnnouncement = (title: string, content: string, priority: 'Important' | 'Normal') => {
     const newAnn: ClassAnnouncement = {
       id: `ann_${Date.now()}`,
@@ -2633,6 +2699,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteReminder,
         teachers,
         addTeacher,
+        updateTeacherContact,
         archiveTeacherContact,
         // Payments are currently disabled, so Teacher Contacts are free for everyone.
         isTeacherContactUnlocked: true,
