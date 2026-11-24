@@ -150,6 +150,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
   const [isExtractingOcr, setIsExtractingOcr] = useState<boolean>(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [ocrCandidates, setOcrCandidates] = useState<OcrExtractedStudentCandidate[]>([]);
+  const [ocrWarnings, setOcrWarnings] = useState<string[]>([]);
   const [ocrSummary, setOcrSummary] = useState<{
     totalDetected: number;
     matchedExistingCount: number;
@@ -515,6 +516,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
 
       setOcrCandidates(data.candidates || []);
       setOcrSummary(data.summary || null);
+      setOcrWarnings(Array.isArray(data.warnings) ? data.warnings : []);
       showToast(`Detected ${data.candidates?.length || 0} student rows. Please review before adding.`);
     } catch {
       setOcrError('Network error while running roster OCR extraction.');
@@ -628,6 +630,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
       setShowOcrModal(false);
       setOcrCandidates([]);
       setOcrSummary(null);
+      setOcrWarnings([]);
       setOcrDataUrl('');
       setOcrRawText('');
       setOcrFileName('');
@@ -1800,6 +1803,15 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   </button>
                 </div>
 
+                {ocrWarnings.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {ocrWarnings.map((w, i) => (
+                      <p key={i} className="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                        {w}
+                      </p>
+                    ))}
+                  </div>
+                )}
                 <div className="overflow-x-auto border border-slate-200 rounded-xl max-h-64 overflow-y-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold sticky top-0">

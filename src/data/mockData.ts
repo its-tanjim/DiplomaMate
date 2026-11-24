@@ -18,14 +18,19 @@ export {
 import { COLLEGES_DIRECTORY, TECHNOLOGIES_DIRECTORY } from './directoryData';
 
 export const LEGACY_DEMO_CONTENT_IDS: Record<
-  'notes' | 'assignments' | 'assignmentSubmissions' | 'reminders' | 'teachers',
+  'notes' | 'assignments' | 'assignmentSubmissions' | 'reminders' | 'teachers' | 'jobs' | 'notices',
   readonly string[]
 > = {
   notes: ['note_1', 'note_2', 'note_3', 'note_4', 'note_5'],
   assignments: ['asg_1', 'asg_2', 'asg_3', 'asg_4'],
   assignmentSubmissions: ['sub_seed_asg_3_std_01', 'sub_seed_asg_3_cr_01', 'sub_seed_asg_1_cr_01'],
   reminders: ['rem_1', 'rem_2', 'rem_3', 'rem_4', 'rem_5'],
-  teachers: ['tch_1', 'tch_2', 'tch_3', 'tch_4', 'tch_5', 'tch_6']
+  teachers: ['tch_1', 'tch_2', 'tch_3', 'tch_4', 'tch_5', 'tch_6'],
+  // Invented sample job circulars removed 2026-11-24 (see INITIAL_JOBS note above).
+  jobs: ['job_01', 'job_02', 'job_03', 'job_04', 'job_05', 'job_06'],
+  // Invented sample campus notices removed 2026-11-24 (see INITIAL_CAMPUS_NOTICES
+  // note below) — same fake-content pattern as the removed seed jobs.
+  notices: ['cnotice_01', 'cnotice_02', 'cnotice_03']
 };
 
 export const POLYTECHNIC_COLLEGES = COLLEGES_DIRECTORY.map(c => c.name);
@@ -42,224 +47,26 @@ export const SESSIONS = [
 
 export const INITIAL_APPLICATIONS: any[] = [];
 
-export const INITIAL_JOBS: any[] = [
-  {
-    id: 'job_01',
-    title: 'Junior Web & Frontend Developer (Diploma Internship)',
-    company: 'Brain Station 23 Ltd.',
-    location: 'Mohakhali, Dhaka',
-    type: 'Internship',
-    targetDepartments: ['Computer Science & Technology (CST)'],
-    publishedAt: '2026-10-19',
-    deadline: '2026-11-15',
-    stipendOrSalary: 'BDT 15,000 - 20,000 / month',
-    experienceRequirements: 'Freshers / 8th Semester Industrial Attachment candidates',
-    educationalQualifications: 'Diploma in Engineering in Computer Science & Technology (BTEB)',
-    description: 'Join Brain Station 23 enterprise web division as a Junior Frontend & React Intern. Selected diploma engineers will work alongside senior architects on production React, TypeScript, and REST API projects with full-time conversion opportunity.',
-    requirements: 'Solid understanding of HTML5, CSS/Tailwind, JavaScript/TypeScript, and React.js. Knowledge of REST APIs and Git.',
-    sourceName: 'Careerjet Bangladesh / Employer Career Portal',
-    sourceUrl: 'https://www.careerjet.com.bd/diploma-engineer-jobs.html',
-    postedBy: 'Nusrat Jahan (CR)',
-    postedById: 'cr_01',
-    postedByRole: 'class_captain',
-    postedAt: '19 Oct 2026',
-    applyUrl: 'https://brainstation-23.com/careers',
-    applicationMethod: 'external_url',
-    mediaType: 'IMAGE',
-    mediaName: 'BrainStation23_Diploma_Intern_Circular.jpg'
-  },
-  {
-    id: 'job_02',
-    title: 'Sub-Assistant Engineer (Telecom & Optical Fiber Network)',
-    company: 'Summit Communications Ltd.',
-    location: 'Tejgaon Industrial Area, Dhaka',
-    type: 'Full-Time',
-    targetDepartments: ['Computer Science & Technology (CST)', 'Telecommunication Technology', 'Electrical Technology'],
-    publishedAt: '2026-10-16',
-    deadline: '2026-11-10',
-    stipendOrSalary: 'BDT 22,000 - 28,000 + Festival Bonus & Health Insurance',
-    experienceRequirements: '0 to 1 year in NOC, ISP, or Optical Fiber maintenance',
-    educationalQualifications: '4-Year Diploma in Engineering in Computer, Telecommunication, or Electrical Technology under BTEB',
-    description: 'Responsible for monitoring NTTN optical fiber links, configuring Mikrotik/Cisco routers, troubleshooting enterprise client connectivity, and coordinating field maintenance across Dhaka metro.',
-    requirements: 'Diploma in Engineering (Computer/Telecom/Electrical). Knowledge of IP Subnetting, Optical Fiber splicing, and Router configuration.',
-    sourceName: 'Careerjet Bangladesh / Summit Careers',
-    sourceUrl: 'https://www.careerjet.com.bd/diploma-engineer-jobs.html',
-    postedBy: 'CST Dept Placement Cell',
-    postedById: 'tch_01',
-    postedByRole: 'teacher',
-    postedAt: '16 Oct 2026',
-    applyUrl: 'https://summitcommunications.net/jobs',
-    applicationMethod: 'external_url',
-    mediaType: 'PDF',
-    mediaName: 'Summit_Telecom_Job_Circular_2026.pdf'
-  },
-  {
-    id: 'job_03',
-    title: 'Sub-Assistant Engineer — Hardware & Embedded QA',
-    company: 'Walton Hi-Tech Industries PLC',
-    location: 'Chandra, Gazipur',
-    type: 'Apprenticeship',
-    targetDepartments: ['Electronics Technology', 'Computer Science & Technology (CST)', 'Electrical Technology'],
-    publishedAt: '2026-10-14',
-    deadline: '2026-11-20',
-    stipendOrSalary: 'BDT 18,000 / month + Subsidized Lunch & Staff Bus',
-    experienceRequirements: 'Fresh Diploma graduates or 8th Semester students',
-    educationalQualifications: 'Diploma in Engineering in Electronics, Electrical, or Computer Technology (Minimum CGPA 3.00)',
-    description: 'Perform PCB quality assurance, microcontroller firmware flashing, oscilloscope signal testing, and automated hardware diagnostics at Walton Hi-Tech manufacturing complex.',
-    requirements: 'Microprocessor 8086/Microcontroller concepts, PCB schematic reading, and testing lab instruments.',
-    sourceName: 'Careerjet Bangladesh / Walton Jobs',
-    sourceUrl: 'https://www.careerjet.com.bd/diploma-engineer-jobs.html',
-    postedBy: 'Engr. Shamima Nasrin',
-    postedById: 'tch_02',
-    postedByRole: 'teacher',
-    postedAt: '14 Oct 2026',
-    applyUrl: 'https://waltonbd.com/career',
-    applicationMethod: 'external_url',
-    mediaType: 'PDF',
-    mediaName: 'Walton_HiTech_QA_Internship.pdf'
-  },
-  {
-    id: 'job_04',
-    title: 'Sub-Assistant Engineer (Civil & Structural Construction)',
-    company: ' Sheltech (Pvt.) Limited',
-    location: 'Panthapath, Dhaka',
-    type: 'Full-Time',
-    targetDepartments: ['Civil Technology', 'Architecture Technology'],
-    publishedAt: '2026-10-20',
-    deadline: '2026-11-25',
-    stipendOrSalary: 'BDT 25,000 - 32,000 / month',
-    experienceRequirements: '1-2 years in residential/commercial site supervision (Freshers with strong AutoCAD skills may apply)',
-    educationalQualifications: '4-Year Diploma in Civil Engineering or Architecture from any Govt. Polytechnic Institute',
-    description: 'Supervise RCC casting, bar schedule verification, site billing, contractor coordination, and AutoCAD structural drawing compliance at ongoing Dhaka residential projects.',
-    requirements: 'AutoCAD 2D/3D, estimating & costing, BNBC code familiarity, and site supervision capability.',
-    sourceName: 'Careerjet Bangladesh',
-    sourceUrl: 'https://www.careerjet.com.bd/diploma-engineer-jobs.html',
-    postedBy: 'Placement Cell Admin',
-    postedByRole: 'system_admin',
-    postedAt: '20 Oct 2026',
-    applyUrl: 'https://www.sheltech-bd.com/career',
-    applicationMethod: 'external_url'
-  },
-  {
-    id: 'job_05',
-    title: 'Sub-Assistant Engineer (PLC & Industrial Automation)',
-    company: 'PRAN-RFL Group',
-    location: 'Kaliganj, Gazipur & Habiganj Industrial Park',
-    type: 'Full-Time',
-    targetDepartments: ['Electrical Technology', 'Mechanical Technology', 'Power Technology', 'Mechatronics Technology'],
-    publishedAt: '2026-10-22',
-    deadline: '2026-10-27',
-    stipendOrSalary: 'BDT 20,000 - 26,000 + Accommodation',
-    experienceRequirements: 'Freshers / 0-1 Year in factory utility or PLC maintenance',
-    educationalQualifications: 'Diploma in Engineering (Electrical / Mechanical / Power / Mechatronics)',
-    description: 'Maintain automated packaging lines, VFD drives, industrial boilers, 11kV/0.4kV substation switchgear, and preventive maintenance logs.',
-    requirements: 'PLC ladder logic basics, 3-phase motor control, star-delta starter troubleshooting, and mechanical utility maintenance.',
-    sourceName: 'Careerjet Bangladesh',
-    sourceUrl: 'https://www.careerjet.com.bd/diploma-engineer-jobs.html',
-    postedBy: 'Placement Cell Admin',
-    postedByRole: 'system_admin',
-    postedAt: '22 Oct 2026',
-    applyUrl: 'https://www.rflbd.com/career',
-    applicationMethod: 'external_url'
-  },
-  {
-    id: 'job_06',
-    title: 'Junior Network Support Engineer (Expired Listing Sample)',
-    company: 'Link3 Technologies Ltd.',
-    location: 'Gulshan-1, Dhaka',
-    type: 'Full-Time',
-    targetDepartments: ['Computer Science & Technology (CST)', 'Telecommunication Technology'],
-    publishedAt: '2026-09-15',
-    deadline: '2026-10-10',
-    stipendOrSalary: 'BDT 18,000 - 22,000 / month',
-    experienceRequirements: 'Freshers welcome',
-    educationalQualifications: 'Diploma in Computer / Telecommunication Engineering',
-    description: 'Provide L1/L2 technical support for corporate fiber broadband clients, VLAN tagging, and ONU configuration.',
-    requirements: 'TCP/IP, OSI Model, VLANs,MikroTik & Cisco CCNA fundamentals.',
-    sourceName: 'Careerjet Bangladesh',
-    sourceUrl: 'https://www.careerjet.com.bd/diploma-engineer-jobs.html',
-    postedBy: 'Placement Cell Admin',
-    postedByRole: 'system_admin',
-    postedAt: '15 Sep 2026',
-    applyUrl: 'https://www.link3.net/career',
-    applicationMethod: 'external_url'
-  }
-];
+// No seeded job circulars (item 5 notes-trustworthiness audit, 2026-11-24).
+// The previous six entries (job_01..job_06) were invented sample listings:
+// plausible companies/salaries/deadlines with generic career-page links,
+// falsely labelled "Careerjet Bangladesh", all expired by late Nov 2026.
+// Per the user rule (notes/jobs only from trustworthy sources, with a real
+// apply link), jobs now start empty and are filled only by the live
+// Careerjet Partner API feed (when CAREERJET_API_KEY is set) or by a
+// Placement Cell / teacher / captain post carrying a real apply URL.
+// LEGACY_DEMO_CONTENT_IDS.jobs below heals stores that still hold job_01..06.
+export const INITIAL_JOBS: any[] = [];
 
-export const INITIAL_CAMPUS_NOTICES: any[] = [
-  {
-    id: 'cnotice_01',
-    title: '6th Semester Mid-Term Practical & Viva Examination Schedule',
-    description: 'All 6th Semester Computer Science & Technology (CST) students of Dhaka Polytechnic Institute are hereby informed that the Mid-Term Practical Viva for Database Management System (66664) and Microprocessor (66662) will be held next Monday & Tuesday in Software Lab 402. Students must bring signed lab job sheets and college ID card.',
-    publisherId: 'tch_01',
-    publisherName: 'Engr. Md. Mahbubur Rahman',
-    publisherRole: 'teacher',
-    publisherDesignation: 'Chief Instructor & Head of Dept (CST)',
-    college_id: 'clg_dhaka',
-    college: 'Dhaka Polytechnic Institute (DPI), Tejgaon',
-    department_id: 'tech_cst',
-    department: 'Computer Science & Technology (CST)',
-    semester: 6,
-    shift: 'Both',
-    section: 'All',
-    targetScope: 'department',
-    priority: 'Important',
-    isPinned: true,
-    attachmentName: 'DPI_CST_6th_Sem_MidTerm_Schedule.pdf',
-    attachmentUrl: '/api/notices/campus/cnotice_01/attachment',
-    attachmentType: 'PDF',
-    expiryDate: '2026-11-15',
-    publishedAt: '2026-10-23T09:30:00.000Z',
-    updatedAt: '2026-10-23T09:30:00.000Z',
-    reportsCount: 0
-  },
-  {
-    id: 'cnotice_02',
-    title: '2nd Class Test on Microprocessor & Interfacing (66662) — Morning Sec A1',
-    description: 'All Morning Shift Section A1 students are requested to prepare Chapter 3 & 4 (8086 Pin diagram and Memory segmentation) for tomorrow\'s 3rd period class test in Room 304. Shamima Nasrin Madam confirmed that attendance is mandatory.',
-    publisherId: 'cr_01',
-    publisherName: 'Nusrat Jahan',
-    publisherRole: 'class_captain',
-    publisherDesignation: 'Verified Class Captain (6th Sem · Morning · A1)',
-    college_id: 'clg_dhaka',
-    college: 'Dhaka Polytechnic Institute (DPI), Tejgaon',
-    department_id: 'tech_cst',
-    department: 'Computer Science & Technology (CST)',
-    semester: 6,
-    shift: 'Morning',
-    section: 'A1',
-    targetScope: 'cohort',
-    priority: 'Important',
-    isPinned: true,
-    expiryDate: '2026-11-05',
-    publishedAt: '2026-10-24T07:45:00.000Z',
-    updatedAt: '2026-10-24T07:45:00.000Z',
-    reportsCount: 0
-  },
-  {
-    id: 'cnotice_03',
-    title: 'Industrial Attachment Company Preference Form Submission (DPI Campus Notice)',
-    description: 'All 7th & 6th Semester students across Dhaka Polytechnic Institute are advised to verify their BTEB registration numbers with their respective Departmental Placement Cells ahead of the upcoming Industrial Attachment allocation.',
-    publisherId: 'tch_02',
-    publisherName: 'Engr. Shamima Nasrin',
-    publisherRole: 'teacher',
-    publisherDesignation: 'Senior Instructor & Guide Teacher',
-    college_id: 'clg_dhaka',
-    college: 'Dhaka Polytechnic Institute (DPI), Tejgaon',
-    department_id: 'tech_cst',
-    department: 'Computer Science & Technology (CST)',
-    semester: null,
-    shift: 'Both',
-    section: 'All',
-    targetScope: 'college',
-    priority: 'Normal',
-    isPinned: false,
-    expiryDate: '2026-11-30',
-    publishedAt: '2026-10-21T11:15:00.000Z',
-    updatedAt: '2026-10-21T11:15:00.000Z',
-    reportsCount: 0
-  }
-];
+// No seeded campus notices (follow-up to item 5 notes-trustworthiness audit, 2026-11-24).
+// The previous three entries (cnotice_01..cnotice_03) were invented demo notices:
+// a fabricated mid-term schedule, class test and attachment-form notice with
+// plausible teacher/captain publishers and a dead PDF attachment URL, all
+// expired by late Nov 2026. Per the user rule (notes/notices only from
+// trustworthy sources), notices now start empty and are filled only by real
+// admin / teacher / captain posts. LEGACY_DEMO_CONTENT_IDS.notices above
+// heals stores that still hold cnotice_01..03.
+export const INITIAL_CAMPUS_NOTICES: any[] = [];
 
 export const INITIAL_ANNOUNCEMENTS: ClassAnnouncement[] = [
   {

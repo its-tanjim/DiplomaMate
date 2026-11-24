@@ -62,8 +62,6 @@ export const WelcomeScreen: React.FC = () => {
   const {
     login,
     authenticateStudent,
-    requestPinSetup,
-    setupStudentPin,
     verifySmsCode,
     resendSmsCode,
     socialLogin,
@@ -82,13 +80,6 @@ export const WelcomeScreen: React.FC = () => {
   const [teacherPin, setTeacherPin] = useState('');
   const [signInError, setSignInError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // One-time PIN setup (migration for accounts created before PINs)
-  const [showPinSetup, setShowPinSetup] = useState(false);
-  const [pinSetupReg, setPinSetupReg] = useState('');
-  const [pinSetupToken, setPinSetupToken] = useState('');
-  const [newPin, setNewPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
 
   // SMS code verification step (when SMS_VERIFICATION_ENABLED on the server)
   const [smsChallenge, setSmsChallenge] = useState<{ id: string; maskedPhone?: string; name?: string } | null>(null);
@@ -212,58 +203,6 @@ export const WelcomeScreen: React.FC = () => {
     }
   };
 
-  // One-time PIN setup for accounts created before PINs existed:
-  // verify Board Roll + Registration Number, then choose a PIN.
-  const handlePinSetupRequest = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSignInError('');
-    setIsSubmitting(true);
-    try {
-      const cleanRoll = normalizeDigits(signInRoll);
-      const cleanReg = normalizeDigits(pinSetupReg);
-      if (!cleanRoll || !cleanReg) {
-        setSignInError('Please enter both Board Roll and Registration Number.');
-        return;
-      }
-      const role = selectedRole === 'class_captain' ? 'class_captain' : 'student';
-      const result = await requestPinSetup(cleanRoll, cleanReg, role, turnstileProof);
-      resetTurnstile();
-      if (result.requiresPinSetup && result.pinSetupToken) {
-        setPinSetupToken(result.pinSetupToken);
-        setNewPin('');
-        setConfirmPin('');
-        return;
-      }
-      setSignInError(result.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handlePinSetupSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSignInError('');
-    const cleanPin = normalizeDigits(newPin);
-    if (!/^\d{4,6}$/.test(cleanPin)) {
-      setSignInError('PIN must be 4 to 6 digits.');
-      return;
-    }
-    if (cleanPin !== normalizeDigits(confirmPin)) {
-      setSignInError('PIN confirmation does not match.');
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      const role = selectedRole === 'class_captain' ? 'class_captain' : 'student';
-      const result = await setupStudentPin(pinSetupToken, cleanPin, role);
-      if (!result.success) {
-        setSignInError(result.message);
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   // SMS code step (only shown when the server has SMS verification on).
   const handleSmsVerify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -363,8 +302,8 @@ export const WelcomeScreen: React.FC = () => {
           return;
         }
 
-        if (teacherNewPin.length < 4 || teacherNewPin.length > 8) {
-          setSignInError('PIN must be 4 to 8 digits.');
+        if (!/^\d{4,6}$/.test(normalizeDigits(teacherNewPin))) {
+          setSignInError('PIN must be 4 to 6 digits. Ei PIN diye login korte hobe — mone rakho.');
           return;
         }
 
@@ -388,7 +327,7 @@ export const WelcomeScreen: React.FC = () => {
           teachingSubjects: subjectsArray.length > 0 ? subjectsArray : ['Department Core Subject'],
           semestersTaught: teacherSemesters,
           shift: teacherShift,
-          pin: teacherNewPin.trim()
+          pin: normalizeDigits(teacherNewPin)
         }, turnstileProof);
         resetTurnstile();
 
@@ -805,118 +744,6 @@ export const WelcomeScreen: React.FC = () => {
                     </button>
                   </div>
                 </form>
-              ) : showPinSetup ? (
-                pinSetupToken ? (
-                  <form onSubmit={handlePinSetupSubmit} className="space-y-3.5">
-                    <div className="p-3 rounded-xl bg-teal-50/70 border border-teal-200 text-center">
-                      <p className="text-xs font-bold text-teal-800">Almost there — choose your PIN</p>
-                      <p className="text-[11px] text-teal-700 mt-0.5">
-                        From now on you will sign in with Board Roll + this PIN.
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs font-semibold text-text-primary mb-1">
-                          New PIN (4–6 digits)
-                        </label>
-                        <input
-                          type="password"
-                          required
-                          maxLength={6}
-                          inputMode="numeric"
-                          placeholder="Choose a PIN"
-                          value={newPin}
-                          onChange={(e) => setNewPin(e.target.value)}
-                          className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-text-primary mb-1">
-                          Confirm PIN
-                        </label>
-                        <input
-                          type="password"
-                          required
-                          maxLength={6}
-                          inputMode="numeric"
-                          placeholder="Re-enter PIN"
-                          value={confirmPin}
-                          onChange={(e) => setConfirmPin(e.target.value)}
-                          className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="dm-primary-action w-full py-3 px-4 text-sm font-bold shadow-sm flex items-center justify-center gap-2"
-                    >
-                      {isSubmitting && <LiquidFillLoader size={18} />}
-                      <span>{isSubmitting ? 'Setting PIN...' : 'Set PIN & Sign In'}</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setShowPinSetup(false); setPinSetupToken(''); setSignInError(''); }}
-                      className="w-full text-center text-[11px] font-semibold text-slate-500 hover:text-text-primary cursor-pointer"
-                    >
-                      ← Back to Sign In
-                    </button>
-                  </form>
-                ) : (
-                  <form onSubmit={handlePinSetupRequest} className="space-y-3.5">
-                    <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-center">
-                      <p className="text-xs font-bold text-slate-800">Set up your PIN</p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Accounts created before PINs existed sign in once with Board Roll +
-                        Registration Number to set a PIN.
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">
-                        BTEB Board Roll Number
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Enter your Board Roll Number"
-                        value={signInRoll}
-                        onChange={(e) => setSignInRoll(e.target.value)}
-                        className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">
-                        Registration Number
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Enter your Registration Number"
-                        value={pinSetupReg}
-                        onChange={(e) => setPinSetupReg(e.target.value)}
-                        className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <TurnstileWidget key={turnstileKey} onToken={setTurnstileToken} />
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="dm-primary-action w-full py-3 px-4 text-sm font-bold shadow-sm flex items-center justify-center gap-2"
-                    >
-                      {isSubmitting && <LiquidFillLoader size={18} />}
-                      <span>{isSubmitting ? 'Verifying...' : 'Continue to Set PIN'}</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setShowPinSetup(false); setSignInError(''); }}
-                      className="w-full text-center text-[11px] font-semibold text-slate-500 hover:text-text-primary cursor-pointer"
-                    >
-                      ← Back to Sign In
-                    </button>
-                  </form>
-                )
               ) : (
                 <form onSubmit={handleSignIn} className="space-y-3.5">
                   {selectedRole === 'teacher' ? (
@@ -942,8 +769,9 @@ export const WelcomeScreen: React.FC = () => {
                         <input
                           type="password"
                           required
-                          maxLength={8}
-                          placeholder="Enter 4-8 digit PIN"
+                          maxLength={6}
+                          inputMode="numeric"
+                          placeholder="Enter 4–6 digit PIN"
                           value={teacherPin}
                           onChange={(e) => setTeacherPin(e.target.value)}
                           className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1009,7 +837,7 @@ export const WelcomeScreen: React.FC = () => {
               )}
 
               {/* Social sign-in (only when the OAuth apps are configured) */}
-              {!smsChallenge && !showPinSetup && selectedRole !== 'teacher' && (isGoogleSignInEnabled || isFacebookSignInEnabled) && (
+              {!smsChallenge && selectedRole !== 'teacher' && (isGoogleSignInEnabled || isFacebookSignInEnabled) && (
                 <div className="mt-5">
                   <div className="flex items-center gap-3 mb-3">
                     <span className="flex-1 h-px bg-slate-200" />
@@ -1038,16 +866,6 @@ export const WelcomeScreen: React.FC = () => {
                 </div>
               )}
 
-              {/* One-time PIN setup for pre-PIN accounts */}
-              {!smsChallenge && !showPinSetup && selectedRole !== 'teacher' && (
-                <button
-                  type="button"
-                  onClick={() => { setShowPinSetup(true); setSignInError(''); }}
-                  className="w-full mt-4 text-center text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
-                >
-                  First time here? Set up my PIN →
-                </button>
-              )}
             </>
           )}
 
@@ -1191,12 +1009,13 @@ export const WelcomeScreen: React.FC = () => {
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">Security PIN (4-8 digits) *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">Security PIN (4–6 digits) *</label>
                       <input
                         type="password"
                         required
-                        maxLength={8}
-                        placeholder="Enter your PIN"
+                        maxLength={6}
+                        inputMode="numeric"
+                        placeholder="Choose a 4–6 digit PIN"
                         value={teacherNewPin}
                         onChange={(e) => setTeacherNewPin(e.target.value)}
                         className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-center font-mono"
@@ -1207,7 +1026,8 @@ export const WelcomeScreen: React.FC = () => {
                       <input
                         type="password"
                         required
-                        maxLength={8}
+                        maxLength={6}
+                        inputMode="numeric"
                         placeholder="Re-enter PIN"
                         value={teacherConfirmPin}
                         onChange={(e) => setTeacherConfirmPin(e.target.value)}
@@ -1215,6 +1035,10 @@ export const WelcomeScreen: React.FC = () => {
                       />
                     </div>
                   </div>
+
+                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 p-2 rounded-xl">
+                    <strong>Ei PIN diye login korte hobe — mone rakho.</strong> You will sign in with this PIN. Keep it secret — never share it with anyone.
+                  </p>
 
                   <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] space-y-1">
                     <p className="font-semibold flex items-center gap-1">
@@ -1306,7 +1130,7 @@ export const WelcomeScreen: React.FC = () => {
                   </div>
 
                   <p className="text-[11px] text-slate-500 bg-blue-50/60 border border-blue-100 p-2 rounded-xl">
-                    You will sign in with your Board Roll + this PIN. Keep it secret — never share it with anyone.
+                    <strong>Ei PIN diye login korte hobe — mone rakho.</strong> You will sign in with your Board Roll + this PIN. Keep it secret — never share it with anyone.
                   </p>
 
                   <SearchableCollegeSelect

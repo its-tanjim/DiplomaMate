@@ -231,6 +231,19 @@ export interface NoteItem {
   section?: Section;
   mediaUrl?: string;
   mediaName?: string;
+  // Stored file bytes (base64 payload, no data: prefix) + detected MIME.
+  // mediaUrl is the authenticated download endpoint (/api/notes/:id/file);
+  // when `storage_path` is set the bytes live in the Supabase `notes`
+  // bucket instead and media_data is dropped. List responses strip
+  // media_data — bytes are only ever served via the download endpoint.
+  media_data?: string;
+  media_mime?: string;
+  storage_path?: string;
+  // Optional source / reference for the note (textbook, official site, link).
+  // Shown in the UI so students can verify the note. When absent, the note
+  // is attributed only to its uploader (verified teacher / class captain).
+  sourceName?: string;
+  sourceUrl?: string;
   // Document Intelligence searchable extracted content
   extractedText?: string;
   headings?: string[];
@@ -260,6 +273,13 @@ export interface AssignmentSubmissionRecord {
   attachmentName?: string;
   attachmentType?: 'PDF' | 'IMAGE' | 'DOCX' | 'ZIP' | 'VIDEO';
   attachmentSize?: string;
+  // Stored file bytes (base64 payload) + detected MIME. attachmentUrl is
+  // the authenticated download endpoint; `storage_path` means the bytes
+  // live in the Supabase `assignments` bucket and attachment_data is
+  // dropped. List responses strip attachment_data.
+  attachment_data?: string;
+  attachment_mime?: string;
+  storage_path?: string;
   attemptCount: number;
 }
 
@@ -294,6 +314,14 @@ export interface AssignmentItem {
   attachmentUrl?: string;
   attachmentName?: string;
   attachmentType?: 'PDF' | 'IMAGE' | 'DOCX' | 'ZIP' | 'VIDEO';
+  // Stored file bytes (base64 payload) + detected MIME. attachmentUrl is
+  // the authenticated download endpoint (/api/assignments/:id/file);
+  // `storage_path` means the bytes live in the Supabase `assignments`
+  // bucket and attachment_data is dropped. List responses strip
+  // attachment_data.
+  attachment_data?: string;
+  attachment_mime?: string;
+  storage_path?: string;
   submissionSummary?: AssignmentSubmissionSummary;
   // Document Intelligence structured fields
   questions?: string[];
@@ -407,8 +435,13 @@ export interface JobCircular {
   postedAt: string;
   updatedAt?: string;
   mediaUrl?: string;
-  mediaType?: 'IMAGE' | 'PDF';
+  mediaType?: 'IMAGE' | 'PDF' | 'VIDEO';
   mediaName?: string;
+  // Stored file bytes (base64 payload) + detected MIME. mediaUrl is the
+  // authenticated download endpoint (/api/jobs/:id/file). List responses
+  // strip media_data.
+  media_data?: string;
+  media_mime?: string;
 }
 
 export type BtebNoticeCategory =
@@ -463,7 +496,13 @@ export interface CampusNoticeItem {
   isPinned?: boolean;
   attachmentUrl?: string;
   attachmentName?: string;
-  attachmentType?: 'PDF' | 'IMAGE' | 'DOCX';
+  attachmentType?: 'PDF' | 'IMAGE' | 'DOCX' | 'VIDEO' | 'ZIP';
+  // Stored file bytes (base64 payload) + detected MIME. attachmentUrl is
+  // the authenticated download endpoint
+  // (/api/notices/campus/:id/attachment). List responses strip
+  // attachment_data — bytes are only served via the download endpoint.
+  attachment_data?: string;
+  attachment_mime?: string;
   expiryDate?: string;
   publishedAt: string;
   updatedAt?: string;
@@ -1201,6 +1240,7 @@ export interface DocumentScanResult {
     | 'EMPTY_FILE'
     | 'UNREADABLE_CONTENT'
     | 'AI_SERVICE_UNAVAILABLE'
+    | 'AI_INVALID_RESPONSE'
     | 'EXTRACTION_FAILED';
   routineData?: RoutineExtractionData;
   assignmentData?: AssignmentExtractionData;

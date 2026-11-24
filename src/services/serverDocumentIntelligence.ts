@@ -1,5 +1,16 @@
 import zlib from 'zlib';
-import { GoogleGenAI, Type } from '@google/genai';
+import {
+  callGeminiJson,
+  formatValidationErrors,
+  GENERAL_JSON_SCHEMA,
+  generalScanPrompt,
+  GEMINI_NOT_CONFIGURED_MESSAGE,
+  isGeminiConfigured,
+  ROUTINE_JSON_SCHEMA,
+  routineScanPrompt,
+  validateGeneralJson,
+  validateRoutineJson
+} from './geminiClient';
 import {
   resolveBtebSubjectCode,
   resolveStrictCollege,
@@ -1254,7 +1265,14 @@ export function parseCaptainFormFromText(rawText: string): CaptainFormExtraction
 }
 
 /**
- * Calls Gemini 3.8 Flash Multimodal Vision to extract raw text + structured fields from an Image or Scanned PDF
+ * Calls Gemini (REST `v1beta/models/{model}:generateContent`, model
+ * `gemini-3.8-flash` unless GEMINI_MODEL overrides it) to extract raw text +
+ * structured fields from an image or scanned PDF. The reply is demanded as
+ * strict JSON and validated server-side (see geminiClient.ts): a missing
+ * field, wrong type, or out-of-range value is reported by field name instead
+ * of silently becoming wrong data. When GEMINI_API_KEY is not set this
+ * returns AI_SERVICE_UNAVAILABLE with the exact "scan needs GEMINI_API_KEY"
+ * message — it never crashes and never returns fake data.
  */
 async function runGeminiMultimodalExtraction(params: {
   feature: DocumentScanFeature;
@@ -1280,167 +1298,87 @@ async function runGeminiMultimodalExtraction(params: {
     };
   }
 
-  const apiKey = (process.env.GEMINI_API_KEY || '').trim();
-  if (!apiKey) {
+  if (!isGeminiConfigured()) {
     return {
       success: false,
       isReadable: false,
       rawText: '',
       errorCode: 'AI_SERVICE_UNAVAILABLE',
-      error: 'GEMINI_API_KEY is not configured on the server for raster image OCR.'
+      error: GEMINI_NOT_CONFIGURED_MESSAGE
     };
   }
 
-  try {
-    const ai = new GoogleGenAI({
-      apiKey,
-      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+  const additionalInlineData = (params.additionalFrames || []).slice(0, 4).map(frameUrl => ({
+    data: frameUrl.includes('base64,') ? frameUrl.split('base64,')[1] : frameUrl,
+    mimeType: 'image/jpeg'
+  }));
+
+  if (params.feature === 'routine') {
+    const res = await callGeminiJson<any>({
+      prompt: routineScanPrompt(),
+      inlineData: { data: params.base64Data, mimeType: params.mimeType },
+      additionalInlineData,
+      responseSchema: ROUTINE_JSON_SCHEMA
     });
-
-    const parts: any[] = [
-      {
-        inlineData: {
-          data: params.base64Data,
-          mimeType: params.mimeType
-        }
-      }
-    ];
-
-    if (params.additionalFrames && params.additionalFrames.length > 0) {
-      for (const frameUrl of params.additionalFrames.slice(0, 4)) {
-        const cleanFrame = frameUrl.includes('base64,') ? frameUrl.split('base64,')[1] : frameUrl;
-        parts.push({
-          inlineData: {
-            data: cleanFrame,
-            mimeType: 'image/jpeg'
-          }
-        });
-      }
-    }
-
-    if (params.feature === 'routine') {
-      parts.push({
-        text: `You are an academic document intelligence engine for Bangladesh Technical Education Board (BTEB) Polytechnic Institutes.
-Analyze this uploaded class routine document (Image or PDF). Support both English and Bangla text.
-CRITICAL RULES:
-- Never invent or hallucinate class times, subjects, subject codes, teachers, or rooms.
-- If the image is blank, blurry, or not a class routine, set isReadable = false and periods = [].
-- For any field in a period that is partially cut off or unreadable, include its name in uncertainFields (e.g. ["room", "teacherName"]).`
-      });
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: [{ role: 'user', parts }],
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              isReadable: { type: Type.BOOLEAN },
-              unreadableReason: { type: Type.STRING },
-              rawExtractedText: { type: Type.STRING },
-              college: { type: Type.STRING },
-              department: { type: Type.STRING },
-              semester: { type: Type.INTEGER },
-              shift: { type: Type.STRING },
-              section: { type: Type.STRING },
-              periods: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    day: { type: Type.STRING },
-                    periodNumber: { type: Type.INTEGER },
-                    startTime: { type: Type.STRING },
-                    endTime: { type: Type.STRING },
-                    subjectCode: { type: Type.STRING },
-                    subjectName: { type: Type.STRING },
-                    teacherName: { type: Type.STRING },
-                    room: { type: Type.STRING },
-                    type: { type: Type.STRING },
-                    confidence: { type: Type.STRING },
-                    uncertainFields: {
-                      type: Type.ARRAY,
-                      items: { type: Type.STRING }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      });
-
-      const parsed = JSON.parse(response.text?.trim() || '{}');
+    if (!res.ok) {
       return {
-        success: true,
-        isReadable: Boolean(parsed.isReadable !== false),
-        rawText: String(parsed.rawExtractedText || ''),
-        structured: parsed
+        success: false,
+        isReadable: false,
+        rawText: '',
+        errorCode: res.errorCode,
+        error: res.error
       };
     }
-
-    // General multimodal OCR + structured extraction for assignment, note, notice, job, captain_form, video
-    parts.push({
-      text: `Extract all visible text verbatim (preserving both Bangla বাংলা and English text, numbers, BTEB 5-digit subject codes, dates, headings, and tables) from this document.
-If the image is completely unreadable, blank, or corrupted, set isReadable = false and explain why in unreadableReason.
-Also extract structured fields for feature "${params.feature}". Never invent information that is not visible.`
-    });
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: [{ role: 'user', parts }],
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            isReadable: { type: Type.BOOLEAN },
-            unreadableReason: { type: Type.STRING },
-            rawExtractedText: { type: Type.STRING },
-            title: { type: Type.STRING },
-            subjectCode: { type: Type.STRING },
-            subjectName: { type: Type.STRING },
-            semester: { type: Type.INTEGER },
-            chapter: { type: Type.STRING },
-            dueDate: { type: Type.STRING },
-            marks: { type: Type.STRING },
-            teacherName: { type: Type.STRING },
-            submissionMethod: { type: Type.STRING },
-            instructions: { type: Type.STRING },
-            questions: { type: Type.ARRAY, items: { type: Type.STRING } },
-            headings: { type: Type.ARRAY, items: { type: Type.STRING } },
-            tables: { type: Type.ARRAY, items: { type: Type.STRING } },
-            company: { type: Type.STRING },
-            location: { type: Type.STRING },
-            salary: { type: Type.STRING },
-            studentName: { type: Type.STRING },
-            boardRoll: { type: Type.STRING },
-            regNumber: { type: Type.STRING },
-            hasSignatureOrSeal: { type: Type.BOOLEAN },
-            confidence: { type: Type.STRING },
-            uncertainFields: { type: Type.ARRAY, items: { type: Type.STRING } }
-          }
-        }
-      }
-    });
-
-    const parsed = JSON.parse(response.text?.trim() || '{}');
+    const validated = validateRoutineJson(res.data);
+    if (!validated.ok) {
+      return {
+        success: false,
+        isReadable: false,
+        rawText: '',
+        errorCode: 'AI_INVALID_RESPONSE',
+        error: formatValidationErrors('routine', validated.errors)
+      };
+    }
     return {
       success: true,
-      isReadable: Boolean(parsed.isReadable !== false),
-      rawText: String(parsed.rawExtractedText || ''),
-      structured: parsed
+      isReadable: validated.data.isReadable,
+      rawText: validated.data.rawExtractedText,
+      structured: validated.data
     };
-  } catch (err: any) {
+  }
+
+  // General multimodal OCR + structured extraction for assignment, note, notice, job, captain_form, video
+  const res = await callGeminiJson<any>({
+    prompt: generalScanPrompt(params.feature),
+    inlineData: { data: params.base64Data, mimeType: params.mimeType },
+    additionalInlineData,
+    responseSchema: GENERAL_JSON_SCHEMA
+  });
+  if (!res.ok) {
     return {
       success: false,
       isReadable: false,
       rawText: '',
-      errorCode: 'AI_SERVICE_UNAVAILABLE',
-      error: `Document OCR service encountered an error (${err?.message || 'API error'}). You can retry or complete the fields manually.`
+      errorCode: res.errorCode,
+      error: res.error
     };
   }
+  const validated = validateGeneralJson(res.data);
+  if (!validated.ok) {
+    return {
+      success: false,
+      isReadable: false,
+      rawText: '',
+      errorCode: 'AI_INVALID_RESPONSE',
+      error: formatValidationErrors(params.feature, validated.errors)
+    };
+  }
+  return {
+    success: true,
+    isReadable: validated.data.isReadable,
+    rawText: String(validated.data.rawExtractedText || ''),
+    structured: validated.data
+  };
 }
 
 /**
@@ -1657,7 +1595,7 @@ export async function scanDocumentWithIntelligence(params: {
           mimeType: 'application/pdf',
           simulateApiFailure
         });
-        if (!gemRes.success && gemRes.errorCode === 'AI_SERVICE_UNAVAILABLE') {
+        if (!gemRes.success) {
           return {
             success: false,
             feature,
@@ -1673,7 +1611,7 @@ export async function scanDocumentWithIntelligence(params: {
             pages,
             warnings: ['This PDF is a scanned image document with no selectable text layer.'],
             uncertainFields: [],
-            errorCode: 'AI_SERVICE_UNAVAILABLE',
+            errorCode: gemRes.errorCode || 'AI_SERVICE_UNAVAILABLE',
             error: gemRes.error
           };
         }
@@ -1703,7 +1641,7 @@ export async function scanDocumentWithIntelligence(params: {
         simulateApiFailure
       });
 
-      if (!gemRes.success && gemRes.errorCode === 'AI_SERVICE_UNAVAILABLE') {
+      if (!gemRes.success) {
         return {
           success: false,
           feature,
@@ -1715,7 +1653,7 @@ export async function scanDocumentWithIntelligence(params: {
           rawExtractedText: '',
           warnings: [],
           uncertainFields: [],
-          errorCode: 'AI_SERVICE_UNAVAILABLE',
+          errorCode: gemRes.errorCode || 'AI_SERVICE_UNAVAILABLE',
           error: gemRes.error
         };
       }
@@ -1782,33 +1720,49 @@ export async function scanDocumentWithIntelligence(params: {
   if (feature === 'routine') {
     const routineData = parseRoutineFromText(cleanText, defaults);
     if (hasGeminiPeriods && routineData.periods.length === 0) {
-      routineData.periods = geminiStructured.periods.map((p: any, idx: number) => ({
-        id: `ocr_rt_${Date.now()}_${idx}`,
-        day: (['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'].includes(p.day)
-          ? p.day
-          : 'Saturday') as WeekDay,
-        periodNumber: Number(p.periodNumber) || idx + 1,
-        startTime: String(p.startTime || 'TBA'),
-        endTime: String(p.endTime || 'TBA'),
-        subjectCode: String(p.subjectCode || ''),
-        subjectName: String(
+      // geminiStructured.periods passed validateRoutineJson, so day /
+      // periodNumber / startTime / endTime are already valid here. Fields
+      // Gemini left blank stay blank and are flagged uncertain — a placeholder
+      // is only used for display and is always listed in uncertainFields so
+      // the review screen highlights it instead of silently trusting it.
+      routineData.periods = geminiStructured.periods.map((p: any, idx: number) => {
+        const resolvedSubjectName =
           p.subjectName ||
-            (p.subjectCode ? resolveBtebSubjectCode(String(p.subjectCode))?.name : '') ||
-            'Verify Subject'
-        ),
-        teacherName: String(p.teacherName || 'Verify Instructor'),
-        room: String(p.room || 'Verify Room'),
-        type: p.type === 'Practical / Lab' ? 'Practical / Lab' : 'Theory',
-        shift: (geminiStructured.shift === 'Day' ? 'Day' : defaults?.shift || 'Morning') as Shift,
-        section: (['A1', 'A2', 'B1', 'B2'].includes(geminiStructured.section)
-          ? geminiStructured.section
-          : defaults?.section || 'A1') as Section,
-        confidence: (p.confidence === 'low' || p.confidence === 'medium' ? p.confidence : 'high') as
-          | 'high'
-          | 'medium'
-          | 'low',
-        uncertainFields: Array.isArray(p.uncertainFields) ? p.uncertainFields : []
-      }));
+          (p.subjectCode ? resolveBtebSubjectCode(String(p.subjectCode))?.name : '') ||
+          '';
+        const uncertain = Array.isArray(p.uncertainFields) ? [...p.uncertainFields] : [];
+        if (!p.teacherName && !uncertain.includes('teacherName')) uncertain.push('teacherName');
+        if (!p.room && !uncertain.includes('room')) uncertain.push('room');
+        if (!resolvedSubjectName && !uncertain.includes('subjectName')) uncertain.push('subjectName');
+        return {
+          id: `ocr_rt_${Date.now()}_${idx}`,
+          day: p.day as WeekDay,
+          periodNumber: Number(p.periodNumber),
+          startTime: String(p.startTime),
+          endTime: String(p.endTime),
+          subjectCode: String(p.subjectCode || ''),
+          subjectName: String(resolvedSubjectName || 'Verify Subject'),
+          teacherName: String(p.teacherName || 'Verify Instructor'),
+          room: String(p.room || 'Verify Room'),
+          type: p.type === 'Practical / Lab' ? 'Practical / Lab' : 'Theory',
+          shift: (geminiStructured.shift === 'Day' ? 'Day' : defaults?.shift || 'Morning') as Shift,
+          section: (['A1', 'A2', 'B1', 'B2'].includes(geminiStructured.section)
+            ? geminiStructured.section
+            : defaults?.section || 'A1') as Section,
+          confidence: (p.confidence === 'low' || p.confidence === 'medium' ? p.confidence : 'high') as
+            | 'high'
+            | 'medium'
+            | 'low',
+          uncertainFields: uncertain
+        };
+      });
+      // Validated top-level metadata from Gemini wins over the caller default
+      // when present (e.g. the routine header states the semester/shift).
+      if (geminiStructured.semester) routineData.semester = geminiStructured.semester;
+      if (geminiStructured.shift) routineData.shift = geminiStructured.shift;
+      if (geminiStructured.section) routineData.section = geminiStructured.section;
+      if (geminiStructured.college) routineData.college = geminiStructured.college;
+      if (geminiStructured.department) routineData.department = geminiStructured.department;
     }
 
     if (routineData.periods.length === 0) {
@@ -1825,14 +1779,15 @@ export async function scanDocumentWithIntelligence(params: {
     }
 
     const anyLowConfidence = routineData.periods.some(p => (p.uncertainFields?.length || 0) > 0);
-    result.confidence = anyLowConfidence ? 'medium' : 'high';
+    const anyLowPeriod = routineData.periods.some(p => p.confidence === 'low');
+    result.confidence = anyLowPeriod ? 'low' : anyLowConfidence ? 'medium' : 'high';
     result.uncertainFields = Array.from(
       new Set([
         ...routineData.uncertainFields,
         ...routineData.periods.flatMap(p => p.uncertainFields || [])
       ])
     );
-    if (anyLowConfidence) {
+    if (anyLowConfidence && !anyLowPeriod) {
       result.warnings.push(
         'Some routine fields (such as room numbers, teacher initials, or times) were partially unclear and are highlighted for your review before publishing.'
       );
@@ -1880,6 +1835,14 @@ export async function scanDocumentWithIntelligence(params: {
     result.confidence = capData.confidence;
     result.uncertainFields = capData.uncertainFields;
     result.captainFormData = capData;
+  }
+
+  // Surface low confidence explicitly so no client can silently trust shaky
+  // data: the review screens already render `warnings` + `uncertainFields`.
+  if (result.confidence === 'low') {
+    result.warnings.push('Low confidence — please check every extracted field before publishing.');
+  } else if (result.confidence === 'medium' && result.uncertainFields.length > 0 && feature !== 'routine') {
+    result.warnings.push('Some fields are low confidence — please check the highlighted fields before publishing.');
   }
 
   return result;

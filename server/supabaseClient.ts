@@ -141,8 +141,32 @@ function throwIfError(error: unknown, context: string): void {
         : typeof error === 'object' && error !== null && 'message' in error
           ? String((error as { message: unknown }).message)
           : String(error);
-    throw new Error(`Supabase ${context} failed: ${message}`);
+    const thrown = new Error(`Supabase ${context} failed: ${message}`);
+    // Keep the PostgREST code (e.g. '23505' unique violation) on the
+    // thrown error so callers can tell a duplicate-key failure apart
+    // from a transient one without parsing the message.
+    if (typeof error === 'object' && error !== null && 'code' in error) {
+      (thrown as Error & { code?: unknown }).code = (error as { code?: unknown }).code;
+    }
+    throw thrown;
   }
+}
+
+/**
+ * True when a Supabase error is a Postgres unique-violation (23505) —
+ * e.g. inserting a `students` row whose `board_roll` already exists
+ * (`board_roll` is unique in supabase-schema-phase1.sql). Callers use
+ * this to turn a lost registration race into a clear 409 duplicate
+ * response instead of a generic write failure.
+ */
+export function isUniqueViolationError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { code?: unknown; message?: unknown };
+  if (err.code === '23505') return true;
+  return (
+    typeof err.message === 'string' &&
+    err.message.includes('duplicate key value violates unique constraint')
+  );
 }
 
 /**

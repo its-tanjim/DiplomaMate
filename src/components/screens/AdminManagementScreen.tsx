@@ -256,6 +256,34 @@ export const AdminManagementScreen: React.FC = () => {
     }
   };
 
+  // Admin-only student PIN reset (follow-up to item 7): students who forget
+  // their PIN have no self-service recovery, so the admin sets a new 4–6
+  // digit PIN here. The PIN is never shown back by the server.
+  const resetStudentPin = async () => {
+    if (!selectedAccount) return;
+    const target = selectedAccount;
+    const newPin = window.prompt(`Set a new 4–6 digit PIN for ${target.name} (roll ${target.roll || '—'}). Share it with the student securely — they will need it to sign in.`, '');
+    if (newPin === null) return;
+    if (!/^\d{4,6}$/.test(newPin.trim())) {
+      setError('PIN must be 4–6 digits.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const data = await request(`/api/admin/students/${encodeURIComponent(target.id)}/reset-pin`, {
+        method: 'POST',
+        body: JSON.stringify({ pin: newPin.trim() })
+      });
+      notifySuccess(data.message);
+      await loadManagement();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not reset PIN.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const saveCommunity = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!communityModal) return;
@@ -634,6 +662,9 @@ export const AdminManagementScreen: React.FC = () => {
               )}
             </div>
             <div className="flex flex-col-reverse gap-2 border-t border-slate-100 p-4 sm:flex-row sm:justify-end">
+              {(selectedAccount.role === 'student' || selectedAccount.role === 'class_captain') && (
+                <button type="button" onClick={() => void resetStudentPin()} disabled={saving || accountDetailsLoading || !selectedAccount.details} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">Reset PIN</button>
+              )}
               <button type="button" onClick={() => void deleteAccount()} disabled={saving || accountDetailsLoading || !selectedAccount.details} className="rounded-xl border border-rose-200 px-4 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">Delete account</button>
               {selectedAccount.approvalStatus === 'Pending' && <>
                 <button type="button" onClick={() => void decideAccount('reject')} disabled={saving || accountDetailsLoading || !selectedAccount.details} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">Reject</button>

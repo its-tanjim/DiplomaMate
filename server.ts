@@ -2,7 +2,6 @@ import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import {
@@ -30,7 +29,6 @@ import {
   MOCK_ENROLLED_STUDENTS,
   INITIAL_ROUTINE,
   INITIAL_APPLICATIONS,
-  INITIAL_JOBS,
   INITIAL_CAMPUS_NOTICES,
   LEGACY_DEMO_CONTENT_IDS,
   type EnrolledStudent
@@ -107,8 +105,22 @@ import {
   scanDocumentWithIntelligence,
   extractPdfContentInBatches,
   extractEmbeddedTextFromImageBuffer,
-  validateAndDecodeUploadedFile
+  validateAndDecodeUploadedFile,
+  normalizeBanglaDigits
 } from './src/services/serverDocumentIntelligence';
+import {
+  callGeminiJson,
+  formatValidationErrors,
+  GEMINI_NOT_CONFIGURED_MESSAGE,
+  isGeminiConfigured,
+  RESULT_JSON_SCHEMA,
+  resultGazettePrompt,
+  ROSTER_JSON_SCHEMA,
+  rosterScanPrompt,
+  serializeBtebEntriesToText,
+  validateResultJson,
+  validateRosterJson
+} from './src/services/geminiClient';
 // Phase 4 route migrations 1–8: GET /api/communities, /recommended,
 // /api/roster, POST /api/students/login (read half), the captain list /
 // quota reads (GET /api/admin/management, GET /api/admin/accounts/:id),
@@ -116,7 +128,7 @@ import {
 // GET /api/notices/campus (list) read Postgres first, falling back to
 // the JSON store. Write route 1 (captain decision + teacher endorsement
 // persistence), write route 2 (community create + community message
-// post), write route 3 (student register + one-time PIN setup) and
+// post), write route 3 (student register) and
 // POST /api/captains/sync (captain record + linked student + teacher-
 // endorsement registry) and POST /api/teachers/change-pin (teacher PIN
 // change) dual-write to Postgres first, then the JSON
@@ -139,12 +151,20 @@ import {
 // file_data dropped) and falls back to keeping the bytes in the JSON
 // store's file_data when Storage is unconfigured or the upload
 // throws; GET /api/communities/:id/files/:fileId serves from Storage
-// first, then file_data, then the legacy disk file.
+// first, then file_data, then the legacy disk file. Notes,
+// assignments (+ submissions) and jobs reuse the same pattern via
+// the shared inspectUploadedFile() / processIncomingUploadFile() /
+// serveUploadedFile() helpers: notes go to the `notes` bucket,
+// assignments and submissions to the `assignments` bucket, campus
+// notices and jobs keep bytes in the JSON store (no bucket for them
+// yet); every list response strips the stored bytes and every file
+// is served only through its authenticated download endpoint.
 import {
   isSupabaseConfigured,
   deleteAttendanceSheetById,
   deleteRoutineById,
   downloadCommunityFile,
+  downloadStorageFile,
   getPendingTeacherEndorsement,
   getStudentByBoardRoll,
   getTeacherByEmail,
@@ -156,6 +176,7 @@ import {
   insertCommunityMessage,
   insertRoutine,
   insertStudent,
+  isUniqueViolationError,
   listAttendanceSheets,
   listCampusNotices,
   listCaptainRecordsByCohort,
@@ -163,6 +184,7 @@ import {
   listMembershipsForUser,
   listRoutines,
   listStudentsByCohort,
+  sanitizeStorageFileName,
   toAttendanceSheetRow,
   toCaptainRow,
   toRoutineRow,
@@ -172,6 +194,7 @@ import {
   updateStudentById,
   updateTeacherById,
   uploadCommunityFile,
+  uploadStorageFile,
   upsertPendingTeacherEndorsement
 } from './server/supabaseClient';
 
@@ -427,7 +450,6 @@ const PUBLIC_MUTATING_ROUTES = new Set([
   'POST /api/payments/verify', // payments disabled: handler returns 503
   'POST /api/teachers/register',
   'POST /api/students/register',
-  'POST /api/students/setup-pin', // one-time PIN setup, token-authenticated internally
   'POST /api/students/sms/verify', // login step, challenge-authenticated internally
   'POST /api/students/sms/resend', // login step, challenge-authenticated internally
   'POST /api/auth/google', // Google ID-token verification, server-side
@@ -437,6 +459,7 @@ const PUBLIC_MUTATING_ROUTES = new Set([
   'POST /api/students/login',
   'POST /api/admin/bootstrap',
   'POST /api/admin/login',
+  'POST /api/admin/pin-verify', // admin PIN gate: pre-auth step, rate-limited + 5h lockout internally
   'POST /api/teachers/login',
   'POST /api/verification/teacher-approve', // PIN-authenticated internally
   'POST /api/results/group' // public result lookup
@@ -909,16 +932,13 @@ async function sendSms(phone: string, message: string): Promise<boolean> {
   }
 }
 
-// One-time PIN-setup tokens for accounts created before PINs existed.
-// Issued after a successful roll+reg login; 15-minute expiry.
-interface PinSetupToken {
-  token: string;
-  studentId: string;
-  role: AccountType;
-  expiresAt: number;
-}
-const pinSetupTokens = new Map<string, PinSetupToken>();
-const PIN_SETUP_TOKEN_TTL_MS = 15 * 60 * 1000;
+// NOTE (item 7, 2026-11-24): the one-time PIN-setup token flow is REMOVED.
+// Roll+registration-number used to mint a token that let anyone set a PIN
+// on an account — a hijack hole. There is no self-service PIN setup any
+// more: PINs are set only at account creation or by a signed-in teacher
+// changing their own PIN. Accounts created before PINs existed that still
+// have no PIN cannot sign in until an administrator sets a PIN for them
+// (no admin PIN-reset endpoint exists yet — see the item-7 report).
 
 
 
@@ -989,6 +1009,22 @@ const STUDENT_PIN_REGEX = /^\d{4,6}$/;
 function isValidStudentPin(pin: string): boolean {
   return STUDENT_PIN_REGEX.test(String(pin || '').trim());
 }
+
+// Teacher PINs follow the same rule as student PINs: 4–6 digits, required
+// at registration. Verification never enforces the format, so teachers who
+// registered earlier with a longer PIN can still sign in; only new
+// registrations and PIN changes must use 4–6 digits.
+const TEACHER_PIN_REGEX = /^\d{4,6}$/;
+
+function isValidTeacherPin(pin: string): boolean {
+  return TEACHER_PIN_REGEX.test(String(pin || '').trim());
+}
+
+// One board roll = one account, ever. Returned (409) whenever a second
+// registration is attempted for a roll that already has a registered
+// account, on either the JSON store or the Postgres store.
+const DUPLICATE_BOARD_ROLL_MESSAGE =
+  'An account with this board roll already exists. Ei roll diye already account khola hoyeche.';
 
 function hashStudentPin(pin: string, salt: string): string {
   return hashPinWithSalt(pin, salt, STUDENT_PIN_ITERATIONS_V2);
@@ -1198,12 +1234,14 @@ app.post('/api/teachers/register', authRateLimiter, authIpRateLimiter, async (re
       });
     }
 
-    // Verify PIN length (4-6 digits or characters)
+    // A PIN is mandatory at creation and must be 4–6 digits: the PIN is
+    // the teacher's login credential, so an account without one could
+    // never sign in.
     const cleanPin = String(pin).trim();
-    if (cleanPin.length < 4 || cleanPin.length > 8) {
+    if (!isValidTeacherPin(cleanPin)) {
       return res.status(400).json({
         success: false,
-        error: 'Teacher Security PIN must be between 4 and 8 digits.'
+        error: 'Teacher Security PIN must be 4–6 digits. Ei PIN diye login korte hobe — mone rakho.'
       });
     }
 
@@ -1344,7 +1382,6 @@ app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: 
 
   const boardRoll = String(req.body?.boardRoll || '').trim();
   const pin = String(req.body?.pin || '').trim();
-  const regNumber = String(req.body?.regNumber || '').trim();
   const requestedRole = req.body?.role === 'class_captain' ? 'class_captain' : 'student';
   if (!boardRoll) {
     return res.status(400).json({ success: false, error: 'Board Roll is required.' });
@@ -1355,8 +1392,8 @@ app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: 
   // — the same board-roll + isRegisteredAccount match the JSON .find()
   // did — and falls back to the JSON store when Supabase is not
   // configured or the query throws. PIN verify, lockout (in-memory
-  // studentLoginFailures Map), session minting and the requiresPinSetup
-  // flow below are unchanged and run on whichever source answered.
+  // studentLoginFailures Map) and session minting below run on whichever
+  // source answered.
   // toStudent() preserves pinHash/pinSalt, so verifyStudentPin() works
   // identically on a Postgres row.
   let student: EnrolledStudent | null;
@@ -1414,14 +1451,15 @@ app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: 
     return res.status(403).json({ success: false, error: 'Class Captain access requires administrator approval.' });
   }
 
-  // Credential check. Accounts with a PIN log in with Board Roll + PIN
-  // only — the registration number is no longer accepted once a PIN
-  // exists. Accounts created before PINs existed get one last roll+reg
-  // login, which issues a short-lived PIN-setup token instead of a
-  // session (see POST /api/students/setup-pin).
+  // Credential check. Login is Board Roll + PIN only — the registration
+  // number is never accepted as a credential. Accounts created before
+  // PINs existed that still have no PIN cannot sign in: there is no
+  // self-service PIN setup (roll+reg used to mint a PIN-setup token,
+  // which let anyone who knew a roll+reg hijack the account), so the
+  // owner must ask an administrator to set a PIN for the account.
   if (student.pinHash) {
     if (!pin) {
-      return res.status(400).json({ success: false, error: 'Please enter your PIN. If you have not set a PIN yet, use "Set up my PIN" below.' });
+      return res.status(400).json({ success: false, error: 'Please enter your PIN.' });
     }
     if (!verifyStudentPin(pin, student)) {
       if (recordLoginFailure()) {
@@ -1430,30 +1468,7 @@ app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: 
       return res.status(401).json({ success: false, error: 'Incorrect Board Roll or PIN.' });
     }
   } else {
-    if (!regNumber) {
-      return res.status(400).json({ success: false, error: 'Please enter your Registration Number to set up your PIN.' });
-    }
-    if (student.regNumber !== regNumber) {
-      if (recordLoginFailure()) {
-        return res.status(429).json({ success: false, error: 'Maximum failed login attempts exceeded (5/5). Account locked for 15 minutes.' });
-      }
-      return res.status(401).json({ success: false, error: 'No registered account matches those credentials.' });
-    }
-    const setupToken = crypto.randomBytes(32).toString('hex');
-    pinSetupTokens.set(setupToken, {
-      token: setupToken,
-      studentId: student.id,
-      role: requestedRole,
-      expiresAt: Date.now() + PIN_SETUP_TOKEN_TTL_MS
-    });
-    return res.status(200).json({
-      success: false,
-      requiresPinSetup: true,
-      pinSetupToken: setupToken,
-      studentName: student.name,
-      boardRoll: student.boardRoll,
-      message: 'Please set a 4–6 digit PIN for your account.'
-    });
+    return res.status(401).json({ success: false, error: 'This account does not have a PIN yet. Please contact your administrator to set a PIN for this account.' });
   }
 
   studentLoginFailures.delete(lockoutKey);
@@ -1520,7 +1535,7 @@ app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: 
 
 /**
  * Helper: mint a student session from a verified student record.
- * Shared by PIN setup, SMS verification and social login.
+ * Shared by SMS verification and social login.
  */
 function mintStudentSession(student: EnrolledStudent, role: AccountType): ServerSession {
   return createServerSession({
@@ -1540,63 +1555,21 @@ function mintStudentSession(student: EnrolledStudent, role: AccountType): Server
 }
 
 /**
- * 2B1. ONE-TIME STUDENT PIN SETUP (`POST /api/students/setup-pin`)
- * Completes the migration for accounts created before PINs existed: the
- * caller presents the short-lived token issued by a roll+reg login and a
- * new 4–6 digit PIN. Sets the PIN (PBKDF2 v2) and signs the student in
- * immediately. The token is single-use.
+ * 2B1. STUDENT PIN SETUP (`POST /api/students/setup-pin`) — REMOVED (item 7,
+ * 2026-11-24). The old handler let anyone who knew a board roll +
+ * registration number set a new PIN on that account and take it over, so
+ * the whole flow is gone: no token is issued by login any more and no PIN
+ * is ever set here. The route stays as an explicit 410 Gone (instead of a
+ * bare 404) so older app builds get a clear message instead of a silent
+ * failure. PINs are now set only inside account creation
+ * (`POST /api/students/register`, `POST /api/teachers/register`) and by a
+ * signed-in teacher changing their own PIN (`POST /api/teachers/change-pin`).
+ * Accounts that still have no PIN must ask an administrator to set one.
  */
-app.post('/api/students/setup-pin', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
-  const token = String(req.body?.pinSetupToken || '').trim();
-  const pin = String(req.body?.pin || '').trim();
-  const requestedRole = req.body?.role === 'class_captain' ? 'class_captain' : 'student';
-  if (!token || !pin) {
-    return res.status(400).json({ success: false, error: 'PIN setup token and a new PIN are required.' });
-  }
-  if (!isValidStudentPin(pin)) {
-    return res.status(400).json({ success: false, error: 'PIN must be 4–6 digits.' });
-  }
-  const stored = pinSetupTokens.get(token);
-  if (!stored || Date.now() > stored.expiresAt) {
-    pinSetupTokens.delete(token);
-    return res.status(401).json({ success: false, error: 'This PIN setup link has expired. Please sign in again with your Board Roll and Registration Number.' });
-  }
-  const student = academicStore.students.find(account => account.id === stored.studentId);
-  if (!student || student.isRegisteredAccount !== true) {
-    pinSetupTokens.delete(token);
-    return res.status(404).json({ success: false, error: 'Account not found.' });
-  }
-  if (deletedAccountIds.has(student.id)) {
-    pinSetupTokens.delete(token);
-    return res.status(403).json({ success: false, error: 'This account has been deactivated.' });
-  }
-  if (student.pinHash) {
-    pinSetupTokens.delete(token);
-    return res.status(409).json({ success: false, error: 'This account already has a PIN. Please sign in with Board Roll + PIN.' });
-  }
-  const role: AccountType =
-    stored.role === 'class_captain' && student.accountType === 'class_captain' && student.captainVerificationStatus === 'Approved'
-      ? 'class_captain'
-      : 'student';
-  pinSetupTokens.delete(token);
-  setStudentPin(student, pin);
-  // Phase 4 write route 3: dual-write the new PIN hash to Postgres
-  // FIRST. A Postgres failure only logs a warning — the JSON write
-  // below still happens, so the PIN setup is never lost.
-  await persistStudentUpdateToSupabase(student.id, {
-    pin_hash: student.pinHash ?? null,
-    pin_salt: student.pinSalt ?? null,
-    pin_hash_version: student.pinHashVersion ?? null
-  }, 'StudentSetupPin');
-  saveAcademicStore(academicStore);
-  studentLoginFailures.delete(`student:${student.id}`);
-  const session = mintStudentSession(student, role);
-  return res.status(200).json({
-    success: true,
-    message: 'PIN set successfully. You are now signed in.',
-    account: sanitizeStudent(student),
-    sessionToken: session.token,
-    session: { userId: session.userId, role: session.role }
+app.post('/api/students/setup-pin', authRateLimiter, authIpRateLimiter, (_req: Request, res: Response) => {
+  return res.status(410).json({
+    success: false,
+    error: 'PIN setup has been removed. Sign in with Board Roll + PIN, or ask your administrator to set a PIN for this account.'
   });
 });
 
@@ -1862,6 +1835,202 @@ app.post('/api/auth/logout', (req: Request, res: Response) => {
   return res.status(200).json({ success: true, message: 'Session terminated.' });
 });
 
+// ---------------------------------------------------------------------------
+// ADMIN PANEL PIN GATE (item 2).
+//
+// The admin login form is hidden behind a PIN: the client must first pass
+// POST /api/admin/pin-verify and present the short-lived pin session token
+// (header `x-admin-pin-token`) to POST /api/admin/login or
+// POST /api/admin/bootstrap. The PIN itself comes ONLY from the
+// ADMIN_PANEL_PIN env var — there is no default PIN and none is hardcoded.
+//
+// - 3 wrong PINs -> admin panel locked for 5 HOURS. The lockout lives in
+//   academicStore.adminPinLockout (persisted in data/academic-store.json,
+//   which the GitHub auto-backup preserves across Render deploys), so a
+//   restart/deploy cannot clear it. In-memory-only would be a bypass.
+// - Wrong attempts are also covered by authRateLimiter/authIpRateLimiter.
+// - If ADMIN_PANEL_PIN is NOT set, the gate is OFF (the admin login works
+//   exactly as before) and a loud startup warning is logged — the gate must
+//   never silently lock the real admin out. Set it on Render (see
+//   .env.example). The correct PIN also resets the failure counter.
+// - A correct PIN issues a token valid for 15 minutes. The token only
+//   unlocks the login/bootstrap endpoints; it is NOT a session and grants
+//   no admin access by itself. It is consumed on a successful admin login.
+// ---------------------------------------------------------------------------
+const ADMIN_PANEL_PIN = (process.env.ADMIN_PANEL_PIN || '').trim();
+const ADMIN_PIN_GATE_ENABLED = ADMIN_PANEL_PIN.length > 0;
+const ADMIN_PIN_MAX_ATTEMPTS = 3;
+const ADMIN_PIN_LOCKOUT_MS = 5 * 60 * 60 * 1000; // 5 hours
+const ADMIN_PIN_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+// Issued PIN session tokens: token -> expiry epoch ms. In-memory is fine
+// here — a restart only forces the admin to re-enter the PIN (fail-closed),
+// and the lockout itself is persisted in the JSON store, not here.
+const adminPinTokens = new Map<string, number>();
+
+function getAdminPinLockout(): { failedAttempts: number; lockedUntil: number | null } {
+  if (!academicStore.adminPinLockout || typeof academicStore.adminPinLockout !== 'object') {
+    academicStore.adminPinLockout = { failedAttempts: 0, lockedUntil: null };
+  }
+  return academicStore.adminPinLockout;
+}
+
+function isAdminPinLocked(): { locked: boolean; lockedUntil: number | null } {
+  const lockout = getAdminPinLockout();
+  if (lockout.lockedUntil && Date.now() < lockout.lockedUntil) {
+    return { locked: true, lockedUntil: lockout.lockedUntil };
+  }
+  // Expired lockout: clear it (and the failure counter) on next read so a
+  // stale lock can never linger past its 5 hours.
+  if (lockout.lockedUntil && Date.now() >= lockout.lockedUntil) {
+    lockout.failedAttempts = 0;
+    lockout.lockedUntil = null;
+    saveAcademicStore(academicStore);
+  }
+  return { locked: false, lockedUntil: null };
+}
+
+function formatLockoutRemaining(lockedUntil: number): string {
+  const totalMinutes = Math.max(0, Math.ceil((lockedUntil - Date.now()) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours} hour(s) ${minutes} minute(s)` : `${minutes} minute(s)`;
+}
+
+function isValidAdminPinToken(token: unknown): boolean {
+  if (typeof token !== 'string' || !token) return false;
+  const expiresAt = adminPinTokens.get(token);
+  if (!expiresAt) return false;
+  if (Date.now() >= expiresAt) {
+    adminPinTokens.delete(token);
+    return false;
+  }
+  return true;
+}
+
+/** Shared gate check for POST /api/admin/login and POST /api/admin/bootstrap. */
+function requireAdminPinToken(req: Request, res: Response): boolean {
+  if (!ADMIN_PIN_GATE_ENABLED) return true;
+  const token = req.headers['x-admin-pin-token'] || (req.body as Record<string, unknown> | undefined)?.pinToken;
+  if (isValidAdminPinToken(token)) return true;
+  res.status(403).json({
+    success: false,
+    pinRequired: true,
+    error: 'Admin panel PIN verification is required before sign-in. Enter the admin panel PIN first.'
+  });
+  return false;
+}
+
+/**
+ * 2D-1. ADMIN PANEL PIN GATE STATUS (`GET /api/admin/pin-status`)
+ * Lets the client decide whether to show the PIN prompt first. Never
+ * exposes the PIN or any credential — only whether the gate is on and
+ * whether the panel is currently locked out.
+ */
+app.get('/api/admin/pin-status', (_req: Request, res: Response) => {
+  const { locked, lockedUntil } = ADMIN_PIN_GATE_ENABLED
+    ? isAdminPinLocked()
+    : { locked: false, lockedUntil: null as number | null };
+  const lockout = getAdminPinLockout();
+  return res.status(200).json({
+    success: true,
+    pinGateEnabled: ADMIN_PIN_GATE_ENABLED,
+    locked,
+    lockedUntil,
+    attemptsRemaining: ADMIN_PIN_GATE_ENABLED && !locked
+      ? Math.max(0, ADMIN_PIN_MAX_ATTEMPTS - lockout.failedAttempts)
+      : null
+  });
+});
+
+/**
+ * 2D-2. ADMIN PANEL PIN VERIFICATION (`POST /api/admin/pin-verify`)
+ * Correct PIN -> short-lived pin session token (15 min). 3 wrong PINs ->
+ * 5-hour lockout persisted in the JSON store (survives restart/deploy).
+ * When the gate is not configured this returns success with no token so
+ * the client can proceed straight to the password form.
+ */
+app.post('/api/admin/pin-verify', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
+  try {
+    if (!ADMIN_PIN_GATE_ENABLED) {
+      return res.status(200).json({
+        success: true,
+        pinGateEnabled: false,
+        message: 'Admin PIN gate is not configured on this server.'
+      });
+    }
+
+    const { locked, lockedUntil } = isAdminPinLocked();
+    if (locked && lockedUntil) {
+      appendSystemAudit('admin_pin_locked_out', 'admin-pin-gate', 'Admin Panel PIN', `PIN attempt while locked out (${formatLockoutRemaining(lockedUntil)} remaining).`);
+      saveAcademicStore(academicStore);
+      return res.status(429).json({
+        success: false,
+        locked: true,
+        lockedUntil,
+        error: `Admin panel locked after 3 failed PIN attempts. Try again in ${formatLockoutRemaining(lockedUntil)}.`
+      });
+    }
+
+    const providedPin = req.body?.pin;
+    if (typeof providedPin !== 'string' || !providedPin.trim()) {
+      return res.status(400).json({ success: false, error: 'Admin panel PIN is required.' });
+    }
+
+    // Constant-time comparison on SHA-256 digests (never compare the raw
+    // short PIN directly, and never log or return the PIN).
+    const providedHash = crypto.createHash('sha256').update(providedPin.trim()).digest();
+    const expectedHash = crypto.createHash('sha256').update(ADMIN_PANEL_PIN).digest();
+    const matches = providedHash.length === expectedHash.length
+      && crypto.timingSafeEqual(providedHash, expectedHash);
+
+    if (!matches) {
+      const lockout = getAdminPinLockout();
+      lockout.failedAttempts = (lockout.failedAttempts || 0) + 1;
+      if (lockout.failedAttempts >= ADMIN_PIN_MAX_ATTEMPTS) {
+        lockout.lockedUntil = Date.now() + ADMIN_PIN_LOCKOUT_MS;
+        appendSystemAudit('admin_pin_locked_out', 'admin-pin-gate', 'Admin Panel PIN', 'Admin panel locked after 3 failed PIN attempts (5 hours).');
+        saveAcademicStore(academicStore);
+        return res.status(429).json({
+          success: false,
+          locked: true,
+          lockedUntil: lockout.lockedUntil,
+          error: 'Maximum failed PIN attempts exceeded (3/3). Admin panel locked for 5 hours.'
+        });
+      }
+      const attemptsLeft = ADMIN_PIN_MAX_ATTEMPTS - lockout.failedAttempts;
+      appendSystemAudit('admin_pin_failed', 'admin-pin-gate', 'Admin Panel PIN', `Failed PIN attempt (${lockout.failedAttempts}/3).`);
+      saveAcademicStore(academicStore);
+      return res.status(401).json({
+        success: false,
+        error: `Incorrect admin panel PIN. ${attemptsLeft} attempt(s) remaining before a 5-hour lockout.`
+      });
+    }
+
+    // Correct PIN: clear failures/lockout, issue a short-lived token.
+    const lockout = getAdminPinLockout();
+    lockout.failedAttempts = 0;
+    lockout.lockedUntil = null;
+    saveAcademicStore(academicStore);
+    for (const [token, expiresAt] of adminPinTokens) {
+      if (Date.now() >= expiresAt) adminPinTokens.delete(token);
+    }
+    const pinToken = crypto.randomBytes(32).toString('hex');
+    adminPinTokens.set(pinToken, Date.now() + ADMIN_PIN_TOKEN_TTL_MS);
+    appendSystemAudit('admin_pin_verified', 'admin-pin-gate', 'Admin Panel PIN', 'Admin panel PIN verified; login form unlocked for 15 minutes.');
+    saveAcademicStore(academicStore);
+    return res.status(200).json({
+      success: true,
+      pinGateEnabled: true,
+      pinToken,
+      expiresInSeconds: ADMIN_PIN_TOKEN_TTL_MS / 1000
+    });
+  } catch (error) {
+    console.error('Admin PIN verify error:', error);
+    return res.status(500).json({ success: false, error: 'Admin PIN verification error.' });
+  }
+});
+
 /**
  * 2E. SYSTEM ADMINISTRATOR PROVISIONING STATUS (`GET /api/admin/bootstrap-status`)
  * Reports whether an initial system_admin has been provisioned (never exposes tokens or passwords).
@@ -1910,6 +2079,8 @@ app.get('/api/admin/audit-logs', requireSystemAdmin, (req: Request, res: Respons
  */
 app.post('/api/admin/bootstrap', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
   try {
+    // PIN gate: no admin provisioning without first passing the PIN prompt.
+    if (!requireAdminPinToken(req, res)) return;
     systemAdmins = loadSystemAdminsFromDisk();
     if (systemAdmins.size > 0) {
       return res.status(403).json({
@@ -2010,6 +2181,10 @@ app.post('/api/admin/bootstrap', authRateLimiter, authIpRateLimiter, (req: Reque
  */
 app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
   try {
+    // PIN gate first: without a valid PIN session token the password form
+    // is never even shown, and this endpoint refuses the attempt. The
+    // 5-failed-password / 15-min lockout below is unchanged underneath.
+    if (!requireAdminPinToken(req, res)) return;
     systemAdmins = loadSystemAdminsFromDisk();
     const { email, password } = req.body;
 
@@ -2088,6 +2263,11 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, (req: Request, 
       name: targetAdmin.name,
       email: targetAdmin.email
     });
+
+    // A PIN token unlocks one successful sign-in; the next login needs the
+    // PIN again. (Failed password attempts leave it valid for its 15 min.)
+    const usedPinToken = req.headers['x-admin-pin-token'] || (req.body as Record<string, unknown> | undefined)?.pinToken;
+    if (typeof usedPinToken === 'string') adminPinTokens.delete(usedPinToken);
 
     return res.status(200).json({
       success: true,
@@ -2328,6 +2508,60 @@ app.post('/api/teachers/reset-lockout', requireSystemAdmin, (req: Request, res: 
 });
 
 /**
+ * 6B. ADMIN RESET STUDENT PIN (Admin action - Protected by requireSystemAdmin)
+ * Recovery path for students who forget their PIN. Self-service PIN setup
+ * was removed (item 7, 2026-11-24) because anyone knowing a roll + reg
+ * number could hijack the account, so only a system admin can set a PIN
+ * for a student — e.g. the seed accounts that never had a PIN (Tanvir
+ * Ahmed 542891, Mahafuj Hasanath 843906, Tanjim Khan 843900). Uses the
+ * same PBKDF2 v2 hash as registration, clears any login lockout for the
+ * student, dual-writes the hash to Postgres, and audits the action.
+ * Never returns the hash — the response carries sanitizeStudent().
+ */
+app.post('/api/admin/students/:id/reset-pin', requireSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const studentId = String(req.params.id || '');
+    const student = academicStore.students.find(account => account.id === studentId);
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student not found' });
+    }
+    if (deletedAccountIds.has(student.id)) {
+      return res.status(403).json({ success: false, error: 'This account has been deactivated.' });
+    }
+
+    const pin = String((req.body as Record<string, unknown> | undefined)?.pin || '').trim();
+    if (!isValidStudentPin(pin)) {
+      return res.status(400).json({ success: false, error: 'PIN must be 4–6 digits.' });
+    }
+
+    setStudentPin(student, pin);
+    // Clear any student-login lockout for this account (lockout keys are
+    // `student:<id>` once the account is found, `roll:<boardRoll>` before).
+    studentLoginFailures.delete(`student:${student.id}`);
+    studentLoginFailures.delete(`roll:${student.boardRoll}`);
+
+    await persistStudentUpdateToSupabase(student.id, {
+      pin_hash: student.pinHash ?? null,
+      pin_salt: student.pinSalt ?? null,
+      pin_hash_version: student.pinHashVersion ?? null
+    }, 'AdminResetStudentPin');
+
+    const admin = (req as any).adminSession as ServerSession;
+    appendAdminAudit(admin, 'student_pin_reset', student.id, student.name, `PIN reset for roll ${student.boardRoll}.`);
+    saveAcademicStore(academicStore);
+
+    return res.status(200).json({
+      success: true,
+      message: `PIN reset for ${student.name} (roll ${student.boardRoll}).`,
+      student: sanitizeStudent(student)
+    });
+  } catch (error) {
+    console.error('Admin reset student PIN error:', error);
+    return res.status(500).json({ success: false, error: 'Reset student PIN failed' });
+  }
+});
+
+/**
  * 7. TEACHER PIN UPDATE
  */
 // Change a teacher's own security PIN. Requires the teacher's own session
@@ -2346,8 +2580,8 @@ app.post('/api/teachers/change-pin', authRateLimiter, authIpRateLimiter, require
     }
 
     const cleanNewPin = String(newPin).trim();
-    if (cleanNewPin.length < 4 || cleanNewPin.length > 8) {
-      return res.status(400).json({ success: false, error: 'New PIN must be between 4 and 8 digits.' });
+    if (!isValidTeacherPin(cleanNewPin)) {
+      return res.status(400).json({ success: false, error: 'New PIN must be 4–6 digits.' });
     }
 
     // Identity comes from the session only. A body-supplied teacherId may
@@ -3089,7 +3323,9 @@ app.post('/api/routine/ocr', requireAuth, aiRateLimiter, async (req: Request, re
           ? 413
           : scanResult.errorCode === 'AI_SERVICE_UNAVAILABLE'
             ? 503
-            : 422;
+            : scanResult.errorCode === 'AI_INVALID_RESPONSE'
+              ? 502
+              : 422;
       return res.status(statusCode).json({
         success: false,
         method: scanResult.extractionMethod,
@@ -3196,9 +3432,11 @@ app.post('/api/documents/scan', requireAuth, aiRateLimiter, async (req: Request,
           ? 413
           : result.errorCode === 'AI_SERVICE_UNAVAILABLE'
             ? 503
-            : result.errorCode === 'EMPTY_FILE'
-              ? 400
-              : 422;
+            : result.errorCode === 'AI_INVALID_RESPONSE'
+              ? 502
+              : result.errorCode === 'EMPTY_FILE'
+                ? 400
+                : 422;
       return res.status(status).json(result);
     }
 
@@ -4385,38 +4623,39 @@ async function extractTextFromUploadedResultPdf(fileDataUrl: string, mimeType?: 
     // Continue to Gemini extraction if available
   }
 
-  if (process.env.GEMINI_API_KEY) {
-    const ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-    });
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                data: val.base64Clean,
-                mimeType: val.detectedMimeType || 'application/pdf'
-              }
-            },
-            {
-              text: `Extract all Bangladesh Technical Education Board (BTEB) examination result entries verbatim from this document.
-Preserve institute headers like "50118 - Dhaka Polytechnic Institute", passed roll entries like "542880 (3.85)", and referred roll entries like "542881 { 66662(T), 66664(T,P) }".
-Do not invent or alter any roll numbers, GPAs, or subject codes. Return plain text only.`
-            }
-          ]
-        }
-      ]
-    });
-    return response.text || '';
+  // Scanned image document: only Gemini vision OCR can read it. The
+  // non-AI fallbacks above already ran, so reaching here means the file has
+  // no selectable/embedded text. Without a key this fails gracefully (503
+  // with the exact "scan needs GEMINI_API_KEY" message) — never a crash and
+  // never fake result rows.
+  if (!isGeminiConfigured()) {
+    throw new Error(
+      GEMINI_NOT_CONFIGURED_MESSAGE +
+      ' Please paste the extracted text from the BTEB Result PDF or upload a text-based PDF / .txt / .csv / .json file.'
+    );
   }
-
-  throw new Error(
-    'Uploaded PDF is a scanned image without selectable text and GEMINI_API_KEY is not configured. Please paste the extracted text from the BTEB Result PDF or upload a text-based PDF / .txt / .csv / .json file.'
-  );
+  const geminiRes = await callGeminiJson<any>({
+    prompt: resultGazettePrompt(),
+    inlineData: { data: val.base64Clean, mimeType: val.detectedMimeType || 'application/pdf' },
+    responseSchema: RESULT_JSON_SCHEMA
+  });
+  if (!geminiRes.ok) {
+    // API error (bad key, retired model, quota, outage): surface it plainly.
+    throw new Error(geminiRes.error);
+  }
+  const validated = validateResultJson(geminiRes.data);
+  if (!validated.ok) {
+    throw new Error(formatValidationErrors('bteb_result', validated.errors));
+  }
+  if (validated.data.isReadable === false || validated.data.entries.length === 0) {
+    throw new Error(
+      validated.data.unreadableReason ||
+      'Gemini could not read any BTEB result entries from this document. Please upload a clearer scan or paste the result text.'
+    );
+  }
+  // Validated JSON -> canonical text -> the existing deterministic parser
+  // stays the single source of truth for conflicts/duplicates/institutes.
+  return serializeBtebEntriesToText(validated.data.entries, validated.data.institutes);
 }
 
 /**
@@ -4443,9 +4682,19 @@ app.post('/api/admin/results/preview-parse', requireSystemAdmin, async (req: Req
       }
 
       catch (pdfErr: any) {
-        return res.status(400).json({
+        const msg = pdfErr?.message || 'Could not extract text from PDF.';
+        // Gemini failures keep their own status: no key -> 503, invalid
+        // AI JSON -> 502, other Gemini API errors -> 503.
+        const status = msg.includes('GEMINI_API_KEY')
+          ? 503
+          : msg.includes('Gemini returned invalid')
+            ? 502
+            : msg.startsWith('Gemini')
+              ? 503
+              : 400;
+        return res.status(status).json({
           success: false,
-          error: pdfErr?.message || 'Could not extract text from PDF.'
+          error: msg
         });
       }
     }
@@ -4706,6 +4955,14 @@ app.post('/api/admin/results/import', requireSystemAdmin, async (req: Request, r
     });
   } catch (error) {
     const errorType = error instanceof Error ? error.name : 'UnknownError';
+    const msg = error instanceof Error ? error.message : '';
+    // A Gemini failure while extracting the scanned result file keeps its own
+    // message/status instead of being masked as a generic save failure.
+    if (msg.includes('GEMINI_API_KEY') || msg.startsWith('Gemini')) {
+      const status = msg.includes('Gemini returned invalid') ? 502 : 503;
+      console.error(`[BTEB Results Import] Gemini extraction failed (${errorType}).`);
+      return res.status(status).json({ success: false, error: msg });
+    }
     console.error(`[BTEB Results Import] Failed to persist result batch (${errorType}).`);
     return res.status(500).json({ success: false, error: 'Failed to save the imported BTEB result batch. Please try again or contact an administrator.' });
   }
@@ -4784,6 +5041,10 @@ interface PersistentAcademicStore {
   campusNotices: CampusNoticeItem[];
   campusNoticeReports: CampusNoticeReportRecord[];
   teacherContactAccessLocked: boolean;
+  // Admin panel PIN gate (POST /api/admin/pin-verify): failed PIN attempts
+  // + 5-hour lockout. Persisted in this store (NOT in memory) so a server
+  // restart or Render deploy cannot clear the lockout.
+  adminPinLockout: { failedAttempts: number; lockedUntil: number | null };
   // Endorsements created by teacher-approve, keyed by application id.
   // This is the server-side proof that an endorsement is genuine, so
   // POST /api/captains/sync can reject client-forged endorsements while
@@ -5023,10 +5284,16 @@ function buildInitialAcademicStore(): PersistentAcademicStore {
     communityReports: [],
     deletedAccountIds: [],
     adminAuditLogs: [],
-    jobs: [...(INITIAL_JOBS as JobCircular[])],
+    // No seeded jobs: the old INITIAL_JOBS sample listings (job_01..job_06)
+    // were invented and are removed — see LEGACY_DEMO_CONTENT_IDS.jobs.
+    jobs: [],
+    // No seeded campus notices: the old INITIAL_CAMPUS_NOTICES sample
+    // notices (cnotice_01..cnotice_03) were invented and are removed —
+    // see LEGACY_DEMO_CONTENT_IDS.notices.
     campusNotices: [...(INITIAL_CAMPUS_NOTICES as CampusNoticeItem[])],
     campusNoticeReports: [],
     teacherContactAccessLocked: false,
+    adminPinLockout: { failedAttempts: 0, lockedUntil: null },
     pendingTeacherEndorsements: {}
   };
 }
@@ -5062,14 +5329,24 @@ function loadAcademicStore(): PersistentAcademicStore {
           ? parsed.captainRecords
           : [...(INITIAL_APPLICATIONS as CaptainRecord[])];
 
+      // Heal stores that still hold the removed invented sample listings
+      // (job_01..job_06). A store with no real jobs starts empty — never
+      // back-filled with sample listings.
       const loadedJobs: JobCircular[] =
         Array.isArray(parsed.jobs) && parsed.jobs.length > 0
-          ? parsed.jobs
-          : [...(INITIAL_JOBS as JobCircular[])];
+          ? (parsed.jobs as JobCircular[]).filter(
+              j => j && !LEGACY_DEMO_CONTENT_IDS.jobs.includes(j.id)
+            )
+          : [];
 
+      // Heal stores that still hold the removed invented sample notices
+      // (cnotice_01..cnotice_03). A store with no real notices starts
+      // empty — never back-filled with sample notices.
       const loadedCampusNotices: CampusNoticeItem[] =
         Array.isArray(parsed.campusNotices) && parsed.campusNotices.length > 0
-          ? parsed.campusNotices
+          ? (parsed.campusNotices as CampusNoticeItem[]).filter(
+              n => n && !LEGACY_DEMO_CONTENT_IDS.notices.includes(n.id)
+            )
           : [...(INITIAL_CAMPUS_NOTICES as CampusNoticeItem[])];
         const loadedTeacherAccounts: ServerTeacher[] = Array.isArray(parsed.teacherAccounts)
         ? parsed.teacherAccounts
@@ -5117,6 +5394,14 @@ function loadAcademicStore(): PersistentAcademicStore {
         campusNotices: loadedCampusNotices,
         campusNoticeReports: Array.isArray(parsed.campusNoticeReports) ? parsed.campusNoticeReports : [],
         teacherContactAccessLocked: parsed.teacherContactAccessLocked === true,
+        adminPinLockout: (parsed.adminPinLockout && typeof parsed.adminPinLockout === 'object')
+          ? {
+              failedAttempts: Math.max(0, Number(parsed.adminPinLockout.failedAttempts) || 0),
+              lockedUntil: typeof parsed.adminPinLockout.lockedUntil === 'number'
+                ? parsed.adminPinLockout.lockedUntil
+                : null
+            }
+          : { failedAttempts: 0, lockedUntil: null },
         pendingTeacherEndorsements: (parsed.pendingTeacherEndorsements && typeof parsed.pendingTeacherEndorsements === 'object')
           ? parsed.pendingTeacherEndorsements
           : {}
@@ -5180,6 +5465,16 @@ let githubBackupLastContent: string | null = null;
 
 if (!GITHUB_STORE_BACKUP_TOKEN) {
   console.warn('[Store Backup] GITHUB_STORE_BACKUP_TOKEN is not set — automatic GitHub backup of academic-store.json is DISABLED. Accounts changed at runtime will be lost on the next Render deploy.');
+}
+
+// Admin panel PIN gate: loud warning when unset so a missing env var is
+// never mistaken for "the gate is protecting the panel". The gate is only
+// enforced when ADMIN_PANEL_PIN is set; without it the admin password form
+// works exactly as before.
+if (!ADMIN_PIN_GATE_ENABLED) {
+  console.warn('[Admin PIN Gate] WARNING: ADMIN_PANEL_PIN is NOT set — the admin login form is NOT protected by a PIN. Set ADMIN_PANEL_PIN on Render (Dashboard -> your service -> Environment) to enable the PIN gate. There is deliberately no default PIN.');
+} else {
+  console.log('[Admin PIN Gate] Enabled: admin login requires PIN verification first (3 wrong PINs = 5-hour lockout).');
 }
 
 function scheduleAcademicStoreBackup(): void {
@@ -5358,14 +5653,24 @@ app.post('/api/students/register', authRateLimiter, authIpRateLimiter, async (re
   const existingByRoll = academicStore.students.find(student => student.boardRoll === boardRoll);
   const existingByReg = academicStore.students.find(student => student.regNumber === regNumber);
   if (existingByRoll || existingByReg) {
+    // One board roll = one account: a registered account for this roll
+    // blocks ANY second registration for the roll, whatever registration
+    // number the attempt carries.
+    if (existingByRoll?.isRegisteredAccount) {
+      return res.status(409).json({ success: false, error: DUPLICATE_BOARD_ROLL_MESSAGE });
+    }
     if (!existingByRoll || existingByRoll !== existingByReg) {
       return res.status(409).json({ success: false, error: 'This roll or registration number is already associated with a different record.' });
     }
-    if (existingByRoll.isRegisteredAccount) {
-      return res.status(409).json({ success: false, error: 'An account with these credentials is already registered.' });
-    }
     if (deletedAccountIds.has(existingByRoll.id)) {
       return res.status(403).json({ success: false, error: 'This account has been deactivated.' });
+    }
+    // One board roll = one account: the JSON store has no registered
+    // account for this roll, but Postgres may (the two stores can skew).
+    // A registered Postgres row for this roll under a different id blocks
+    // this re-registration too.
+    if (await findSupabaseRegisteredStudentByRoll(boardRoll, existingByRoll.id)) {
+      return res.status(409).json({ success: false, error: DUPLICATE_BOARD_ROLL_MESSAGE });
     }
     if (role === 'class_captain') {
       existingByRoll.accountType = 'class_captain';
@@ -5416,10 +5721,27 @@ app.post('/api/students/register', authRateLimiter, authIpRateLimiter, async (re
     isRegisteredAccount: true
   };
   setStudentPin(account, pin);
-  // Phase 4 write route 3: dual-write the new student to Postgres
-  // FIRST. A Postgres failure only logs a warning — the JSON write
-  // below still happens, so the registration is never lost.
-  await persistStudentInsertToSupabase(account, 'StudentRegister');
+  // Phase 4 write route 3: dual-write the new student to Postgres FIRST.
+  // One board roll = one account, on the Postgres path too: a registered
+  // Postgres row for this roll blocks the registration, and `board_roll`
+  // is unique in Postgres, so a concurrent second registration fails the
+  // insert with a 23505 unique violation and is answered 409 instead of
+  // creating a second account. Any other Postgres failure only logs a
+  // warning — the JSON write below still happens, so the registration is
+  // never lost because Postgres is down.
+  if (isSupabaseConfigured()) {
+    if (await findSupabaseRegisteredStudentByRoll(boardRoll)) {
+      return res.status(409).json({ success: false, error: DUPLICATE_BOARD_ROLL_MESSAGE });
+    }
+    try {
+      await insertStudent(account);
+    } catch (err) {
+      if (isUniqueViolationError(err)) {
+        return res.status(409).json({ success: false, error: DUPLICATE_BOARD_ROLL_MESSAGE });
+      }
+      console.warn('[StudentRegister] Supabase write failed, continuing with JSON store:', err);
+    }
+  }
   academicStore.students.push(account);
   saveAcademicStore(academicStore);
   return res.status(201).json({
@@ -5999,81 +6321,58 @@ app.post('/api/attendance/roster-ocr', requireAuth, aiRateLimiter, async (req: R
       if (asciiRows.length > 0) {
         extractedRows = asciiRows;
         extractionMethod = 'embedded_document_text';
-      } else if (process.env.GEMINI_API_KEY) {
-        // Call Gemini 3.8 Flash Vision OCR
-        try {
-          const ai = new GoogleGenAI({
-            apiKey: process.env.GEMINI_API_KEY,
-            httpOptions: {
-              headers: { 'User-Agent': 'aistudio-build' }
-            }
+      } else if (!isGeminiConfigured()) {
+        // No extractable text in the file and no key: fail gracefully with
+        // the exact "scan needs GEMINI_API_KEY" message (503) instead of
+        // silently falling through to a generic "no rows detected" error.
+        return res.status(503).json({
+          success: false,
+          errorCode: 'AI_SERVICE_UNAVAILABLE',
+          error:
+            GEMINI_NOT_CONFIGURED_MESSAGE +
+            ' Or paste the roll list text in the box below — pasted text works without a key.'
+        });
+      } else {
+        // Call Gemini vision OCR (REST v1beta generateContent) with the
+        // roster prompt + strict JSON schema, then validate every row
+        // server-side (name present, boardRoll 5–8 digits, no duplicates).
+        const geminiRes = await callGeminiJson<any>({
+          prompt: rosterScanPrompt(),
+          inlineData: { data: base64Data, mimeType: detectedMime },
+          responseSchema: ROSTER_JSON_SCHEMA
+        });
+        if (!geminiRes.ok) {
+          return res.status(geminiRes.status).json({
+            success: false,
+            errorCode: geminiRes.errorCode,
+            error: geminiRes.error
           });
-
-          const response = await ai.models.generateContent({
-            model: 'gemini-3.8-flash',
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  {
-                    inlineData: {
-                      data: base64Data,
-                      mimeType: detectedMime
-                    }
-                  },
-                  {
-                    text: `Extract the student roster from this polytechnic class sheet image or PDF.
-Do NOT invent students if the image is completely blank or unreadable.
-For each student row visible, extract:
-- classRoll (2-digit roll e.g. "01")
-- name (student full name)
-- boardRoll (5 to 8 digit BTEB board roll number)
-- regNumber (registration number if visible, otherwise empty string)
-- confidence ("high", "medium", or "uncertain")`
-                  }
-                ]
-              }
-            ],
-            config: {
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  isReadable: { type: Type.BOOLEAN },
-                  unreadableReason: { type: Type.STRING },
-                  students: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        classRoll: { type: Type.STRING },
-                        name: { type: Type.STRING },
-                        boardRoll: { type: Type.STRING },
-                        regNumber: { type: Type.STRING },
-                        confidence: { type: Type.STRING }
-                      }
-                    }
-                  }
-                }
-              }
-            }
+        }
+        const validated = validateRosterJson(geminiRes.data);
+        if (!validated.ok) {
+          return res.status(502).json({
+            success: false,
+            errorCode: 'AI_INVALID_RESPONSE',
+            error: formatValidationErrors('roster', validated.errors)
           });
-
-          const parsedJson = JSON.parse(response.text?.trim() || '{}');
-          if (parsedJson.isReadable === false && (!parsedJson.students || parsedJson.students.length === 0)) {
-            return res.status(422).json({
-              success: false,
-              error:
-                parsedJson.unreadableReason ||
-                'The uploaded image or PDF could not be read clearly. Please upload a clearer scan or enter/correct the student list manually.'
-            });
-          }
-          if (Array.isArray(parsedJson.students) && parsedJson.students.length > 0) {
-            extractedRows = parsedJson.students;
-            extractionMethod = 'gemini_vision_ocr';
-          }
-        } catch (ocrErr) {
-          console.warn('[Roster OCR] Gemini OCR fallback triggered:', ocrErr);
+        }
+        if (validated.data.isReadable === false && validated.data.students.length === 0) {
+          return res.status(422).json({
+            success: false,
+            error:
+              validated.data.unreadableReason ||
+              'The uploaded image or PDF could not be read clearly. Please upload a clearer scan or enter/correct the student list manually.'
+          });
+        }
+        if (validated.data.students.length > 0) {
+          extractedRows = validated.data.students.map(s => ({
+            name: s.name,
+            boardRoll: normalizeBanglaDigits(s.boardRoll),
+            classRoll: normalizeBanglaDigits(s.classRoll),
+            regNumber: normalizeBanglaDigits(s.regNumber),
+            confidence: s.confidence === 'high' || s.confidence === 'medium' ? s.confidence : 'uncertain'
+          }));
+          extractionMethod = 'gemini_vision_ocr';
         }
       }
     } else {
@@ -6092,19 +6391,30 @@ For each student row visible, extract:
     }
 
     const candidates = parseRosterLinesToCandidates(extractedRows, existingRoster);
+    const uncertainCount = candidates.filter(
+      c => c.matchStatus === 'invalid_missing_fields' || c.confidence === 'uncertain'
+    ).length;
+    // Low-confidence flag for the client: uncertain rows are already
+    // highlighted amber ("Needs Review") in the preview table; this warning
+    // is shown above it so a teacher never merges shaky rows unknowingly.
+    const warnings: string[] =
+      uncertainCount > 0
+        ? [
+            `Low confidence — please check ${uncertainCount} highlighted row${uncertainCount === 1 ? '' : 's'} (amber "Needs Review") before merging. Names or roll numbers may be misread.`
+          ]
+        : [];
 
     return res.status(200).json({
       success: true,
       method: extractionMethod,
       candidates,
+      warnings,
       summary: {
         totalDetected: candidates.length,
         matchedExistingCount: candidates.filter(c => c.matchStatus === 'matched_existing').length,
         newStudentCount: candidates.filter(c => c.matchStatus === 'new_student').length,
         duplicateInFileCount: candidates.filter(c => c.matchStatus === 'duplicate_in_file').length,
-        uncertainOrInvalidCount: candidates.filter(
-          c => c.matchStatus === 'invalid_missing_fields' || c.confidence === 'uncertain'
-        ).length
+        uncertainOrInvalidCount: uncertainCount
       },
       notice:
         'Roster extraction complete. Review and edit any uncertain names or roll numbers below. Adding these students to the attendance sheet will initialize their status as Not Marked (never automatically Present).'
@@ -7010,21 +7320,69 @@ function computeAssignmentSubmissionSummary(
   };
 }
 
+/** List-safe assignment: stored bytes stripped, legacy inline data: URL rewritten to the download endpoint, and the viewer's own submission stripped the same way. */
+function publicAssignment(asg: AssignmentItem): AssignmentItem {
+  const stripped = stripStoredUpload(asg, 'attachmentUrl', 'attachment_data', `/api/assignments/${asg.id}/file`);
+  if (stripped.submissionSummary?.mySubmission) {
+    const mySub = stripped.submissionSummary.mySubmission;
+    stripped.submissionSummary = {
+      ...stripped.submissionSummary,
+      mySubmission: stripStoredUpload(mySub, 'attachmentUrl', 'attachment_data', `/api/assignments/${asg.id}/submissions/${mySub.id}/file`)
+    };
+  }
+  return stripped;
+}
+
+/** List-safe submission: stored bytes stripped, legacy inline data: URL rewritten to the download endpoint. */
+function publicSubmission(sub: AssignmentSubmissionRecord): AssignmentSubmissionRecord {
+  return stripStoredUpload(sub, 'attachmentUrl', 'attachment_data', `/api/assignments/${sub.assignmentId}/submissions/${sub.id}/file`);
+}
+
 /**
  * GET NOTES (`GET /api/notes`)
+ * List responses never carry file bytes: media_data is stripped and a
+ * legacy inline data: URL is rewritten to the download endpoint.
  */
 app.get('/api/notes', (_req: Request, res: Response) => {
   return res.status(200).json({
     success: true,
-    notes: academicStore.notes
+    notes: academicStore.notes.map(n => stripStoredUpload(n, 'mediaUrl', 'media_data', `/api/notes/${n.id}/file`))
   });
+});
+
+/** Download one note's file (`GET /api/notes/:id/file`) — any signed-in user. Serves Storage, then record bytes, then a legacy inline data: URL; 404 when the bytes exist nowhere (never a fake file). */
+app.get('/api/notes/:id/file', async (req: Request, res: Response) => {
+  try {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to download study notes.' });
+    }
+    const note = academicStore.notes.find(n => n.id === req.params.id);
+    if (!note) {
+      return res.status(404).json({ success: false, error: 'Note not found.' });
+    }
+    const served = await serveUploadedFile(res, {
+      fileName: note.mediaName || `${note.title}.${(note.fileType || 'PDF').toLowerCase()}`,
+      mimeType: note.media_mime,
+      bucket: 'notes',
+      storagePath: note.storage_path,
+      fileData: note.media_data,
+      legacyDataUrl: note.mediaUrl
+    });
+    if (!served) {
+      return res.status(404).json({ success: false, error: 'This note has no downloadable file attached.' });
+    }
+  } catch (error) {
+    console.error('Download note file error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to download note file.' });
+  }
 });
 
 /**
  * PUBLISH NOTE (`POST /api/notes`)
  * Authorized for Verified Teachers (within scope), Verified Class Captains, or System Admins
  */
-app.post('/api/notes', (req: Request, res: Response) => {
+app.post('/api/notes', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -7056,6 +7414,13 @@ app.post('/api/notes', (req: Request, res: Response) => {
       section = session.section || 'A1',
       mediaUrl,
       mediaName,
+      base64_data,
+      // Optional source / reference for the note (e.g. textbook name or an
+      // official link). Shown in the UI so students can verify the note.
+      // Notes with no trustworthy source must not be presented as sourced —
+      // the uploader (verified teacher / captain) is always shown instead.
+      sourceName,
+      sourceUrl,
       extractedText,
       headings,
       tables,
@@ -7066,6 +7431,11 @@ app.post('/api/notes', (req: Request, res: Response) => {
 
     if (!title || !String(title).trim()) {
       return res.status(400).json({ success: false, error: 'Note title is required.' });
+    }
+
+    const cleanSourceUrl = String(sourceUrl || '').trim();
+    if (cleanSourceUrl && !/^https?:\/\//i.test(cleanSourceUrl)) {
+      return res.status(400).json({ success: false, error: 'Note source link must be a valid http:// or https:// web address.' });
     }
 
     if (session.role === 'teacher') {
@@ -7089,13 +7459,39 @@ app.post('/api/notes', (req: Request, res: Response) => {
     const now = new Date();
     const uploadedDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
+    const noteId = `note_${Date.now()}`;
+    // Uploads item: the bytes are validated (magic bytes, real size
+    // caps) and stored — Supabase `notes` bucket first, record
+    // `media_data` fallback — and mediaUrl becomes the download
+    // endpoint. A data: URL is never stored inline any more: it used
+    // to bloat every GET /api/notes payload with the full file bytes
+    // and had no size / type validation at all.
+    let uploaded: ProcessedUpload | undefined;
+    try {
+      uploaded = await processIncomingUploadFile({
+        urlValue: mediaUrl,
+        base64Data: base64_data,
+        fileName: String(mediaName || 'note-file'),
+        endpointUrl: `/api/notes/${noteId}/file`,
+        bucket: 'notes',
+        storageKey: noteId,
+        logTag: 'NoteUpload'
+      });
+    } catch (err) {
+      return res.status(400).json({ success: false, error: (err as Error).message || 'Invalid note file.' });
+    }
+
     const newNote: NoteItem = {
-      id: `note_${Date.now()}`,
+      id: noteId,
       title: String(title).trim(),
       subjectCode: String(subjectCode || '66662').trim(),
       subjectName: String(subjectName || 'Department Subject').trim(),
       chapter: String(chapter || 'Chapter 1').trim(),
-      uploadedBy: session.role === 'teacher' ? session.name : `${session.name} (CR)`,
+      uploadedBy: session.role === 'teacher'
+        ? session.name
+        : session.role === 'class_captain'
+          ? `${session.name} (CR)`
+          : `${session.name} (Admin)`,
       uploadedById: session.userId,
       uploadedByRole: session.role,
       uploadedDate,
@@ -7109,8 +7505,13 @@ app.post('/api/notes', (req: Request, res: Response) => {
       departmentId: canonicalDept.id,
       shift: shift === 'Day' ? 'Day' : 'Morning',
       section: (['A1', 'A2', 'B1', 'B2'].includes(String(section)) ? section : 'A1') as Section,
-      mediaUrl: mediaUrl || undefined,
+      mediaUrl: uploaded ? uploaded.url : undefined,
       mediaName: mediaName || undefined,
+      media_data: uploaded?.fileData,
+      media_mime: uploaded?.mimeType,
+      storage_path: uploaded?.storagePath,
+      sourceName: sourceName ? String(sourceName).trim().slice(0, 200) : undefined,
+      sourceUrl: cleanSourceUrl || undefined,
       extractedText: extractedText ? String(extractedText).trim() : undefined,
       headings: Array.isArray(headings) ? headings.map(String) : undefined,
       tables: Array.isArray(tables) ? tables.map(String) : undefined,
@@ -7125,7 +7526,7 @@ app.post('/api/notes', (req: Request, res: Response) => {
     return res.status(201).json({
       success: true,
       message: 'Lecture note published successfully.',
-      note: newNote
+      note: stripStoredUpload(newNote, 'mediaUrl', 'media_data', `/api/notes/${newNote.id}/file`)
     });
   } catch (error) {
     console.error('Publish note error:', error);
@@ -7139,7 +7540,7 @@ app.post('/api/notes', (req: Request, res: Response) => {
 app.get('/api/assignments', (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
-    const enrichedAssignments: AssignmentItem[] = academicStore.assignments.map(asg => {
+    const enrichedAssignments: AssignmentItem[] = academicStore.assignments.map((asg): AssignmentItem => {
       const summary = computeAssignmentSubmissionSummary(asg, session);
       const isSubmittedForStudent =
         session && (session.role === 'student' || session.role === 'class_captain')
@@ -7153,7 +7554,7 @@ app.get('/api/assignments', (req: Request, res: Response) => {
         submissionNote: summary.mySubmission?.submissionNote || asg.submissionNote,
         submissionSummary: summary
       };
-    });
+    }).map(publicAssignment);
 
     return res.status(200).json({
       success: true,
@@ -7165,11 +7566,39 @@ app.get('/api/assignments', (req: Request, res: Response) => {
   }
 });
 
+/** Download an assignment's attached file (`GET /api/assignments/:id/file`) — any signed-in user. */
+app.get('/api/assignments/:id/file', async (req: Request, res: Response) => {
+  try {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to download assignment files.' });
+    }
+    const asg = academicStore.assignments.find(a => a.id === req.params.id);
+    if (!asg) {
+      return res.status(404).json({ success: false, error: 'Assignment not found.' });
+    }
+    const served = await serveUploadedFile(res, {
+      fileName: asg.attachmentName || `${asg.title}.${(asg.attachmentType || 'PDF').toLowerCase()}`,
+      mimeType: asg.attachment_mime,
+      bucket: 'assignments',
+      storagePath: asg.storage_path,
+      fileData: asg.attachment_data,
+      legacyDataUrl: asg.attachmentUrl
+    });
+    if (!served) {
+      return res.status(404).json({ success: false, error: 'This assignment has no downloadable file attached.' });
+    }
+  } catch (error) {
+    console.error('Download assignment file error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to download assignment file.' });
+  }
+});
+
 /**
  * PUBLISH ASSIGNMENT (`POST /api/assignments`)
  * Authorized for Verified Teachers (within scope) or Verified Class Captains
  */
-app.post('/api/assignments', (req: Request, res: Response) => {
+app.post('/api/assignments', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -7201,6 +7630,7 @@ app.post('/api/assignments', (req: Request, res: Response) => {
       attachmentUrl,
       attachmentName,
       attachmentType,
+      base64_data,
       questions,
       marks,
       submissionMethod,
@@ -7236,8 +7666,29 @@ app.post('/api/assignments', (req: Request, res: Response) => {
     const canonicalCol = normalizeCollege(college);
     const canonicalDept = normalizeTechnology(department);
 
+    const asgId = `asg_${Date.now()}`;
+    // Uploads item: validate + store the bytes (Supabase
+    // `assignments` bucket first, record `attachment_data` fallback)
+    // and rewrite attachmentUrl to the download endpoint — a data:
+    // URL was previously stored inline, bloating every assignments
+    // list payload with the full file bytes and skipping validation.
+    let uploaded: ProcessedUpload | undefined;
+    try {
+      uploaded = await processIncomingUploadFile({
+        urlValue: attachmentUrl,
+        base64Data: base64_data,
+        fileName: String(attachmentName || 'assignment-file'),
+        endpointUrl: `/api/assignments/${asgId}/file`,
+        bucket: 'assignments',
+        storageKey: asgId,
+        logTag: 'AssignmentUpload'
+      });
+    } catch (err) {
+      return res.status(400).json({ success: false, error: (err as Error).message || 'Invalid assignment file.' });
+    }
+
     const newAsg: AssignmentItem = {
-      id: `asg_${Date.now()}`,
+      id: asgId,
       title: String(title).trim(),
       subjectCode: String(subjectCode).trim(),
       subjectName: String(subjectName).trim(),
@@ -7254,9 +7705,12 @@ app.post('/api/assignments', (req: Request, res: Response) => {
       semester: Number(semester) as SemesterNumber,
       shift: shift === 'Day' ? 'Day' : 'Morning',
       section: (['A1', 'A2', 'B1', 'B2'].includes(String(section)) ? section : 'A1') as Section,
-      attachmentUrl: attachmentUrl || undefined,
+      attachmentUrl: uploaded ? uploaded.url : undefined,
       attachmentName: attachmentName || undefined,
       attachmentType: attachmentType || undefined,
+      attachment_data: uploaded?.fileData,
+      attachment_mime: uploaded?.mimeType,
+      storage_path: uploaded?.storagePath,
       questions: Array.isArray(questions) ? questions.map(String) : undefined,
       marks: marks !== undefined ? marks : undefined,
       submissionMethod: submissionMethod ? String(submissionMethod).trim() : undefined,
@@ -7277,7 +7731,7 @@ app.post('/api/assignments', (req: Request, res: Response) => {
     return res.status(201).json({
       success: true,
       message: 'Assignment published to class feed.',
-      assignment: enriched
+      assignment: publicAssignment(enriched)
     });
   } catch (error) {
     console.error('Publish assignment error:', error);
@@ -7291,7 +7745,7 @@ app.post('/api/assignments', (req: Request, res: Response) => {
  * - Validates that the submitting student belongs to the assignment's eligible cohort
  * - Deduplicates submissions by student: resubmissions update the existing record and increment `attemptCount`
  */
-app.post('/api/assignments/:id/submit', (req: Request, res: Response) => {
+app.post('/api/assignments/:id/submit', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -7319,7 +7773,8 @@ app.post('/api/assignments/:id/submit', (req: Request, res: Response) => {
       attachmentUrl,
       attachmentName,
       attachmentType,
-      attachmentSize
+      attachmentSize,
+      base64_data
     } = req.body;
 
     // Identity is derived from the session (and the server roster) ONLY.
@@ -7384,6 +7839,30 @@ app.post('/api/assignments/:id/submit', (req: Request, res: Response) => {
         (s.studentId === session.userId || (studentBoardRoll && s.boardRoll === studentBoardRoll))
     );
 
+    // Uploads item: a (re)submitted file is validated + stored
+    // (Supabase `assignments` bucket first, record `attachment_data`
+    // fallback) and attachmentUrl becomes the download endpoint.
+    // When no new file is sent, a resubmission keeps the previous
+    // file's bytes untouched.
+    const subId =
+      existingSubIdx >= 0
+        ? academicStore.assignmentSubmissions[existingSubIdx].id
+        : `sub_${asg.id}_${session.userId}_${Date.now()}`;
+    let uploaded: ProcessedUpload | undefined;
+    try {
+      uploaded = await processIncomingUploadFile({
+        urlValue: attachmentUrl,
+        base64Data: base64_data,
+        fileName: String(attachmentName || 'submission-file'),
+        endpointUrl: `/api/assignments/${asg.id}/submissions/${subId}/file`,
+        bucket: 'assignments',
+        storageKey: subId,
+        logTag: 'AssignmentSubmission'
+      });
+    } catch (err) {
+      return res.status(400).json({ success: false, error: (err as Error).message || 'Invalid submission file.' });
+    }
+
     let savedSubmission: AssignmentSubmissionRecord;
     let isResubmission = false;
 
@@ -7394,16 +7873,19 @@ app.post('/api/assignments/:id/submit', (req: Request, res: Response) => {
         ...prev,
         lastUpdatedAt: formattedNow,
         submissionNote: String(submissionNote || prev.submissionNote || 'Submitted via student portal.').trim(),
-        attachmentUrl: attachmentUrl !== undefined ? attachmentUrl : prev.attachmentUrl,
+        attachmentUrl: uploaded ? uploaded.url : prev.attachmentUrl,
         attachmentName: attachmentName !== undefined ? attachmentName : prev.attachmentName,
         attachmentType: attachmentType !== undefined ? attachmentType : prev.attachmentType,
         attachmentSize: attachmentSize !== undefined ? attachmentSize : prev.attachmentSize,
+        attachment_data: uploaded ? uploaded.fileData : prev.attachment_data,
+        attachment_mime: uploaded ? uploaded.mimeType : prev.attachment_mime,
+        storage_path: uploaded ? uploaded.storagePath : prev.storage_path,
         attemptCount: (Number(prev.attemptCount) || 1) + 1
       };
       academicStore.assignmentSubmissions[existingSubIdx] = savedSubmission;
     } else {
       savedSubmission = {
-        id: `sub_${asg.id}_${session.userId}_${Date.now()}`,
+        id: subId,
         assignmentId: asg.id,
         studentId: session.userId,
         studentName: studentInRoster?.name || session.name,
@@ -7418,10 +7900,13 @@ app.post('/api/assignments/:id/submit', (req: Request, res: Response) => {
         submittedAt: formattedNow,
         lastUpdatedAt: formattedNow,
         submissionNote: String(submissionNote || 'Completed and submitted through student portal.').trim(),
-        attachmentUrl: attachmentUrl || undefined,
+        attachmentUrl: uploaded ? uploaded.url : undefined,
         attachmentName: attachmentName || undefined,
         attachmentType: attachmentType || undefined,
         attachmentSize: attachmentSize || undefined,
+        attachment_data: uploaded?.fileData,
+        attachment_mime: uploaded?.mimeType,
+        storage_path: uploaded?.storagePath,
         attemptCount: 1
       };
       academicStore.assignmentSubmissions.unshift(savedSubmission);
@@ -7437,7 +7922,7 @@ app.post('/api/assignments/:id/submit', (req: Request, res: Response) => {
       message: isResubmission
         ? `Assignment resubmitted (Attempt #${savedSubmission.attemptCount}). Your unique student submission count remains 1.`
         : 'Assignment submitted successfully!',
-      submission: savedSubmission,
+      submission: publicSubmission(savedSubmission),
       submissionSummary: updatedSummary
     });
   } catch (error) {
@@ -7550,14 +8035,66 @@ app.get('/api/assignments/:id/submissions', (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      assignment: asg,
+      assignment: publicAssignment(asg),
       summary,
-      submissions: uniqueSubmissions,
+      submissions: uniqueSubmissions.map(publicSubmission),
       notSubmittedStudents
     });
   } catch (error) {
     console.error('Get assignment submissions error:', error);
     return res.status(500).json({ success: false, error: 'Failed to load assignment submissions.' });
+  }
+});
+
+/** Download one student's submission file (`GET /api/assignments/:id/submissions/:submissionId/file`) — the cohort-authorized teacher, a system admin, or the submitting student themself. */
+app.get('/api/assignments/:id/submissions/:submissionId/file', async (req: Request, res: Response) => {
+  try {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to download submission files.' });
+    }
+    const asg = academicStore.assignments.find(a => a.id === req.params.id);
+    if (!asg) {
+      return res.status(404).json({ success: false, error: 'Assignment not found.' });
+    }
+    const sub = academicStore.assignmentSubmissions.find(
+      s => s.id === req.params.submissionId && s.assignmentId === asg.id
+    );
+    if (!sub) {
+      return res.status(404).json({ success: false, error: 'Submission not found.' });
+    }
+    const isOwner =
+      sub.studentId === session.userId ||
+      (Boolean(session.boardRoll) && sub.boardRoll === session.boardRoll);
+    if (!isOwner && session.role !== 'system_admin') {
+      if (session.role !== 'teacher') {
+        return res.status(403).json({ success: false, error: 'Forbidden: Only the submitting student, their teacher, or an administrator can download this file.' });
+      }
+      const authCheck = checkTeacherCohortAuthorization(session, {
+        college: asg.college || 'Dhaka Polytechnic Institute',
+        department: asg.department || 'Computer Science and Technology (CST)',
+        semester: asg.semester,
+        shift: asg.shift,
+        section: asg.section
+      });
+      if (!authCheck.authorized) {
+        return res.status(authCheck.status).json({ success: false, error: authCheck.error });
+      }
+    }
+    const served = await serveUploadedFile(res, {
+      fileName: sub.attachmentName || 'submission',
+      mimeType: sub.attachment_mime,
+      bucket: 'assignments',
+      storagePath: sub.storage_path,
+      fileData: sub.attachment_data,
+      legacyDataUrl: sub.attachmentUrl
+    });
+    if (!served) {
+      return res.status(404).json({ success: false, error: 'This submission has no downloadable file attached.' });
+    }
+  } catch (error) {
+    console.error('Download submission file error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to download submission file.' });
   }
 });
 
@@ -9313,7 +9850,7 @@ type CommunityAttachmentWithStorage = CommunityAttachment & { storage_path?: str
  * the JSON store's `file_data` instead, so a message is never lost
  * because Storage is down. Returns the Storage object path on
  * success. The 350 KB / size-cap / magic-byte validation is NOT
- * touched here: it already ran in inspectCommunityUpload() before
+ * touched here: it already ran in inspectUploadedFile() before
  * this is called, and only inspected bytes are ever uploaded.
  */
 async function uploadCommunityAttachmentToStorage(
@@ -9334,13 +9871,12 @@ async function uploadCommunityAttachmentToStorage(
 }
 
 /**
- * Write route 3 dual-write helpers (student register + one-time PIN
- * setup). Same contract as the captain / community persist helpers:
+ * Write route 3 dual-write helpers (student register). Same contract as the captain / community persist helpers:
  * return early when Supabase is unconfigured, never throw — on any
  * query error, or when the row does not exist in Postgres (update
  * returns null, e.g. a student registered before the Phase 2 migration
  * or whose Postgres row was never created), log a warning and the
- * caller carries on with the JSON write, so a registration / PIN setup
+ * caller carries on with the JSON write, so a registration
  * is never lost because Postgres is down.
  *
  * `pin_hash_version` has no Postgres column until
@@ -9351,12 +9887,30 @@ async function uploadCommunityAttachmentToStorage(
  * treat the hash as legacy — verifyStudentPin() always uses the v2
  * iteration count for students, so verification is unaffected.
  */
-async function persistStudentInsertToSupabase(student: EnrolledStudent, logTag: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
+/**
+ * Supabase-first duplicate check for student registration (item 7).
+ * Returns the registered Postgres student for a board roll, or null when
+ * Supabase is unconfigured, no row exists, the row is not a registered
+ * account, or the row is the `excludeId` record itself (a roster seed row
+ * being claimed by its own re-registration). Never throws: a Postgres
+ * failure only logs a warning and the caller falls back to the JSON
+ * store, so a registration is never lost because Postgres is down — the
+ * unique `board_roll` constraint still guards the insert itself.
+ */
+async function findSupabaseRegisteredStudentByRoll(
+  boardRoll: string,
+  excludeId?: string
+): Promise<EnrolledStudent | null> {
+  if (!isSupabaseConfigured()) return null;
   try {
-    await insertStudent(student);
+    const existing = await getStudentByBoardRoll(boardRoll);
+    if (existing && existing.isRegisteredAccount === true && existing.id !== excludeId) {
+      return existing;
+    }
+    return null;
   } catch (err) {
-    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+    console.warn('[StudentRegister] Supabase duplicate check failed, continuing with JSON store:', err);
+    return null;
   }
 }
 
@@ -11709,7 +12263,7 @@ function sanitizeDownloadFilename(name: string): string {
   return cleaned || 'document';
 }
 
-interface InspectedCommunityUpload {
+interface InspectedUpload {
   mimeType: string;
   fileType: 'image' | 'video' | 'pdf' | 'document';
   fileSizeBytes: number;
@@ -11725,7 +12279,7 @@ function isPrintableTextBuffer(buf: Buffer): boolean {
   return true;
 }
 
-function inspectCommunityUpload(rawDataUrl: string, claimedFileName: string): InspectedCommunityUpload {
+function inspectUploadedFile(rawDataUrl: string, claimedFileName: string): InspectedUpload {
   const fileData = rawDataUrl.includes('base64,') ? rawDataUrl.split('base64,')[1] : '';
   if (!fileData) {
     // No bytes sent (legacy / seeded attachment). Never trust the claimed
@@ -11762,7 +12316,7 @@ function inspectCommunityUpload(rawDataUrl: string, claimedFileName: string): In
 
   const ext = claimedFileName.split('.').pop()?.toLowerCase() || '';
   let mimeType = 'application/octet-stream';
-  let fileType: InspectedCommunityUpload['fileType'] = 'document';
+  let fileType: InspectedUpload['fileType'] = 'document';
 
   if (buf.subarray(0, 4).toString('ascii') === '%PDF') {
     mimeType = 'application/pdf';
@@ -11806,6 +12360,167 @@ function inspectCommunityUpload(rawDataUrl: string, claimedFileName: string): In
   return { mimeType, fileType, fileSizeBytes, fileData };
 }
 
+// ---------------------------------------------------------------------------
+// Shared upload-file handling for notes / assignments / submissions /
+// campus notices / jobs — the same pattern the community attachments
+// use (f5248ae), so every upload path round-trips byte-identical:
+//
+//   upload: client sends the bytes as a data: URL in the record's URL
+//     field (older clients may send `base64_data`); the server
+//     validates them with inspectUploadedFile() (magic bytes, real
+//     size caps, HTML/script/executable rejection), tries Supabase
+//     Storage first when the route has a bucket, and otherwise keeps
+//     the bytes on the record itself (`*_data`, covered by the GitHub
+//     store backup). The record's URL field is then rewritten to the
+//     authenticated download endpoint — the raw bytes are NEVER
+//     stored in, or returned by, a list payload again.
+//   download: serveUploadedFile() serves Storage first, then the
+//     record bytes, then a legacy inline data: URL (records written
+//     before this change). Bytes that exist nowhere reachable are a
+//     404, never a fake placeholder file.
+// ---------------------------------------------------------------------------
+
+/** The raw bytes a client sent, normalised to a data: URL for the inspector. */
+function normaliseUploadInput(value: unknown): string {
+  if (typeof value !== 'string' || !value) return '';
+  if (value.startsWith('data:')) return value;
+  // Never mistake an already-stored download-endpoint URL (or any
+  // path) for raw base64 — '/api/...' is valid base64 alphabet.
+  if (value.startsWith('/')) return '';
+  // Raw base64 payload without the data: prefix (older clients).
+  if (/^[A-Za-z0-9+/=\r\n]+$/.test(value.trim())) {
+    return `data:application/octet-stream;base64,${value.trim()}`;
+  }
+  return '';
+}
+
+/** Base64 payload of an inline `data:...;base64,...` URL, or null. */
+function dataUrlPayload(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.startsWith('data:')) return null;
+  const comma = value.indexOf(',');
+  if (comma < 0) return null;
+  const payload = value.slice(comma + 1).trim();
+  return payload ? payload : null;
+}
+
+function isExternalHttpUrl(value: unknown): value is string {
+  return typeof value === 'string' && /^https?:\/\//i.test(value);
+}
+
+interface ProcessedUpload {
+  /** Download-endpoint URL (or the preserved external https: URL). */
+  url: string;
+  /** Base64 bytes on the record — undefined when Storage holds them. */
+  fileData?: string;
+  mimeType?: string;
+  /** Supabase Storage object path, when the bytes landed in a bucket. */
+  storagePath?: string;
+}
+
+/**
+ * Validate + store one incoming upload. Returns undefined when the
+ * caller sent no file at all (so PUT / duplicate-update paths leave
+ * the existing file untouched). Throws on invalid bytes — callers
+ * turn that into a 400 with the message. Never throws for Storage:
+ * a failed / unconfigured Storage upload falls back to the record
+ * bytes, exactly like the community attachments.
+ */
+async function processIncomingUploadFile(options: {
+  urlValue: unknown;
+  base64Data?: unknown;
+  fileName: string;
+  endpointUrl: string;
+  bucket?: string;
+  storageKey: string;
+  logTag: string;
+}): Promise<ProcessedUpload | undefined> {
+  const { urlValue, base64Data, fileName, endpointUrl, bucket, storageKey, logTag } = options;
+  if (isExternalHttpUrl(urlValue)) return { url: urlValue };
+  const raw = normaliseUploadInput(urlValue) || normaliseUploadInput(base64Data);
+  if (!raw) return undefined;
+  const inspected = inspectUploadedFile(raw, fileName);
+  let storagePath: string | undefined;
+  if (bucket && inspected.fileData) {
+    if (!isSupabaseConfigured()) {
+      storagePath = undefined;
+    } else {
+      try {
+        storagePath = await uploadStorageFile(
+          bucket,
+          `${storageKey}_${sanitizeStorageFileName(fileName)}`,
+          Buffer.from(inspected.fileData, 'base64'),
+          inspected.mimeType
+        );
+      } catch (err) {
+        console.warn(`[${logTag}] Supabase Storage upload failed, keeping bytes in JSON store:`, err);
+        storagePath = undefined;
+      }
+    }
+  }
+  return {
+    url: endpointUrl,
+    fileData: storagePath ? undefined : inspected.fileData || undefined,
+    mimeType: inspected.mimeType,
+    storagePath
+  };
+}
+
+/**
+ * Serve one stored upload's bytes. Returns true when bytes were
+ * sent, false when the record carries no reachable bytes (caller
+ * answers 404 — a file whose bytes exist nowhere must never come
+ * back as a fake placeholder). Always served as an attachment with
+ * a sanitised filename and nosniff.
+ */
+async function serveUploadedFile(
+  res: Response,
+  options: {
+    fileName?: string;
+    mimeType?: string;
+    bucket?: string;
+    storagePath?: string;
+    fileData?: string;
+    legacyDataUrl?: unknown;
+  }
+): Promise<boolean> {
+  const { fileName, mimeType, bucket, storagePath, fileData, legacyDataUrl } = options;
+  const sendBytes = (buf: Buffer, mime: string) => {
+    res.setHeader('Content-Type', mime);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', `attachment; filename="${sanitizeDownloadFilename(fileName || 'document')}"`);
+    res.send(buf);
+    return true;
+  };
+  if (bucket && storagePath) {
+    try {
+      return sendBytes(await downloadStorageFile(bucket, storagePath), mimeType || 'application/octet-stream');
+    } catch (err) {
+      console.warn('[File Download] Supabase Storage download failed, trying record bytes:', err);
+    }
+  }
+  if (fileData) {
+    return sendBytes(Buffer.from(fileData, 'base64'), mimeType || 'application/octet-stream');
+  }
+  const legacyPayload = dataUrlPayload(legacyDataUrl);
+  if (legacyPayload) {
+    const mimeMatch =
+      typeof legacyDataUrl === 'string' ? legacyDataUrl.match(/data:([^;,]+);base64/) : null;
+    return sendBytes(Buffer.from(legacyPayload, 'base64'), mimeType || mimeMatch?.[1] || 'application/octet-stream');
+  }
+  return false;
+}
+
+/** Strip stored bytes from a record before it leaves the server, and rewrite a legacy inline data: URL to its download endpoint. */
+function stripStoredUpload<T>(record: T, urlField: keyof T, dataField: keyof T, endpointUrl: string): T {
+  const rest = { ...(record as unknown as Record<string, unknown>) };
+  delete rest[dataField as string];
+  const url = rest[urlField as string];
+  if (typeof url === 'string' && url.startsWith('data:')) {
+    rest[urlField as string] = endpointUrl;
+  }
+  return rest as unknown as T;
+}
+
 app.post('/api/communities/:id/messages', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
@@ -11835,7 +12550,7 @@ app.post('/api/communities/:id/messages', async (req: Request, res: Response) =>
     }
 
     // Process attachments: the client claims a type / mime / size, but none
-    // of it is trusted. inspectCommunityUpload decodes the real bytes,
+    // of it is trusted. inspectUploadedFile decodes the real bytes,
     // detects the type from magic bytes, and enforces the size caps on the
     // real decoded length. The bytes then go to Supabase Storage
     // (`community-files` bucket) when it is configured: the attachment
@@ -11858,9 +12573,9 @@ app.post('/api/communities/:id/messages', async (req: Request, res: Response) =>
           : typeof att.file_url === 'string' && att.file_url.startsWith('data:')
             ? att.file_url
             : '';
-      let inspected: InspectedCommunityUpload;
+      let inspected: InspectedUpload;
       try {
-        inspected = inspectCommunityUpload(rawDataUrl, fileName);
+        inspected = inspectUploadedFile(rawDataUrl, fileName);
       } catch (err) {
         return res.status(400).json({ success: false, error: (err as Error).message || 'Invalid attachment.' });
       }
@@ -13687,7 +14402,9 @@ app.get('/api/notices/campus', async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       total: notices.length,
-      notices
+      notices: notices.map(n =>
+        stripStoredUpload(n, 'attachmentUrl', 'attachment_data', `/api/notices/campus/${n.id}/attachment`)
+      )
     });
   } catch (err) {
     console.error('[GET /api/notices/campus] Error:', err);
@@ -13702,7 +14419,7 @@ app.get('/api/notices/campus', async (req: Request, res: Response) => {
  * - Class Captains (`class_captain`) -> Restricted strictly to their authorized `(college, department, semester, shift, section)` cohort
  * - Teachers (`teacher`) -> Must be Verified and restricted to their authorized college/department scope
  */
-app.post('/api/notices/campus', (req: Request, res: Response) => {
+app.post('/api/notices/campus', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -13733,6 +14450,7 @@ app.post('/api/notices/campus', (req: Request, res: Response) => {
       attachmentUrl,
       attachmentName,
       attachmentType,
+      base64_data,
       expiryDate
     } = req.body || {};
 
@@ -13754,6 +14472,26 @@ app.post('/api/notices/campus', (req: Request, res: Response) => {
     }
 
     const nowIso = new Date().toISOString();
+
+    const noticeId = `cnotice_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    // Uploads item: validate + store the attachment bytes on the
+    // record (`attachment_data`) and rewrite attachmentUrl to the
+    // download endpoint. A data: URL was previously stored inline
+    // with no validation, and the download endpoint served a fake
+    // generated PDF whenever the bytes were missing.
+    let uploaded: ProcessedUpload | undefined;
+    try {
+      uploaded = await processIncomingUploadFile({
+        urlValue: attachmentUrl,
+        base64Data: base64_data,
+        fileName: String(attachmentName || 'notice-attachment'),
+        endpointUrl: `/api/notices/campus/${noticeId}/attachment`,
+        storageKey: noticeId,
+        logTag: 'NoticeUpload'
+      });
+    } catch (err) {
+      return res.status(400).json({ success: false, error: (err as Error).message || 'Invalid notice attachment.' });
+    }
 
     if (session.role === 'class_captain') {
       const targetCol = String(college || session.college || '').trim();
@@ -13788,7 +14526,7 @@ app.post('/api/notices/campus', (req: Request, res: Response) => {
       const normDept = normalizeTechnology(crCheck.captainDept!);
 
       const newNotice: CampusNoticeItem = {
-        id: `cnotice_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id: noticeId,
         title: cleanTitle,
         description: cleanDesc,
         publisherId: session.userId,
@@ -13805,9 +14543,11 @@ app.post('/api/notices/campus', (req: Request, res: Response) => {
         targetScope: 'cohort',
         priority: priority === 'Important' ? 'Important' : 'Normal',
         isPinned: Boolean(isPinned),
-        attachmentUrl: attachmentUrl ? String(attachmentUrl).trim() : undefined,
+        attachmentUrl: uploaded ? uploaded.url : undefined,
         attachmentName: attachmentName ? String(attachmentName).trim() : undefined,
         attachmentType: attachmentType || (attachmentName ? 'PDF' : undefined),
+        attachment_data: uploaded?.fileData,
+        attachment_mime: uploaded?.mimeType,
         expiryDate: expiryDate ? String(expiryDate).trim() : undefined,
         publishedAt: nowIso,
         updatedAt: nowIso,
@@ -13820,7 +14560,7 @@ app.post('/api/notices/campus', (req: Request, res: Response) => {
       return res.status(201).json({
         success: true,
         message: `Notice published to ${normDept.shortCode} Semester ${crCheck.captainSem} (${crCheck.captainShift} · Sec ${crCheck.captainSec}).`,
-        notice: newNotice
+        notice: stripStoredUpload(newNotice, 'attachmentUrl', 'attachment_data', `/api/notices/campus/${newNotice.id}/attachment`)
       });
     }
 
@@ -13860,7 +14600,7 @@ app.post('/api/notices/campus', (req: Request, res: Response) => {
       const semNum = semester ? (Number(semester) as SemesterNumber) : null;
 
       const newNotice: CampusNoticeItem = {
-        id: `cnotice_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id: noticeId,
         title: cleanTitle,
         description: cleanDesc,
         publisherId: teacher.id,
@@ -13877,9 +14617,11 @@ app.post('/api/notices/campus', (req: Request, res: Response) => {
         targetScope: requestedScope,
         priority: priority === 'Important' ? 'Important' : 'Normal',
         isPinned: Boolean(isPinned),
-        attachmentUrl: attachmentUrl ? String(attachmentUrl).trim() : undefined,
+        attachmentUrl: uploaded ? uploaded.url : undefined,
         attachmentName: attachmentName ? String(attachmentName).trim() : undefined,
         attachmentType: attachmentType || (attachmentName ? 'PDF' : undefined),
+        attachment_data: uploaded?.fileData,
+        attachment_mime: uploaded?.mimeType,
         expiryDate: expiryDate ? String(expiryDate).trim() : undefined,
         publishedAt: nowIso,
         updatedAt: nowIso,
@@ -13892,7 +14634,7 @@ app.post('/api/notices/campus', (req: Request, res: Response) => {
       return res.status(201).json({
         success: true,
         message: 'Faculty notice published successfully.',
-        notice: newNotice
+        notice: stripStoredUpload(newNotice, 'attachmentUrl', 'attachment_data', `/api/notices/campus/${newNotice.id}/attachment`)
       });
     }
 
@@ -13900,7 +14642,7 @@ app.post('/api/notices/campus', (req: Request, res: Response) => {
     const normCol = normalizeCollege(String(college || 'Dhaka Polytechnic Institute (DPI), Tejgaon'));
     const normDept = normalizeTechnology(String(department || 'Computer Science & Technology (CST)'));
     const newNotice: CampusNoticeItem = {
-      id: `cnotice_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: noticeId,
       title: cleanTitle,
       description: cleanDesc,
       publisherId: session.userId,
@@ -13917,9 +14659,11 @@ app.post('/api/notices/campus', (req: Request, res: Response) => {
       targetScope: (targetScope as CampusNoticeScope) || 'college',
       priority: priority === 'Important' ? 'Important' : 'Normal',
       isPinned: Boolean(isPinned),
-      attachmentUrl: attachmentUrl ? String(attachmentUrl).trim() : undefined,
+      attachmentUrl: uploaded ? uploaded.url : undefined,
       attachmentName: attachmentName ? String(attachmentName).trim() : undefined,
       attachmentType: attachmentType || (attachmentName ? 'PDF' : undefined),
+      attachment_data: uploaded?.fileData,
+      attachment_mime: uploaded?.mimeType,
       expiryDate: expiryDate ? String(expiryDate).trim() : undefined,
       publishedAt: nowIso,
       updatedAt: nowIso,
@@ -13932,7 +14676,7 @@ app.post('/api/notices/campus', (req: Request, res: Response) => {
     return res.status(201).json({
       success: true,
       message: 'Administrative campus notice published.',
-      notice: newNotice
+      notice: stripStoredUpload(newNotice, 'attachmentUrl', 'attachment_data', `/api/notices/campus/${newNotice.id}/attachment`)
     });
   } catch (err) {
     console.error('[POST /api/notices/campus] Error:', err);
@@ -13943,7 +14687,7 @@ app.post('/api/notices/campus', (req: Request, res: Response) => {
 /**
  * 16B-3. UPDATE TEACHER / CR NOTICE (`PUT /api/notices/campus/:id`)
  */
-app.put('/api/notices/campus/:id', (req: Request, res: Response) => {
+app.put('/api/notices/campus/:id', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -13966,13 +14710,43 @@ app.put('/api/notices/campus/:id', (req: Request, res: Response) => {
       });
     }
 
-    const { title, description, priority, isPinned, expiryDate, attachmentUrl, attachmentName } = req.body || {};
+    const { title, description, priority, isPinned, expiryDate, attachmentUrl, attachmentName, base64_data } = req.body || {};
     if (title !== undefined) existing.title = String(title).trim() || existing.title;
     if (description !== undefined) existing.description = String(description).trim() || existing.description;
     if (priority === 'Important' || priority === 'Normal') existing.priority = priority;
     if (isPinned !== undefined) existing.isPinned = Boolean(isPinned);
     if (expiryDate !== undefined) existing.expiryDate = expiryDate ? String(expiryDate).trim() : undefined;
-    if (attachmentUrl !== undefined) existing.attachmentUrl = attachmentUrl ? String(attachmentUrl).trim() : undefined;
+    if (attachmentUrl !== undefined || base64_data !== undefined) {
+      // A newly attached file goes through the same validation +
+      // storage as a fresh publish; an unchanged / external URL is
+      // left alone, and an empty value clears the attachment.
+      if (attachmentUrl === '' && base64_data === undefined) {
+        existing.attachmentUrl = undefined;
+        existing.attachment_data = undefined;
+        existing.attachment_mime = undefined;
+      } else if (isExternalHttpUrl(attachmentUrl)) {
+        existing.attachmentUrl = attachmentUrl;
+      } else {
+        let uploaded: ProcessedUpload | undefined;
+        try {
+          uploaded = await processIncomingUploadFile({
+            urlValue: attachmentUrl,
+            base64Data: base64_data,
+            fileName: String(attachmentName || existing.attachmentName || 'notice-attachment'),
+            endpointUrl: `/api/notices/campus/${existing.id}/attachment`,
+            storageKey: existing.id,
+            logTag: 'NoticeUpload'
+          });
+        } catch (err) {
+          return res.status(400).json({ success: false, error: (err as Error).message || 'Invalid notice attachment.' });
+        }
+        if (uploaded) {
+          existing.attachmentUrl = uploaded.url;
+          existing.attachment_data = uploaded.fileData;
+          existing.attachment_mime = uploaded.mimeType;
+        }
+      }
+    }
     if (attachmentName !== undefined) existing.attachmentName = attachmentName ? String(attachmentName).trim() : undefined;
     existing.updatedAt = new Date().toISOString();
 
@@ -13980,7 +14754,7 @@ app.put('/api/notices/campus/:id', (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       message: 'Notice updated successfully.',
-      notice: existing
+      notice: stripStoredUpload(existing, 'attachmentUrl', 'attachment_data', `/api/notices/campus/${existing.id}/attachment`)
     });
   } catch (err) {
     console.error('[PUT /api/notices/campus/:id] Error:', err);
@@ -14078,28 +14852,36 @@ app.post('/api/notices/campus/:id/report', (req: Request, res: Response) => {
 
 /**
  * 16B-6. DOWNLOAD / VIEW CAMPUS NOTICE ATTACHMENT (`GET /api/notices/campus/:id/attachment`)
+ * Authenticated (any signed-in user — a plain <a href> gets a 401,
+ * so the client fetches with the session token and hands the blob
+ * to nativeService.downloadBlob, like the community attachments).
+ * Serves the stored bytes, or a legacy inline data: URL. When the
+ * bytes exist nowhere reachable this is a 404 — it used to answer
+ * with a fake generated PDF, which is never served any more.
  */
-app.get('/api/notices/campus/:id/attachment', (req: Request, res: Response) => {
-  const notice = academicStore.campusNotices.find(n => n.id === req.params.id);
-  if (!notice) {
-    return res.status(404).send('Notice attachment not found.');
+app.get('/api/notices/campus/:id/attachment', async (req: Request, res: Response) => {
+  try {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to download notice attachments.' });
+    }
+    const notice = academicStore.campusNotices.find(n => n.id === req.params.id);
+    if (!notice) {
+      return res.status(404).json({ success: false, error: 'Notice attachment not found.' });
+    }
+    const served = await serveUploadedFile(res, {
+      fileName: notice.attachmentName || 'notice-attachment',
+      mimeType: notice.attachment_mime,
+      fileData: notice.attachment_data,
+      legacyDataUrl: notice.attachmentUrl
+    });
+    if (!served) {
+      return res.status(404).json({ success: false, error: 'This notice has no downloadable attachment file.' });
+    }
+  } catch (err) {
+    console.error('[GET /api/notices/campus/:id/attachment] Error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to download notice attachment.' });
   }
-  if (notice.attachmentUrl && notice.attachmentUrl.startsWith('data:')) {
-    const parts = notice.attachmentUrl.split(',');
-    const mimeMatch = parts[0].match(/data:([^;]+);base64/);
-    const mime = mimeMatch ? mimeMatch[1] : 'application/pdf';
-    const buf = Buffer.from(parts[1] || '', 'base64');
-    res.setHeader('Content-Type', mime);
-    res.setHeader('Content-Disposition', `inline; filename="${notice.attachmentName || 'notice-attachment.pdf'}"`);
-    return res.send(buf);
-  }
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="${notice.attachmentName || 'campus-notice.pdf'}"`);
-  return res.send(
-    Buffer.from(
-      `%PDF-1.4\n% Official Campus Notice Attachment\n% Title: ${notice.title}\n% Published By: ${notice.publisherName} (${notice.publisherRole})\n% Institution: ${notice.college} - ${notice.department}\n`
-    )
-  );
 });
 
 // ----------------------------------------------------------------------------
@@ -14109,7 +14891,7 @@ app.get('/api/notices/campus/:id/attachment', (req: Request, res: Response) => {
 let lastJobsSyncAt: string = new Date().toISOString();
 let lastJobsSyncStatusMsg: string = process.env.CAREERJET_API_KEY
   ? 'Careerjet Partner API v4 configured and active.'
-  : 'Careerjet public HTML pages enforce bot-challenge protection and the legacy API is retired. Automated Careerjet feed requires CAREERJET_API_KEY (Partner API v4). Serving verified Diploma Engineer job circulars managed via Placement Cell & Admin Import.';
+  : 'Live Careerjet feed is not connected (CAREERJET_API_KEY is not set). Only job circulars posted by the Placement Cell, teachers or class captains are shown — each must carry its original apply link. No sample or invented listings are served.';
 
 function computeJobCircularStatus(deadlineStr?: string): JobStatus | undefined {
   if (!deadlineStr) return undefined;
@@ -14129,11 +14911,14 @@ function computeJobCircularStatus(deadlineStr?: string): JobStatus | undefined {
 
 function enrichJobCircular(job: JobCircular): JobCircular {
   const computedStatus = computeJobCircularStatus(job.deadline);
+  // Never invent a source: a job with no recorded source is labelled by who
+  // posted it, and the source URL is only the real apply/source link the
+  // poster supplied (never a generic job-board search page).
   return {
     ...job,
     status: computedStatus || job.status,
-    sourceName: job.sourceName || 'Careerjet Bangladesh / Placement Cell',
-    sourceUrl: job.sourceUrl || job.applyUrl || 'https://www.careerjet.com.bd/diploma-engineer-jobs.html',
+    sourceName: job.sourceName || 'Placement Cell / Admin Import',
+    sourceUrl: job.sourceUrl || job.applyUrl || undefined,
     applicationMethod: job.applicationMethod || 'external_url',
     educationalQualifications: job.educationalQualifications || 'Diploma in Engineering (BTEB)',
     experienceRequirements: job.experienceRequirements || 'Freshers / 0–2 Years'
@@ -14154,7 +14939,7 @@ async function syncCareerjetJobs(): Promise<{
       insertedCount: 0,
       updatedCount: 0,
       message:
-        'Careerjet Partner API v4 key (CAREERJET_API_KEY) is not configured in environment. Direct scraping of careerjet.com.bd is blocked by bot-challenge protection and prohibited by terms. Verified listings from the Placement Cell & Admin Import store are active and statuses have been refreshed.'
+        'Careerjet Partner API v4 key (CAREERJET_API_KEY) is not configured in environment. Direct scraping of careerjet.com.bd is blocked by bot-challenge protection and prohibited by terms. Only Placement Cell / Admin Import listings are shown, each with its original apply link; no sample listings are served.'
     };
   }
 
@@ -14362,7 +15147,9 @@ app.get('/api/jobs', (req: Request, res: Response) => {
       pageSize,
       totalPages,
       hasMore: startIdx + paginated.length < total,
-      jobs: paginated,
+      jobs: paginated.map(j =>
+        stripStoredUpload(j, 'mediaUrl', 'media_data', `/api/jobs/${j.id}/file`)
+      ),
       availableFilters: {
         departments: Array.from(departmentsSet),
         locations: Array.from(locationsSet),
@@ -14382,12 +15169,38 @@ app.get('/api/jobs', (req: Request, res: Response) => {
   }
 });
 
+/** Download a job circular's attached file (`GET /api/jobs/:id/file`) — any signed-in user. */
+app.get('/api/jobs/:id/file', async (req: Request, res: Response) => {
+  try {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to download job circulars.' });
+    }
+    const job = academicStore.jobs.find(j => j.id === req.params.id);
+    if (!job) {
+      return res.status(404).json({ success: false, error: 'Job circular not found.' });
+    }
+    const served = await serveUploadedFile(res, {
+      fileName: job.mediaName || 'job-circular',
+      mimeType: job.media_mime,
+      fileData: job.media_data,
+      legacyDataUrl: job.mediaUrl
+    });
+    if (!served) {
+      return res.status(404).json({ success: false, error: 'This job circular has no downloadable file attached.' });
+    }
+  } catch (err) {
+    console.error('[GET /api/jobs/:id/file] Error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to download job circular file.' });
+  }
+});
+
 /**
  * 16C-2. POST NEW JOB CIRCULAR (`POST /api/jobs`)
  * Authorized for System Admin, Verified Teacher, or Approved Class Captain.
  * Ordinary students are rejected with HTTP 403.
  */
-app.post('/api/jobs', (req: Request, res: Response) => {
+app.post('/api/jobs', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -14422,7 +15235,8 @@ app.post('/api/jobs', (req: Request, res: Response) => {
       applyUrl,
       mediaUrl,
       mediaType,
-      mediaName
+      mediaName,
+      base64_data
     } = req.body || {};
 
     const cleanTitle = String(title || '').trim();
@@ -14436,11 +15250,14 @@ app.post('/api/jobs', (req: Request, res: Response) => {
       });
     }
 
-    const externalApply = String(applyUrl || sourceUrl || '').trim();
-    if (externalApply && !/^https?:\/\//i.test(externalApply)) {
+    // A real apply link is mandatory: a job without the original circular /
+    // employer application page cannot be verified, so it is not published.
+    // Generic job-board search pages are not an apply link.
+    const externalApply = String(applyUrl || '').trim();
+    if (!externalApply || !/^https?:\/\//i.test(externalApply)) {
       return res.status(400).json({
         success: false,
-        error: 'External application URL must be a valid http:// or https:// web address.'
+        error: 'A real external application URL is required: paste the link to the original job circular / employer application page (https://...).'
       });
     }
 
@@ -14467,6 +15284,31 @@ app.post('/api/jobs', (req: Request, res: Response) => {
       duplicate.experienceRequirements = experienceRequirements ? String(experienceRequirements).trim() : duplicate.experienceRequirements;
       duplicate.educationalQualifications = educationalQualifications ? String(educationalQualifications).trim() : duplicate.educationalQualifications;
       if (externalApply) duplicate.applyUrl = externalApply;
+      // Uploads item: a re-attached circular file is validated +
+      // stored on the record (`media_data`) like a fresh publish.
+      if (mediaUrl !== undefined || base64_data !== undefined) {
+        let uploaded: ProcessedUpload | undefined;
+        try {
+          uploaded = await processIncomingUploadFile({
+            urlValue: mediaUrl,
+            base64Data: base64_data,
+            fileName: String(mediaName || duplicate.mediaName || 'job-circular'),
+            endpointUrl: `/api/jobs/${duplicate.id}/file`,
+            storageKey: duplicate.id,
+            logTag: 'JobUpload'
+          });
+        } catch (err) {
+          return res.status(400).json({ success: false, error: (err as Error).message || 'Invalid job circular file.' });
+        }
+        if (uploaded) {
+          duplicate.mediaUrl = uploaded.url;
+          duplicate.media_data = uploaded.fileData;
+          duplicate.media_mime = uploaded.mimeType;
+          duplicate.mediaName = mediaName ? String(mediaName) : duplicate.mediaName;
+          duplicate.mediaType =
+            mediaType === 'IMAGE' || mediaType === 'PDF' || mediaType === 'VIDEO' ? mediaType : duplicate.mediaType;
+        }
+      }
       duplicate.updatedAt = nowIso;
       lastJobsSyncAt = nowIso;
       saveAcademicStore(academicStore);
@@ -14475,12 +15317,31 @@ app.post('/api/jobs', (req: Request, res: Response) => {
         success: true,
         deduplicated: true,
         message: 'Existing job circular updated (duplicate prevented).',
-        job: enrichJobCircular(duplicate)
+        job: stripStoredUpload(enrichJobCircular(duplicate), 'mediaUrl', 'media_data', `/api/jobs/${duplicate.id}/file`)
       });
     }
 
+    const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    // Uploads item: validate + store the circular file's bytes on
+    // the record (`media_data`) and rewrite mediaUrl to the download
+    // endpoint — a data: URL was previously stored inline with no
+    // validation, and the UI never offered any way to download it.
+    let uploaded: ProcessedUpload | undefined;
+    try {
+      uploaded = await processIncomingUploadFile({
+        urlValue: mediaUrl,
+        base64Data: base64_data,
+        fileName: String(mediaName || 'job-circular'),
+        endpointUrl: `/api/jobs/${jobId}/file`,
+        storageKey: jobId,
+        logTag: 'JobUpload'
+      });
+    } catch (err) {
+      return res.status(400).json({ success: false, error: (err as Error).message || 'Invalid job circular file.' });
+    }
+
     const newJob: JobCircular = {
-      id: `job_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: jobId,
       title: cleanTitle,
       company: cleanCompany,
       location: cleanLocation,
@@ -14495,18 +15356,20 @@ app.post('/api/jobs', (req: Request, res: Response) => {
       educationalQualifications: String(educationalQualifications || 'Diploma in Engineering (BTEB)').trim(),
       description: String(description || requirements || '').trim(),
       requirements: String(requirements || description || '').trim(),
-      sourceName: String(sourceName || 'Careerjet Bangladesh / Placement Cell').trim(),
-      sourceUrl: externalApply || 'https://www.careerjet.com.bd/diploma-engineer-jobs.html',
-      applyUrl: externalApply || undefined,
+      sourceName: String(sourceName || 'Placement Cell / Admin Import').trim(),
+      sourceUrl: externalApply,
+      applyUrl: externalApply,
       applicationMethod: 'external_url',
       postedBy: session.name,
       postedById: session.userId,
       postedByRole: session.role,
       postedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
       updatedAt: nowIso,
-      mediaUrl: mediaUrl ? String(mediaUrl) : undefined,
-      mediaType: mediaType === 'IMAGE' || mediaType === 'PDF' ? mediaType : undefined,
-      mediaName: mediaName ? String(mediaName) : undefined
+      mediaUrl: uploaded ? uploaded.url : undefined,
+      mediaType: mediaType === 'IMAGE' || mediaType === 'PDF' || mediaType === 'VIDEO' ? mediaType : undefined,
+      mediaName: mediaName ? String(mediaName) : undefined,
+      media_data: uploaded?.fileData,
+      media_mime: uploaded?.mimeType
     };
 
     academicStore.jobs.unshift(newJob);
@@ -14517,7 +15380,7 @@ app.post('/api/jobs', (req: Request, res: Response) => {
       success: true,
       deduplicated: false,
       message: 'Job circular published successfully.',
-      job: enrichJobCircular(newJob)
+      job: stripStoredUpload(enrichJobCircular(newJob), 'mediaUrl', 'media_data', `/api/jobs/${newJob.id}/file`)
     });
   } catch (err) {
     console.error('[POST /api/jobs] Error:', err);
@@ -14548,6 +15411,7 @@ app.post('/api/admin/jobs/import', requireSystemAdmin, (req: Request, res: Respo
 
     let insertedCount = 0;
     let updatedCount = 0;
+    let skippedCount = 0;
     const nowIso = new Date().toISOString();
 
     for (const raw of jobsPayload) {
@@ -14555,7 +15419,14 @@ app.post('/api/admin/jobs/import', requireSystemAdmin, (req: Request, res: Respo
       const company = String(raw.company || '').trim();
       if (!title || !company) continue;
 
+      // Items without a real apply link cannot be verified — skip them
+      // instead of publishing an unverifiable listing.
       const applyUrl = String(raw.applyUrl || raw.sourceUrl || '').trim();
+      if (!applyUrl || !/^https?:\/\//i.test(applyUrl)) {
+        skippedCount += 1;
+        continue;
+      }
+
       const existingIdx = academicStore.jobs.findIndex(
         j =>
           (applyUrl && j.applyUrl === applyUrl && j.title.toLowerCase() === title.toLowerCase()) ||
@@ -14599,9 +15470,9 @@ app.post('/api/admin/jobs/import', requireSystemAdmin, (req: Request, res: Respo
           educationalQualifications: String(raw.educationalQualifications || 'Diploma in Engineering (BTEB)').trim(),
           description: String(raw.description || raw.requirements || '').trim(),
           requirements: String(raw.requirements || raw.description || '').trim(),
-          sourceName: String(raw.sourceName || 'Careerjet Bangladesh / Admin Import').trim(),
-          sourceUrl: String(raw.sourceUrl || applyUrl || 'https://www.careerjet.com.bd/diploma-engineer-jobs.html').trim(),
-          applyUrl: applyUrl || undefined,
+          sourceName: String(raw.sourceName || 'Placement Cell / Admin Import').trim(),
+          sourceUrl: String(raw.sourceUrl || applyUrl).trim(),
+          applyUrl,
           applicationMethod: 'external_url',
           postedBy: session.name,
           postedById: session.userId,
@@ -14619,8 +15490,9 @@ app.post('/api/admin/jobs/import', requireSystemAdmin, (req: Request, res: Respo
       success: true,
       insertedCount,
       updatedCount,
+      skippedCount,
       totalJobs: academicStore.jobs.length,
-      message: `Batch import complete: ${insertedCount} new job circulars added, ${updatedCount} existing circulars updated.`
+      message: `Batch import complete: ${insertedCount} new job circulars added, ${updatedCount} existing circulars updated.${skippedCount > 0 ? ` ${skippedCount} item(s) skipped — no real apply link.` : ''}`
     });
   } catch (err) {
     console.error('[POST /api/admin/jobs/import] Error:', err);

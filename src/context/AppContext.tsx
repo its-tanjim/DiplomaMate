@@ -35,7 +35,6 @@ import {
   INITIAL_ROUTINE, 
   INITIAL_ANNOUNCEMENTS,
   INITIAL_APPLICATIONS,
-  INITIAL_JOBS,
   LEGACY_DEMO_CONTENT_IDS,
   DEFAULT_NOTIFICATION_SETTINGS,
   normalizeCollege,
@@ -46,13 +45,13 @@ import {
 import { nativeService } from '../services/nativeService';
 
 // Student authentication result (login rework): a login can succeed
-// outright, or pause for a one-time PIN setup (pre-PIN accounts) or an
-// SMS code (when SMS verification is enabled).
+// outright, or pause for an SMS code (when SMS verification is enabled).
+// There is deliberately no PIN-setup step any more: login is Board Roll +
+// PIN only, and accounts without a PIN cannot sign in until an
+// administrator sets one (see the item-7 note in server.ts).
 export interface StudentAuthResult {
   success: boolean;
   message: string;
-  requiresPinSetup?: boolean;
-  pinSetupToken?: string;
   requiresSmsVerification?: boolean;
   smsChallengeId?: string;
   maskedPhone?: string;
@@ -78,17 +77,6 @@ interface AppContextType {
     role: 'student' | 'class_captain',
     turnstile?: TurnstileProof
   ) => Promise<StudentAuthResult>;
-  requestPinSetup: (
-    boardRoll: string,
-    regNumber: string,
-    role: 'student' | 'class_captain',
-    turnstile?: TurnstileProof
-  ) => Promise<StudentAuthResult>;
-  setupStudentPin: (
-    pinSetupToken: string,
-    pin: string,
-    role: 'student' | 'class_captain'
-  ) => Promise<StudentAuthResult>;
   verifySmsCode: (smsChallengeId: string, code: string) => Promise<StudentAuthResult>;
   resendSmsCode: (smsChallengeId: string) => Promise<{ success: boolean; message: string; maskedPhone?: string }>;
   socialLogin: (
@@ -107,8 +95,8 @@ interface AppContextType {
   systemAdminProfile: SystemAdminProfile | null;
   isServerVerifiedAdmin: boolean;
   isCheckingAdminSession: boolean;
-  adminLogin: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
-  adminBootstrap: (bootstrapToken: string, name: string, email: string, password: string) => Promise<{ success: boolean; message: string }>;
+  adminLogin: (email: string, password: string, pinToken?: string) => Promise<{ success: boolean; message: string }>;
+  adminBootstrap: (bootstrapToken: string, name: string, email: string, password: string, pinToken?: string) => Promise<{ success: boolean; message: string }>;
   verifyServerAdminSession: () => Promise<boolean>;
 
   // Teacher Authentication & Institutional Faculty State
@@ -374,7 +362,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [jobs, setJobs] = useState<JobCircular[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}jobs`);
-    return saved ? JSON.parse(saved) : INITIAL_JOBS;
+    // No seeded jobs: start empty and drop the removed invented sample
+    // listings (job_01..job_06) from any cached copy.
+    return saved ? removeLegacyDemoContent(JSON.parse(saved), LEGACY_DEMO_CONTENT_IDS.jobs) : [];
   });
 
   const [notesInitialTab, setNotesInitialTab] = useState<'notices' | 'jobs' | 'assignments' | 'notes'>('notices');
@@ -756,7 +746,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [allStoredRoutines]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}uploaded_routines`, JSON.stringify(uploadedRoutines));
+    // Persist routine-document metadata only, never the file bytes:
+    // a scanned routine photo/PDF is several MB as a data: URL and
+    // localStorage (~5 MB quota) throws QuotaExceededError on the
+    // whole write, so the document would not persist at all. The
+    // bytes stay in memory for this session (view-original + OCR);
+    // the extracted periods — the actual published data — live on
+    // the server. The viewer only offers "Original Routine" while
+    // the bytes are in memory.
+    try {
+      const lightweight = uploadedRoutines.map(d => ({ ...d, dataUrl: '' }));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}uploaded_routines`, JSON.stringify(lightweight));
+    } catch {
+      // localStorage full or unavailable — the in-memory copy still
+      // works for this session.
+    }
   }, [uploadedRoutines]);
 
   useEffect(() => {
@@ -891,74 +895,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           name: data.name
         };
       }
-      if (data.requiresPinSetup && data.pinSetupToken) {
-        return {
-          success: true,
-          message: data.message || 'Please set a PIN.',
-          requiresPinSetup: true,
-          pinSetupToken: data.pinSetupToken,
-          name: data.studentName
-        };
-      }
       if (!response.ok || !data.success || !data.account || !data.sessionToken || !data.session) {
         return { success: false, message: data.error || 'Student authentication failed.' };
-      }
-      return applyStudentSession(data);
-    } catch {
-      return { success: false, message: 'Could not connect to the student authentication server.' };
-    }
-  };
-
-  // One-time migration for accounts created before PINs existed: a
-  // roll+reg login returns a PIN-setup token instead of a session.
-  const requestPinSetup = async (
-    boardRoll: string,
-    regNumber: string,
-    role: 'student' | 'class_captain',
-    turnstile?: TurnstileProof
-  ): Promise<StudentAuthResult> => {
-    try {
-      const response = await apiFetch('/api/students/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          boardRoll,
-          regNumber,
-          role,
-          turnstileToken: turnstile?.token || undefined,
-          turnstileEnabled: turnstile?.enabled || false
-        })
-      });
-      const data = await response.json();
-      if (data.requiresPinSetup && data.pinSetupToken) {
-        return {
-          success: true,
-          message: data.message || 'Please set a PIN.',
-          requiresPinSetup: true,
-          pinSetupToken: data.pinSetupToken,
-          name: data.studentName
-        };
-      }
-      return { success: false, message: data.error || 'Could not verify those details.' };
-    } catch {
-      return { success: false, message: 'Could not connect to the student authentication server.' };
-    }
-  };
-
-  const setupStudentPin = async (
-    pinSetupToken: string,
-    pin: string,
-    role: 'student' | 'class_captain'
-  ): Promise<StudentAuthResult> => {
-    try {
-      const response = await apiFetch('/api/students/setup-pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pinSetupToken, pin, role })
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success || !data.account || !data.sessionToken || !data.session) {
-        return { success: false, message: data.error || 'Could not set your PIN.' };
       }
       return applyStudentSession(data);
     } catch {
@@ -1035,9 +973,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? 'class_captain'
         : 'student';
     if (pin) return authenticateStudent(profile.boardRoll, pin, role);
-    // No PIN (legacy callers such as post-signup onboarding without a
-    // stored PIN): fall back to the one-time PIN-setup path.
-    return requestPinSetup(profile.boardRoll, profile.regNumber, role);
+    // No PIN: there is no PIN-setup fallback any more (removed in item 7
+    // — roll+reg must never mint a PIN or a session). Sign-in needs a PIN.
+    return Promise.resolve({
+      success: false,
+      message: 'Please sign in with your Board Roll + PIN. If your account has no PIN yet, please contact your administrator.'
+    });
   };
 
   const logout = () => {
@@ -1116,12 +1057,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const adminLogin = async (
     email: string,
-    password: string
+    password: string,
+    pinToken?: string
   ): Promise<{ success: boolean; message: string }> => {
     try {
       const response = await apiFetch('/api/admin/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(pinToken ? { 'x-admin-pin-token': pinToken } : {})
+        },
         body: JSON.stringify({ email, password })
       });
       const data = await response.json();
@@ -1144,12 +1089,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     bootstrapToken: string,
     name: string,
     email: string,
-    password: string
+    password: string,
+    pinToken?: string
   ): Promise<{ success: boolean; message: string }> => {
     try {
       const response = await apiFetch('/api/admin/bootstrap', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(pinToken ? { 'x-admin-pin-token': pinToken } : {})
+        },
         body: JSON.stringify({ bootstrapToken, name, email, password })
       });
       const data = await response.json();
@@ -2608,7 +2557,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUploadedRoutines([]);
     setNotes(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.notes));
     setAssignments(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.assignments));
-    setJobs(INITIAL_JOBS);
+    setJobs(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.jobs));
     setReminders(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.reminders));
     setTeachers(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.teachers));
     setApplications(INITIAL_APPLICATIONS);
@@ -2634,8 +2583,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isLoggedIn,
         login,
         authenticateStudent,
-        requestPinSetup,
-        setupStudentPin,
         verifySmsCode,
         resendSmsCode,
         socialLogin,

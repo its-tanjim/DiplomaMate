@@ -210,8 +210,8 @@ export const TeacherDashboardScreen: React.FC = () => {
       setPinError('New PINs do not match.');
       return;
     }
-    if (newPin.length < 4 || newPin.length > 8) {
-      setPinError('New PIN must be between 4 and 8 digits.');
+    if (!/^\d{4,6}$/.test(newPin.trim())) {
+      setPinError('New PIN must be 4–6 digits.');
       return;
     }
 
@@ -1110,10 +1110,12 @@ export const TeacherDashboardScreen: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-text-primary mb-1">New PIN (4-8 digits)</label>
+                <label className="block text-xs font-semibold text-text-primary mb-1">New PIN (4–6 digits)</label>
                 <input
                   type="password"
                   required
+                  maxLength={6}
+                  inputMode="numeric"
                   placeholder="Enter new PIN"
                   value={newPin}
                   onChange={(e) => setNewPin(e.target.value)}

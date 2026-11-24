@@ -50,29 +50,26 @@ type WorkspaceTab = 'individual' | 'group' | 'batches';
 type GroupSortField = 'roll_asc' | 'roll_desc' | 'gpa_desc' | 'gpa_asc' | 'status';
 type GroupStatusFilter = 'ALL' | 'PASSED' | 'REFERRED' | 'NOT_FOUND';
 
-interface CurriculumOption {
-  id: BtebCurriculumId;
-  label: string;
-  badge: string;
-}
-
-const CURRICULUM_OPTIONS: CurriculumOption[] = [
-  { id: 'diploma_in_engineering', label: 'Diploma in Engineering', badge: 'Polytechnic' },
-  { id: 'diploma_in_textile', label: 'Diploma in Textile Engineering', badge: 'Textile' },
-  { id: 'diploma_in_agriculture', label: 'Diploma in Agriculture', badge: 'Agriculture' },
-  { id: 'diploma_in_tourism', label: 'Diploma in Tourism & Hospitality', badge: 'Tourism' },
-  { id: 'hsc_bm', label: 'HSC (Business Management & Tech)', badge: 'HSC BMT' },
-  { id: 'ssc_vocational', label: 'SSC (Vocational / Dakhil)', badge: 'Vocational' }
-];
+// DiplomaMate shows Diploma in Engineering results only — there is no
+// curriculum picker anywhere in this flow. The gazette store itself holds
+// Diploma in Engineering records only, and every Result Zone link carries
+// the Diploma filter (see buildResultZoneUrl below).
 
 const OFFICIAL_BTEB_RESULTS_URL = 'https://result.bteb.gov.bd/result-search';
 const BTEB_RESULTS_ZONE_URL = 'https://btebresultszone.com/results';
-// BTEB Result Zone lists every exam that shares a roll (Diploma, HSC BMT,
-// SSC Vocational...). DiplomaMate is a diploma app, so the viewer always
-// filters to Diploma in Engineering — verified live: the site honours
-// ?curriculumId=diploma_in_engineering on /results/<roll> and shows only
-// that exam's result.
+// DiplomaMate is a diploma app: it shows Diploma in Engineering results
+// ONLY. The same board roll can exist in several BTEB exams, and BTEB
+// Result Zone defaults an unfiltered roll to another exam — verified live
+// 2026-11-24: /results/750102 with no filter shows "SSC (Vocational)",
+// while ?curriculumId=diploma_in_engineering shows "Diploma In
+// Engineering (2022)". Every Result Zone link in this file MUST go through
+// buildResultZoneUrl() so the filter can never be dropped by accident.
+// Honest limit: the viewer is a cross-origin iframe, so DiplomaMate cannot
+// read inside the page to verify which exam it actually shows — the banner
+// in the viewer says so instead of claiming verification.
 const RESULT_ZONE_DIPLOMA_FILTER = 'curriculumId=diploma_in_engineering';
+const DIPLOMA_CURRICULUM_ID: BtebCurriculumId = 'diploma_in_engineering';
+const DIPLOMA_CURRICULUM_LABEL = 'Diploma in Engineering';
 const RESULT_LOOKUP_TIMEOUT_MS = 15_000;
 
 type ResultLookupTransportFailure = 'timeout' | 'network' | 'request';
@@ -95,6 +92,21 @@ function normalizeRollInput(raw: string): string {
     .replace(/[\s\-_]+/g, '');
 }
 
+// Single place that builds a BTEB Result Zone URL. The Diploma in
+// Engineering filter is ALWAYS attached — with a roll
+// (/results/<roll>?curriculumId=diploma_in_engineering) and without one
+// (the site's own search form). Never link to btebresultszone.com without
+// this filter: an unfiltered roll defaults to another exam (verified live:
+// roll 750102 unfiltered shows SSC Vocational, not Diploma).
+function buildResultZoneUrl(roll?: string): string {
+  const targetRoll = normalizeRollInput(roll || '');
+  const base =
+    targetRoll && /^\d{4,8}$/.test(targetRoll)
+      ? `${BTEB_RESULTS_ZONE_URL}/${targetRoll}`
+      : BTEB_RESULTS_ZONE_URL;
+  return `${base}?${RESULT_ZONE_DIPLOMA_FILTER}`;
+}
+
 export const BTEBResultsScreen: React.FC = () => {
   const { userProfile, accountType, isServerVerifiedAdmin, setActiveScreen, showToast } = useApp();
   const canAccessAdminImport = accountType === 'system_admin' && isServerVerifiedAdmin;
@@ -105,7 +117,6 @@ export const BTEBResultsScreen: React.FC = () => {
 
   // Search input state
   const [rollInput, setRollInput] = useState<string>(userProfile.boardRoll || '');
-  const [selectedCurriculum, setSelectedCurriculum] = useState<BtebCurriculumId>('diploma_in_engineering');
   const [selectedRegulation, setSelectedRegulation] = useState<string>('all');
   const isResultLookupInProgress = useRef(false);
 
@@ -180,11 +191,36 @@ export const BTEBResultsScreen: React.FC = () => {
 
   const openBtebResultsZone = async () => {
     try {
-      // Open the same Diploma-filtered result the viewer is showing.
-      await nativeService.openExternalUrl(zoneUrl);
+      // Rebuild the link from the current roll instead of reusing a stored
+      // URL, so the Diploma filter can never be lost — "Open in Browser"
+      // always shows exactly what the viewer shows.
+      await nativeService.openExternalUrl(buildResultZoneUrl(zoneRollInput));
     } catch (error) {
       console.error('Failed to open BTEB Results Zone:', error);
       showToast('Could not open BTEB Results Zone.');
+    }
+  };
+
+  // Copy text (roll / registration no) so the student can paste it into the
+  // official portal's form, which DiplomaMate cannot fill for them.
+  const copyTextToClipboard = async (value: string, label: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = value;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      showToast(`${label} copied — paste it into the portal form.`);
+    } catch (error) {
+      console.error('Failed to copy text:', error);
+      showToast(`Could not copy ${label}. Please type it manually.`);
     }
   };
 
@@ -197,11 +233,9 @@ export const BTEBResultsScreen: React.FC = () => {
     const targetRoll = normalizeRollInput(roll !== undefined ? roll : zoneRollInput);
     setZoneRollInput(targetRoll);
     setZoneFallbackRoll(fromGazetteMiss ? targetRoll : null);
-    setZoneUrl(
-      targetRoll && /^\d{4,8}$/.test(targetRoll)
-        ? `${BTEB_RESULTS_ZONE_URL}/${targetRoll}?${RESULT_ZONE_DIPLOMA_FILTER}`
-        : BTEB_RESULTS_ZONE_URL
-    );
+    // Always through buildResultZoneUrl — the Diploma in Engineering
+    // filter is attached even when there is no roll yet.
+    setZoneUrl(buildResultZoneUrl(targetRoll));
     setIsZoneFrameLoading(true);
     setViewMode('result-zone');
   };
@@ -315,21 +349,22 @@ export const BTEBResultsScreen: React.FC = () => {
     return set.size;
   }, [groupRollInput]);
 
-  // Main Native Result Lookup Handler
+  // Main Native Result Lookup Handler — gazette first (step 1 of the
+  // unified flow). The curriculum is always Diploma in Engineering: the
+  // gazette store holds Diploma records only, and Result Zone is always
+  // opened with the Diploma filter, so no other exam can be shown.
   const handleViewResult = async (
     overrideRoll?: string,
-    overrideCurriculum?: BtebCurriculumId,
     overrideRegulation?: string
   ) => {
     if (isResultLookupInProgress.current) return;
 
     const rawTarget = overrideRoll !== undefined ? overrideRoll : rollInput;
     const targetRoll = normalizeRollInput(rawTarget);
-    const effectiveCurriculum = overrideCurriculum || selectedCurriculum;
+    const effectiveCurriculum = DIPLOMA_CURRICULUM_ID;
     const effectiveRegulation = overrideRegulation !== undefined ? overrideRegulation : selectedRegulation;
 
     if (overrideRoll !== undefined) setRollInput(targetRoll);
-    if (overrideCurriculum) setSelectedCurriculum(overrideCurriculum);
     if (overrideRegulation !== undefined) setSelectedRegulation(overrideRegulation);
 
     setErrorMessage('');
@@ -1074,14 +1109,42 @@ export const BTEBResultsScreen: React.FC = () => {
               Live result, shown inside DiplomaMate
             </span>
           </div>
-          <button
-            type="button"
-            onClick={openBtebResultsZone}
-            className="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            <span>Open in Browser</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openOfficialBteb}
+              className="px-3 py-2 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Open BTEB's official result portal instead"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Open Official BTEB</span>
+            </button>
+            <button
+              type="button"
+              onClick={openBtebResultsZone}
+              className="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Open in Browser</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Persistent Diploma-only warning — always visible above the result.
+            The viewer is a cross-origin iframe, so DiplomaMate cannot read
+            inside the page to check which exam is shown; the student must
+            check the exam name at the top of the result themselves. */}
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-xs space-y-1.5" role="alert">
+          <p className="text-xs font-bold text-amber-950 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <span>Diploma in Engineering result only — if this page shows HSC / BMT, SSC (Vocational) or any other exam, it is NOT your result.</span>
+          </p>
+          <p className="text-xs text-amber-900/90 leading-relaxed">
+            This page was opened with the Diploma in Engineering filter, but DiplomaMate cannot see inside it to double-check — please look at the exam name at the top of the result below. If it is not Diploma in Engineering, use “Open Official BTEB” above and check on BTEB&apos;s own portal.
+          </p>
+          <p className="text-xs text-amber-900/90 leading-relaxed" lang="bn">
+            শুধু Diploma in Engineering এর ফলাফল দেখুন — নিচে HSC / BMT বা SSC দেখালে সেটা আপনার ফলাফল নয়।
+          </p>
         </div>
 
         {/* Source attribution — the result below comes from BTEB Result Zone */}
@@ -1096,10 +1159,10 @@ export const BTEBResultsScreen: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-teal-900/90 leading-relaxed">
-            The result shown below is fetched live from <strong>BTEB Result Zone</strong> and displayed here inside DiplomaMate, so you never have to leave the app. Only the <strong>Diploma in Engineering</strong> result is shown — the same roll can also have HSC or SSC results on the site, which are hidden here.
+            The result shown below is fetched live from <strong>BTEB Result Zone</strong> and displayed here inside DiplomaMate, so you never have to leave the app. The page was opened with the <strong>Diploma in Engineering</strong> filter — the same roll can also have HSC or SSC results on that site.
           </p>
           <p className="text-xs text-teal-900/90 leading-relaxed" lang="bn">
-            নিচের ফলাফলটি BTEB Result Zone থেকে নেওয়া — DiplomaMate এখানেই দেখাচ্ছে। শুধু Diploma in Engineering এর ফলাফল দেখানো হয়।
+            নিচের ফলাফলটি BTEB Result Zone থেকে নেওয়া — DiplomaMate এখানেই দেখাচ্ছে। শুধু Diploma in Engineering এর ফলাফলের জন্য ফিল্টার করা হয়েছে।
           </p>
         </div>
 
@@ -1157,7 +1220,19 @@ export const BTEBResultsScreen: React.FC = () => {
               </button>
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
-              Enter your roll above and the result will appear below, inside the app.
+              Enter your roll above and the Diploma in Engineering result will appear below, inside the app.
+              {userProfile.boardRoll && zoneRollInput !== userProfile.boardRoll && (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    onClick={() => setZoneRollInput(userProfile.boardRoll || '')}
+                    className="font-semibold text-brand-blue hover:underline cursor-pointer"
+                  >
+                    Use my roll ({userProfile.boardRoll})
+                  </button>
+                </>
+              )}
             </p>
           </div>
         </form>
@@ -1178,9 +1253,29 @@ export const BTEBResultsScreen: React.FC = () => {
             onLoad={() => setIsZoneFrameLoading(false)}
           />
         </div>
-        <p className="text-[11px] text-slate-500 text-center">
-          Result source: <strong className="text-slate-700">BTEB Result Zone</strong> (btebresultszone.com) · If the result does not load here, use “Open in Browser” above.
-        </p>
+        <div className="space-y-2">
+          <p className="text-[11px] text-slate-500 text-center">
+            Result source: <strong className="text-slate-700">BTEB Result Zone</strong> (btebresultszone.com) · Diploma in Engineering filter applied · If the result does not load here, use one of the buttons below.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={openOfficialBteb}
+              className="min-h-[44px] px-4 py-2 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Check on Official BTEB instead</span>
+            </button>
+            <button
+              type="button"
+              onClick={openBtebResultsZone}
+              className="min-h-[44px] px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Open Result Zone in Browser</span>
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1243,19 +1338,46 @@ export const BTEBResultsScreen: React.FC = () => {
             <span>How to check your result here</span>
           </h2>
           <ol className="text-xs text-slate-600 leading-relaxed space-y-1 list-decimal list-inside">
-            <li>Select your examination, curriculum, semester and exam year on the portal below.</li>
-            <li>Enter your Board Roll and Registration Number.</li>
-            <li>Type the characters shown in the portal&apos;s security-check image into the Code box and press Search.</li>
+            <li>On the portal below, select your examination and choose <strong>Diploma in Engineering</strong> as the curriculum, then your semester and exam year.</li>
+            <li>Enter your Board Roll and Registration Number — tap “Copy” below to copy them, then paste them into the portal.</li>
+            <li>Type the characters shown in the portal&apos;s security-check image into the Code box and press Search. Only you can solve this check — the app cannot fill it in for you.</li>
             <li>Your official result will appear right here, inside the app.</li>
           </ol>
           {(userProfile.boardRoll || userProfile.regNumber) && (
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-600 space-y-1">
-              <span className="font-bold text-slate-700 block">Your saved details (type these into the portal):</span>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-600 space-y-2">
+              <span className="font-bold text-slate-700 block">Your saved details (copy, then paste into the portal):</span>
               {userProfile.boardRoll && (
-                <p>Board Roll: <strong className="font-mono text-text-primary">{userProfile.boardRoll}</strong></p>
+                <p className="flex flex-wrap items-center justify-between gap-2">
+                  <span>Board Roll: <strong className="font-mono text-text-primary">{userProfile.boardRoll}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => copyTextToClipboard(userProfile.boardRoll || '', 'Board Roll')}
+                    className="px-2.5 py-1.5 rounded-lg bg-surface border border-slate-200 hover:border-blue-400 text-brand-blue font-bold text-[11px] cursor-pointer"
+                  >
+                    Copy roll
+                  </button>
+                </p>
               )}
               {userProfile.regNumber && (
-                <p>Registration No: <strong className="font-mono text-text-primary">{userProfile.regNumber}</strong></p>
+                <p className="flex flex-wrap items-center justify-between gap-2">
+                  <span>Registration No: <strong className="font-mono text-text-primary">{userProfile.regNumber}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => copyTextToClipboard(userProfile.regNumber || '', 'Registration Number')}
+                    className="px-2.5 py-1.5 rounded-lg bg-surface border border-slate-200 hover:border-blue-400 text-brand-blue font-bold text-[11px] cursor-pointer"
+                  >
+                    Copy reg. no.
+                  </button>
+                </p>
+              )}
+              {userProfile.boardRoll && userProfile.regNumber && (
+                <button
+                  type="button"
+                  onClick={() => copyTextToClipboard(`Roll: ${userProfile.boardRoll}, Reg: ${userProfile.regNumber}`, 'Roll and registration number')}
+                  className="px-3 py-2 rounded-xl bg-brand-blue hover:bg-blue-700 text-white font-bold text-[11px] shadow-xs cursor-pointer"
+                >
+                  Copy both
+                </button>
               )}
             </div>
           )}
@@ -1419,42 +1541,35 @@ export const BTEBResultsScreen: React.FC = () => {
               }}
               className="space-y-4"
             >
-              {/* Selectors Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {/* Examination / Curriculum Selector */}
-                <div>
-                  <label className="block text-xs font-bold text-text-primary mb-1.5">
-                    Examination / Curriculum *
-                  </label>
-                  <select
-                    value={selectedCurriculum}
-                    onChange={(e) => setSelectedCurriculum(e.target.value as BtebCurriculumId)}
-                    className="dm-field w-full px-3.5 py-2.5 text-sm font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
-                  >
-                    {CURRICULUM_OPTIONS.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.label} ({c.badge})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              {/* Curriculum is fixed: DiplomaMate shows Diploma in
+                  Engineering results only. The gazette store holds Diploma
+                  records only, and the same roll can belong to another exam
+                  (HSC BMT, SSC Vocational) — those are never shown. */}
+              <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-teal-50 border border-teal-200">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-600 text-white text-[11px] font-extrabold tracking-wide">
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  {DIPLOMA_CURRICULUM_LABEL} ONLY
+                </span>
+                <span className="text-[11px] text-teal-900">
+                  Results are shown for Diploma in Engineering only — never HSC, BMT or SSC.
+                </span>
+              </div>
 
-                {/* Regulation (Probidhan) Selector */}
-                <div>
-                  <label className="block text-xs font-bold text-text-primary mb-1.5">
-                    Regulation (Probidhan)
-                  </label>
-                  <select
-                    value={selectedRegulation}
-                    onChange={(e) => setSelectedRegulation(e.target.value)}
-                    className="dm-field w-full px-3.5 py-2.5 text-sm font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
-                  >
-                    <option value="all">All Regulations (Auto-Detect)</option>
-                    <option value="2022">2022 Probidhan (Current Standard)</option>
-                    <option value="2016">2016 Probidhan</option>
-                    <option value="2010">2010 Probidhan</option>
-                  </select>
-                </div>
+              {/* Regulation (Probidhan) Selector */}
+              <div>
+                <label className="block text-xs font-bold text-text-primary mb-1.5">
+                  Regulation (Probidhan)
+                </label>
+                <select
+                  value={selectedRegulation}
+                  onChange={(e) => setSelectedRegulation(e.target.value)}
+                  className="dm-field w-full px-3.5 py-2.5 text-sm font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                >
+                  <option value="all">All Regulations (Auto-Detect)</option>
+                  <option value="2022">2022 Probidhan (Current Standard)</option>
+                  <option value="2016">2016 Probidhan</option>
+                  <option value="2010">2010 Probidhan</option>
+                </select>
               </div>
 
               {/* Board Roll Input */}
@@ -1491,7 +1606,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => handleViewResult('542880', 'diploma_in_engineering', '2016')}
+                    onClick={() => handleViewResult('542880', '2016')}
                     className="px-2.5 py-1 rounded-lg bg-surface border border-slate-200 hover:border-blue-400 text-xs font-medium text-slate-700 hover:text-brand-blue transition-colors cursor-pointer"
                   >
                     <strong className="font-mono">542880</strong> (Barguna Poly · 2016 Reg · CGPA 3.43)
@@ -1499,7 +1614,7 @@ export const BTEBResultsScreen: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={() => handleViewResult('750102', 'diploma_in_engineering', '2022')}
+                    onClick={() => handleViewResult('750102', '2022')}
                     className="px-2.5 py-1 rounded-lg bg-surface border border-slate-200 hover:border-blue-400 text-xs font-medium text-slate-700 hover:text-brand-blue transition-colors cursor-pointer"
                   >
                     <strong className="font-mono">750102</strong> (Confidence Poly · 2022 Reg · Sem 1-2)
@@ -1507,7 +1622,7 @@ export const BTEBResultsScreen: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={() => handleViewResult('750104', 'diploma_in_engineering', '2022')}
+                    onClick={() => handleViewResult('750104', '2022')}
                     className="px-2.5 py-1 rounded-lg bg-surface border border-slate-200 hover:border-blue-400 text-xs font-medium text-slate-700 hover:text-brand-blue transition-colors cursor-pointer"
                   >
                     <strong className="font-mono">750104</strong> (Confidence Poly · 2022 Reg · Sem 1-4)
@@ -1515,7 +1630,7 @@ export const BTEBResultsScreen: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={() => handleViewResult('542891', 'diploma_in_engineering', '2016')}
+                    onClick={() => handleViewResult('542891', '2016')}
                     className="px-2.5 py-1 rounded-lg bg-surface border border-slate-200 hover:border-blue-400 text-xs font-medium text-slate-700 hover:text-brand-blue transition-colors cursor-pointer"
                   >
                     <strong className="font-mono">542891</strong> (Barguna Poly · 2016 Reg · Sem 4-5)
@@ -1553,14 +1668,16 @@ export const BTEBResultsScreen: React.FC = () => {
           </div>
 
           {/* How the single View Result button works — one tap checks every source */}
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-xs space-y-1.5">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-xs space-y-2.5">
             <h2 className="text-xs font-bold text-text-primary flex items-center gap-1.5">
               <Info className="w-4 h-4 text-brand-blue" />
-              <span>One View Result — every source, inside the app</span>
+              <span>How View Result works — 3 steps, inside the app</span>
             </h2>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Pressing <strong>View Result</strong> first checks DiplomaMate&apos;s own gazette. If the roll is not there, it automatically shows the live result from <strong>BTEB Result Zone</strong> (btebresultszone.com), and from there you can open <strong>BTEB&apos;s official portal</strong> (result.bteb.gov.bd) — all inside DiplomaMate, without leaving the app. Every result shows which source it came from.
-            </p>
+            <ol className="text-xs text-slate-600 leading-relaxed space-y-1 list-decimal list-inside">
+              <li><strong>Step 1 — DiplomaMate gazette:</strong> your roll is checked against DiplomaMate&apos;s own imported gazette (Diploma in Engineering only).</li>
+              <li><strong>Step 2 — BTEB Result Zone:</strong> if the roll is not in the gazette, the live result from <strong>BTEB Result Zone</strong> (btebresultszone.com) opens automatically, with the Diploma in Engineering filter applied.</li>
+              <li><strong>Step 3 — Official BTEB:</strong> if it is not there either, one tap opens <strong>BTEB&apos;s official portal</strong> (result.bteb.gov.bd) — your roll and registration number are ready to copy, and only you solve its security check.</li>
+            </ol>
             <p className="text-xs text-slate-600 leading-relaxed" lang="bn">
               View Result চাপলেই প্রথমে DiplomaMate-এর গেজেটে খুঁজবে — না পেলে BTEB Result Zone, তারপর Official BTEB পোর্টাল — সব অ্যাপের ভিতরেই দেখাবে।
             </p>
@@ -1592,7 +1709,7 @@ export const BTEBResultsScreen: React.FC = () => {
                   No Result in DiplomaMate Gazette
                 </h3>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  No imported Gazette record was found for Board Roll <strong className="font-mono text-text-primary">{notFoundRoll}</strong> under <strong>{CURRICULUM_OPTIONS.find(c => c.id === selectedCurriculum)?.label}</strong>.
+                  No imported Gazette record was found for Board Roll <strong className="font-mono text-text-primary">{notFoundRoll}</strong> under <strong>{DIPLOMA_CURRICULUM_LABEL}</strong>.
                 </p>
                 <p className="text-sm font-semibold text-amber-900" lang="bn">
                   এই রোল নম্বরের ফলাফল বর্তমানে DiplomaMate-এ পাওয়া যায়নি।
@@ -1619,17 +1736,17 @@ export const BTEBResultsScreen: React.FC = () => {
                 </p>
                 {alternateCurricula.length > 0 && (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-left text-xs text-blue-900 space-y-1 mt-2">
-                    <span className="font-bold block">Curriculum Match Notice:</span>
+                    <span className="font-bold block">Same roll, another exam:</span>
                     <p>
-                      Board Roll <strong className="font-mono">{notFoundRoll}</strong> has published BTEB records under{' '}
-                      <strong>{alternateCurricula.join(', ')}</strong>. Select that curriculum in the dropdown above to view those results.
+                      Board Roll <strong className="font-mono">{notFoundRoll}</strong> also has published BTEB records under{' '}
+                      <strong>{alternateCurricula.join(', ')}</strong>. DiplomaMate only shows Diploma in Engineering results, so those are not shown here — check them on BTEB&apos;s official portal if you need them.
                     </p>
                   </div>
                 )}
                 <div className="p-3 bg-slate-50 rounded-xl text-left text-xs text-slate-500 space-y-1 mt-2">
                   <span className="font-bold text-slate-700 block">Common reasons:</span>
                   <p>• Verify that the 6-digit Board Roll is typed correctly without spaces.</p>
-                  <p>• Check if the examination curriculum matches your department (e.g., Diploma in Engineering vs. HSC BMT or SSC Vocational).</p>
+                  <p>• Check if the result is for Diploma in Engineering — the same roll can belong to HSC BMT or SSC Vocational, which DiplomaMate never shows.</p>
                   <p>• If your semester result has not yet been imported into the official gazette dataset, ask your System Administrator to import the official BTEB result sheet PDF/text.</p>
                 </div>
               </div>
@@ -1692,7 +1809,7 @@ export const BTEBResultsScreen: React.FC = () => {
               <span>How Results Are Retrieved and Protected</span>
             </h3>
             <p className="text-slate-600 leading-relaxed">
-              One <strong>View Result</strong> tap checks every source in order: first DiplomaMate&apos;s locally imported official BTEB Gazette records; if the roll is not there, the live result from BTEB Result Zone (btebresultszone.com) opens automatically inside the app; and from there BTEB&apos;s official portal (result.bteb.gov.bd) is one tap away. Results shown from BTEB Result Zone are credited to BTEB Result Zone, and results from the official portal are credited to the Bangladesh Technical Education Board. We do not store or track students&apos; private searches, nor do we fabricate academic results.
+              One <strong>View Result</strong> tap checks every source in order, for <strong>Diploma in Engineering only</strong>: first DiplomaMate&apos;s locally imported official BTEB Gazette records; if the roll is not there, the live result from BTEB Result Zone (btebresultszone.com) opens automatically inside the app, with the Diploma filter applied; and from there BTEB&apos;s official portal (result.bteb.gov.bd) is one tap away. Results shown from BTEB Result Zone are credited to BTEB Result Zone, and results from the official portal are credited to the Bangladesh Technical Education Board. DiplomaMate cannot read inside the Result Zone page to verify which exam it shows, so always check the exam name at the top of the result. We do not store or track students&apos; private searches, nor do we fabricate academic results.
             </p>
           </div>
         </div>
@@ -1826,6 +1943,16 @@ export const BTEBResultsScreen: React.FC = () => {
               <span>{isSearchingGroup ? 'Analyzing Group Results...' : 'Analyze Group Results'}</span>
             </button>
           </form>
+
+          {/* Group search loading state */}
+          {isSearchingGroup && (
+            <div className="p-6 bg-surface rounded-2xl border border-teal-100 text-center space-y-3 shadow-xs">
+              <LiquidFillLoader size={44} label="Analyzing group results from the imported gazette..." />
+              <p className="text-xs text-slate-500">
+                Checking the imported Diploma in Engineering gazette for your rolls.
+              </p>
+            </div>
+          )}
 
           {/* Group Performance Statistics & Detailed Student Table */}
           {groupResultData && (
@@ -2044,7 +2171,6 @@ export const BTEBResultsScreen: React.FC = () => {
                                 onClick={() =>
                                   handleViewResult(
                                     item.rollNumber,
-                                    'diploma_in_engineering',
                                     rec?.regulation || 'all'
                                   )
                                 }
@@ -2105,7 +2231,7 @@ export const BTEBResultsScreen: React.FC = () => {
               <div className="p-8 rounded-xl bg-slate-50 text-center space-y-2">
                 <Database className="w-8 h-8 text-slate-300 mx-auto" />
                 <p className="text-xs text-slate-500">
-                  No manual batches uploaded yet. Live queries directly query BTEB official repositories.
+                  No gazette batches imported yet. Results then come live from BTEB Result Zone (Diploma in Engineering only) or BTEB&apos;s official portal — ask an admin to import the official result sheet to search the gazette here.
                 </p>
               </div>
             ) : (

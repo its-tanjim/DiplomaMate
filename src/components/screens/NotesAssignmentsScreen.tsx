@@ -272,7 +272,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
     fileSize: '3.4 MB',
     summary: '',
     extractedText: '',
-    headingsText: ''
+    headingsText: '',
+    sourceName: '',
+    sourceUrl: ''
   });
 
   const [newJobData, setNewJobData] = useState({
@@ -288,8 +290,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
     educationalQualifications: '4-Year Diploma in Engineering (BTEB)',
     description: '',
     requirements: '',
-    sourceName: 'Careerjet Bangladesh / Employer Career Page',
-    sourceUrl: 'https://www.careerjet.com.bd/diploma-engineer-jobs',
+    sourceName: '',
+    sourceUrl: '',
     applyUrl: ''
   });
 
@@ -503,7 +505,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
           ...noticeForm,
           attachmentUrl: attachedFile?.dataUrl,
           attachmentName: attachedFile?.name,
-          attachmentType: attachedFile?.name.endsWith('.pdf') ? 'PDF' : 'IMAGE'
+          attachmentType: attachedFile ? detectAttachmentType(attachedFile.name, attachedFile.type) : undefined
         })
       });
 
@@ -788,8 +790,20 @@ export const NotesAssignmentsScreen: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > maxMb * 1024 * 1024) {
-      setFileError(`File exceeds maximum limit of ${maxMb}MB.`);
+    // Server caps (inspectUploadedFile): 15 MB for video, 10 MB for
+    // everything else. The old per-form limits (up to 50 MB) let a
+    // file pass the picker and then fail on the server — or, for
+    // notes, be stored inline at full size — so the effective cap is
+    // the server cap, whatever the form asked for.
+    const lowerNameForCap = file.name.toLowerCase();
+    const isVideoFile =
+      file.type.startsWith('video/') ||
+      lowerNameForCap.endsWith('.mp4') ||
+      lowerNameForCap.endsWith('.webm') ||
+      lowerNameForCap.endsWith('.mov');
+    const effectiveMaxMb = Math.min(maxMb, isVideoFile ? 15 : 10);
+    if (file.size > effectiveMaxMb * 1024 * 1024) {
+      setFileError(`File exceeds maximum limit of ${effectiveMaxMb}MB${isVideoFile ? ' for videos' : ''}.`);
       return;
     }
 
@@ -872,13 +886,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
         ? {
             url: studentSubmissionFile.dataUrl,
             name: studentSubmissionFile.name,
-            type: studentSubmissionFile.name.endsWith('.pdf')
-              ? 'PDF'
-              : studentSubmissionFile.name.endsWith('.zip')
-                ? 'ZIP'
-                : studentSubmissionFile.name.endsWith('.docx')
-                  ? 'DOCX'
-                  : 'IMAGE'
+            type: detectAttachmentType(studentSubmissionFile.name, studentSubmissionFile.type)
           }
         : undefined;
 
@@ -954,15 +962,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
       section: isTeacher ? targetSection : userProfile.section,
       attachmentUrl: attachedFile?.dataUrl,
       attachmentName: attachedFile?.name,
-      attachmentType: (
-        attachedFile?.name.endsWith('.pdf')
-          ? 'PDF'
-          : attachedFile?.name.endsWith('.zip')
-            ? 'ZIP'
-            : attachedFile?.name.endsWith('.docx')
-              ? 'DOCX'
-              : 'IMAGE'
-      ) as any,
+      attachmentType: (attachedFile
+        ? detectAttachmentType(attachedFile.name, attachedFile.type)
+        : 'PDF') as any,
       questions: parsedQuestions.length > 0 ? parsedQuestions : activeScanResult?.assignmentData?.questions,
       marks: newAsgData.marks || activeScanResult?.assignmentData?.marks,
       submissionMethod: newAsgData.submissionMethod || activeScanResult?.assignmentData?.submissionMethod,
@@ -1043,7 +1045,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
         fileSize: '3.4 MB',
         summary: '',
         extractedText: '',
-        headingsText: ''
+        headingsText: '',
+        sourceName: '',
+        sourceUrl: ''
       });
       setAttachedFile(null);
       setActiveScanResult(null);
@@ -1055,14 +1059,27 @@ export const NotesAssignmentsScreen: React.FC = () => {
   const handleCreateJob = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newJobData.title.trim() || !newJobData.company.trim()) return;
+    // A real apply link is required — a job without the original circular
+    // cannot be verified, so it is never published.
+    if (!/^https?:\/\//i.test(newJobData.applyUrl.trim())) {
+      showToast('Paste the real apply link (https://...) to the original job circular or employer application page.');
+      return;
+    }
 
     const res = await addJobCircular({
       ...newJobData,
+      sourceUrl: newJobData.applyUrl.trim(),
       description: newJobData.description || newJobData.requirements,
       requirements: newJobData.requirements || newJobData.description,
       mediaUrl: attachedFile?.dataUrl,
       mediaName: attachedFile?.name,
-      mediaType: attachedFile?.type.startsWith('image/') ? 'IMAGE' : 'PDF'
+      mediaType: attachedFile
+        ? detectAttachmentType(attachedFile.name, attachedFile.type) === 'VIDEO'
+          ? 'VIDEO'
+          : attachedFile.type.startsWith('image/')
+            ? 'IMAGE'
+            : 'PDF'
+        : undefined
     });
 
     if (res.success) {
@@ -1079,8 +1096,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
         educationalQualifications: '4-Year Diploma in Engineering (BTEB)',
         description: '',
         requirements: '',
-        sourceName: 'Careerjet Bangladesh / Employer Career Page',
-        sourceUrl: 'https://www.careerjet.com.bd/diploma-engineer-jobs',
+        sourceName: '',
+        sourceUrl: '',
         applyUrl: ''
       });
       setAttachedFile(null);
@@ -1089,13 +1106,100 @@ export const NotesAssignmentsScreen: React.FC = () => {
     }
   };
 
-  const handleDownloadFile = async (fileName: string, dataUrl?: string) => {
-    if (dataUrl) {
-      await nativeService.downloadDocument(dataUrl, fileName);
-    } else {
-      showToast(`Saved ${fileName} to Downloads`);
+  // Detects the stored attachment type from a file name / MIME, so a
+  // video or slide deck is never mislabelled as an image or PDF.
+  const detectAttachmentType = (fileName: string, mime = ''): 'PDF' | 'IMAGE' | 'DOCX' | 'ZIP' | 'VIDEO' | 'SLIDES' => {
+    const lower = fileName.toLowerCase();
+    if (mime.startsWith('video/') || lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.mov')) return 'VIDEO';
+    if (mime.startsWith('image/') || lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp') || lower.endsWith('.gif')) return 'IMAGE';
+    if (lower.endsWith('.pdf')) return 'PDF';
+    if (lower.endsWith('.pptx') || lower.endsWith('.ppt')) return 'SLIDES';
+    if (lower.endsWith('.docx') || lower.endsWith('.doc')) return 'DOCX';
+    if (lower.endsWith('.zip')) return 'ZIP';
+    return 'PDF';
+  };
+
+  // Download a file the server now serves from its authenticated
+  // download endpoint (mediaUrl / attachmentUrl is `/api/...`, not a
+  // data: URL any more). A plain <a href> to that endpoint gets a
+  // 401 and an anchor download does nothing inside the Android
+  // WebView, so the bytes are fetched with the session token and
+  // handed to nativeService.downloadBlob (share sheet on native,
+  // browser download on web) — the same pattern as the community
+  // attachments. Legacy data: URLs still download directly. When
+  // there is no file at all, say so — never a fake "Saved" toast.
+  const handleDownloadFile = async (fileName: string, url?: string) => {
+    if (!url) {
+      showToast('No file attached to download.');
+      return;
+    }
+    try {
+      if (url.startsWith('/api/')) {
+        const token = authToken || localStorage.getItem('diplomamate_auth_token');
+        const res = await apiFetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (!res.ok) {
+          showToast('Could not download this file. It may have been removed.');
+          return;
+        }
+        const blob = await res.blob();
+        const ok = await nativeService.downloadBlob(blob, fileName);
+        if (!ok) showToast('Could not download this file.');
+        return;
+      }
+      if (url.startsWith('data:')) {
+        const ok = await nativeService.downloadDocument(url, fileName);
+        if (!ok) showToast('Could not download this file.');
+        return;
+      }
+      const res = await fetch(url);
+      if (!res.ok) {
+        showToast('Could not download this file.');
+        return;
+      }
+      const ok = await nativeService.downloadBlob(await res.blob(), fileName);
+      if (!ok) showToast('Could not download this file.');
+    } catch {
+      showToast('Network error while downloading file.');
     }
   };
+
+  // Authenticated preview for image / video notes: mediaUrl is now a
+  // download endpoint, not a data: URL, so a plain <img src> would
+  // 401 — fetch the bytes with the session token and preview the
+  // blob URL instead (same pattern as community images).
+  const [notePreviewUrl, setNotePreviewUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!selectedNote || (selectedNote.fileType !== 'IMAGE' && selectedNote.fileType !== 'VIDEO') || !selectedNote.mediaUrl) {
+      setNotePreviewUrl(null);
+      return;
+    }
+    const url = selectedNote.mediaUrl;
+    if (url.startsWith('data:')) {
+      setNotePreviewUrl(url);
+      return;
+    }
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    (async () => {
+      try {
+        const token = authToken || localStorage.getItem('diplomamate_auth_token');
+        const res = await apiFetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setNotePreviewUrl(objectUrl);
+      } catch {
+        // Preview stays hidden; the Save button still downloads.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [selectedNote, authToken]);
 
   const formatDateTimeReadable = (isoStr?: string | null) => {
     if (!isoStr) return 'Never';
@@ -1587,15 +1691,19 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             <FileText className="w-3.5 h-3.5 text-brand-teal shrink-0" />
                             <span className="truncate">{cNotice.attachmentName}</span>
                           </div>
-                          <a
-                            href={cNotice.attachmentUrl || `/api/notices/campus/${cNotice.id}/attachment`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-2.5 py-1 rounded-lg bg-surface text-brand-teal font-bold text-[11px] border border-teal-200 flex items-center gap-1 shrink-0"
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDownloadFile(
+                                cNotice.attachmentName || 'notice-attachment',
+                                cNotice.attachmentUrl || `/api/notices/campus/${cNotice.id}/attachment`
+                              )
+                            }
+                            className="px-2.5 py-1 rounded-lg bg-surface text-brand-teal font-bold text-[11px] border border-teal-200 flex items-center gap-1 shrink-0 cursor-pointer"
                           >
                             <Download className="w-3 h-3" />
                             <span>Open Attachment</span>
-                          </a>
+                          </button>
                         </div>
                       )}
 
@@ -1931,7 +2039,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-100 text-[11px] text-slate-500">
               <span>
                 {jobSyncInfo?.sourceStatusMessage ||
-                  'Verified Diploma Engineering opportunities from Careerjet BD & Polytechnic Placement Cells.'}
+                  (jobSyncInfo && !jobSyncInfo.careerjetApiConfigured
+                    ? 'Live Careerjet feed is not connected — listings below are posted by the Placement Cell, teachers or class captains, each with its original apply link.'
+                    : 'Every listing links to its original apply page — verify the deadline and details there before applying.')}
               </span>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="font-semibold text-slate-600">Sort by:</span>
@@ -1967,8 +2077,41 @@ export const NotesAssignmentsScreen: React.FC = () => {
               <Briefcase className="w-10 h-10 text-slate-300 mx-auto mb-2" />
               <h3 className="text-sm font-bold text-text-primary">No matching job circulars found</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Try clearing your filters or check back later for new Diploma Engineer postings.
+                {jobSearch || jobDeptFilter !== 'all' || jobLocationFilter !== 'all' || jobTypeFilter !== 'all' || jobStatusFilter !== 'all'
+                  ? 'Try clearing your filters or check back later for new Diploma Engineer postings.'
+                  : 'No verified job circulars are posted right now — DiplomaMate never shows sample or invented listings. Check these trusted portals directly:'}
               </p>
+              {!(jobSearch || jobDeptFilter !== 'all' || jobLocationFilter !== 'all' || jobTypeFilter !== 'all' || jobStatusFilter !== 'all') && (
+                <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+                  <a
+                    href="https://www.careerjet.com.bd/diploma-engineer-jobs"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-semibold flex items-center gap-1 border border-blue-200"
+                  >
+                    <span>Careerjet BD — Diploma Engineer Jobs</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <a
+                    href="https://www.bdjobs.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-semibold flex items-center gap-1 border border-blue-200"
+                  >
+                    <span>Bdjobs</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <a
+                    href="https://bpsc.gov.bd/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-semibold flex items-center gap-1 border border-blue-200"
+                  >
+                    <span>BPSC (Govt. Jobs)</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -1996,9 +2139,21 @@ export const NotesAssignmentsScreen: React.FC = () => {
                               {job.status}
                             </span>
                           )}
-                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-                            Source: {job.sourceName || 'Careerjet BD / Placement Cell'}
-                          </span>
+                          {job.sourceUrl ? (
+                            <a
+                              href={job.sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-brand-blue hover:underline"
+                              title={job.sourceUrl}
+                            >
+                              Source: {job.sourceName || 'Placement Cell'}
+                            </a>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
+                              Source: {job.sourceName || 'Placement Cell'}
+                            </span>
+                          )}
                         </div>
                         <h3
                           onClick={() => setSelectedJob(job)}
@@ -2081,18 +2236,29 @@ export const NotesAssignmentsScreen: React.FC = () => {
                           <span>Full Details</span>
                         </button>
 
-                        {(job.applyUrl || job.sourceUrl) && (
+                        {job.applyUrl ? (
                           <a
-                            href={job.applyUrl || job.sourceUrl}
+                            href={job.applyUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-3 py-1 rounded-lg bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 shadow-xs cursor-pointer"
-                            title="Opens the employer or Careerjet official application page in your browser"
+                            title="Opens the original application page in your browser"
                           >
                             <span>Apply on Original Site</span>
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
-                        )}
+                        ) : job.sourceUrl ? (
+                          <a
+                            href={job.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                            title="No direct apply link was given — verify on the source site"
+                          >
+                            <span>View on Source Site</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -2456,10 +2622,39 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   </div>
                 )}
 
-                <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs">
-                  <span className="text-slate-500 text-[11px]">
-                    By <span className="font-medium text-slate-700">{note.uploadedBy}</span> · {note.uploadedDate}
-                  </span>
+                <div className="flex items-start justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
+                  <div className="space-y-0.5 min-w-0">
+                    <span className="text-slate-500 text-[11px] block">
+                      By <span className="font-medium text-slate-700">{note.uploadedBy}</span>
+                      {note.uploadedByRole && (
+                        <span className="ml-1 px-1.5 py-px rounded text-[10px] font-bold bg-blue-50 text-brand-blue border border-blue-200">
+                          {note.uploadedByRole === 'teacher'
+                            ? 'Teacher'
+                            : note.uploadedByRole === 'class_captain'
+                              ? 'Class Captain'
+                              : 'Admin'}
+                        </span>
+                      )}
+                      {' '}· {note.uploadedDate}
+                    </span>
+                    <span className="text-slate-500 text-[11px] block">
+                      Source:{' '}
+                      {note.sourceUrl ? (
+                        <a
+                          href={note.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-brand-blue hover:underline break-all"
+                        >
+                          {note.sourceName || note.sourceUrl}
+                        </a>
+                      ) : note.sourceName ? (
+                        <span className="font-medium text-slate-700">{note.sourceName}</span>
+                      ) : (
+                        <span>Teacher / captain upload — no external source given</span>
+                      )}
+                    </span>
+                  </div>
 
                   <div className="flex items-center gap-1.5">
                     <button
@@ -2637,15 +2832,19 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 Close
               </button>
               {selectedCampusNotice.attachmentName && (
-                <a
-                  href={selectedCampusNotice.attachmentUrl || `/api/notices/campus/${selectedCampusNotice.id}/attachment`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-brand-teal text-white hover:bg-teal-700 flex items-center gap-1.5"
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleDownloadFile(
+                      selectedCampusNotice.attachmentName || 'notice-attachment',
+                      selectedCampusNotice.attachmentUrl || `/api/notices/campus/${selectedCampusNotice.id}/attachment`
+                    )
+                  }
+                  className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-brand-teal text-white hover:bg-teal-700 flex items-center gap-1.5 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Open Attachment ({selectedCampusNotice.attachmentName})</span>
-                </a>
+                </button>
               )}
             </div>
           </div>
@@ -2804,8 +3003,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </label>
                 <input
                   type="file"
-                  accept=".pdf,image/*"
-                  onChange={e => handleFileUpload(e, 15, false, 'notice')}
+                  accept="image/*,video/*,.pdf,.doc,.docx,.pptx,.xlsx,.zip,.txt"
+                  onChange={e => handleFileUpload(e, 10, false, 'notice')}
                   className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-brand-teal"
                 />
                 {fileError && <p className="text-red-600 text-[11px]">{fileError}</p>}
@@ -3001,16 +3200,30 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </div>
                 <p>
                   DiplomaMate does not collect CVs, NIDs, or submit applications on your behalf. Clicking{' '}
-                  <strong>"Apply Now on Original Site"</strong> opens the verified employer or Careerjet listing page (
+                  <strong>"Apply Now on Original Site"</strong> opens the original application page linked by the poster (
                   <span className="font-mono text-[10px] text-brand-blue">
-                    {selectedJob.applyUrl || selectedJob.sourceUrl}
+                    {selectedJob.applyUrl || selectedJob.sourceUrl || 'no link given'}
                   </span>
-                  ) where you can complete your official application directly.
+                  ) where you can complete your official application directly. Always check the deadline and details on that original page before applying.
                 </p>
               </div>
 
               <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1">
-                <span>Source: {selectedJob.sourceName || 'Careerjet BD / Placement Cell'}</span>
+                <span>
+                  Source:{' '}
+                  {selectedJob.sourceUrl ? (
+                    <a
+                      href={selectedJob.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-brand-blue hover:underline"
+                    >
+                      {selectedJob.sourceName || 'Placement Cell'}
+                    </a>
+                  ) : (
+                    selectedJob.sourceName || 'Placement Cell'
+                  )}
+                </span>
                 <span>Published: {selectedJob.publishedAt || selectedJob.postedAt}</span>
               </div>
             </div>
@@ -3022,9 +3235,21 @@ export const NotesAssignmentsScreen: React.FC = () => {
               >
                 Close
               </button>
-              {(selectedJob.applyUrl || selectedJob.sourceUrl) && (
+              {selectedJob.mediaUrl && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleDownloadFile(selectedJob.mediaName || 'job-circular', selectedJob.mediaUrl)
+                  }
+                  className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-teal-50 text-brand-teal hover:bg-teal-100 border border-teal-200 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Circular{selectedJob.mediaName ? ` (${selectedJob.mediaName})` : ''}</span>
+                </button>
+              )}
+              {selectedJob.applyUrl ? (
                 <a
-                  href={selectedJob.applyUrl || selectedJob.sourceUrl}
+                  href={selectedJob.applyUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-4 py-2 text-xs font-semibold rounded-xl bg-brand-blue text-white hover:bg-blue-700 flex items-center gap-1.5 shadow-xs"
@@ -3032,7 +3257,17 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   <span>Apply Now on Original Site</span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
-              )}
+              ) : selectedJob.sourceUrl ? (
+                <a
+                  href={selectedJob.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center gap-1.5 shadow-xs"
+                >
+                  <span>View on Source Site</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              ) : null}
             </div>
           </div>
         </div>
@@ -3048,7 +3283,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   Admin / Placement Cell Batch Job Import
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Import verified Diploma Engineering job listings (JSON array) with automatic deduplication
+                  Import verified Diploma Engineering job listings (JSON array) with automatic deduplication.
+                  Every item must include a real <span className="font-mono">applyUrl</span> to the original circular — items without one are skipped, never published.
                 </p>
               </div>
               <button onClick={() => setShowBatchImportJobsModal(false)} className="text-slate-400 p-1">
@@ -3138,17 +3374,44 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   </div>
                 </div>
               )}
-              <div className="text-[11px] text-slate-500">
-                Uploaded by {selectedNote.uploadedBy} on {selectedNote.uploadedDate} ({selectedNote.fileType},{' '}
-                {selectedNote.fileSize})
+              <div className="text-[11px] text-slate-500 space-y-0.5">
+                <div>
+                  Uploaded by {selectedNote.uploadedBy} on {selectedNote.uploadedDate} ({selectedNote.fileType},{' '}
+                  {selectedNote.fileSize})
+                </div>
+                <div>
+                  Source:{' '}
+                  {selectedNote.sourceUrl ? (
+                    <a
+                      href={selectedNote.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-brand-blue hover:underline break-all"
+                    >
+                      {selectedNote.sourceName || selectedNote.sourceUrl}
+                    </a>
+                  ) : selectedNote.sourceName ? (
+                    <span className="font-medium text-slate-700">{selectedNote.sourceName}</span>
+                  ) : (
+                    <span>Teacher / captain upload — no external source given</span>
+                  )}
+                </div>
               </div>
             </div>
 
-            {selectedNote.mediaUrl?.startsWith('data:image') && (
+            {selectedNote.fileType === 'IMAGE' && notePreviewUrl && (
               <img
-                src={selectedNote.mediaUrl}
+                src={notePreviewUrl}
                 alt="Note Attachment"
                 className="max-h-60 mx-auto rounded-lg border border-slate-200"
+              />
+            )}
+
+            {selectedNote.fileType === 'VIDEO' && notePreviewUrl && (
+              <video
+                src={notePreviewUrl}
+                controls
+                className="max-h-60 w-full mx-auto rounded-lg border border-slate-200 bg-black"
               />
             )}
 
@@ -3217,8 +3480,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </label>
                 <input
                   type="file"
-                  accept=".pdf,image/*,.docx,.zip"
-                  onChange={e => handleFileUpload(e, 20, true)}
+                  accept="image/*,video/*,.pdf,.doc,.docx,.pptx,.xlsx,.zip,.txt"
+                  onChange={e => handleFileUpload(e, 10, true)}
                   className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-brand-blue"
                 />
                 {studentSubmissionFile && (
@@ -3682,8 +3945,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
                 <input
                   type="file"
-                  accept=".pdf,image/*,.docx,.zip"
-                  onChange={e => handleFileUpload(e, 25, false, 'assignment')}
+                  accept="image/*,video/*,.pdf,.doc,.docx,.pptx,.xlsx,.zip,.txt"
+                  onChange={e => handleFileUpload(e, 10, false, 'assignment')}
                   className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-100 file:text-brand-blue"
                 />
                 {fileError && <p className="text-red-600 text-[11px]">{fileError}</p>}
@@ -3886,6 +4149,36 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-text-primary mb-1">
+                    Source / Reference (optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. BTEB curriculum book, Theraja Vol. 1"
+                    value={newNoteData.sourceName}
+                    onChange={e => setNewNoteData({ ...newNoteData, sourceName: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-text-primary mb-1">
+                    Source Link (optional, https://...)
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://bteb.gov.bd/..."
+                    value={newNoteData.sourceUrl}
+                    onChange={e => setNewNoteData({ ...newNoteData, sourceUrl: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-500 -mt-1">
+                Name the book, site or official page this note is based on so students can verify it. Notes are always shown with the name of the teacher / captain who uploaded them.
+              </p>
+
               <div>
                 <label className="block font-semibold text-text-primary mb-1">
                   Extracted Section Headings (Pipe "|" separated — Editable)
@@ -3942,8 +4235,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
                 <input
                   type="file"
-                  accept=".pdf,image/*,.docx,.pptx,video/*"
-                  onChange={e => handleFileUpload(e, 50, false, 'note')}
+                  accept="image/*,video/*,.pdf,.doc,.docx,.pptx,.xlsx,.zip,.txt"
+                  onChange={e => handleFileUpload(e, 15, false, 'note')}
                   className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-teal-100 file:text-brand-teal"
                 />
                 {fileError && <p className="text-red-600 text-[11px]">{fileError}</p>}
@@ -4164,6 +4457,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   onChange={e => setNewJobData({ ...newJobData, applyUrl: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Required — link to the original circular or employer application page, not a job-board search page. Students apply there, so the link must be real and verifiable.
+                </p>
               </div>
 
               <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
@@ -4172,8 +4468,8 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </label>
                 <input
                   type="file"
-                  accept=".pdf,image/*"
-                  onChange={e => handleFileUpload(e, 15, false, 'job')}
+                  accept="image/*,video/*,.pdf,.doc,.docx,.pptx,.xlsx,.zip,.txt"
+                  onChange={e => handleFileUpload(e, 10, false, 'job')}
                   className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-brand-blue"
                 />
                 {isScanningDoc && (

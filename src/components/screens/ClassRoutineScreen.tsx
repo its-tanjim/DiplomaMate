@@ -509,7 +509,7 @@ export const ClassRoutineScreen: React.FC = () => {
               <span>Period & Shift Settings</span>
             </button>
 
-            {uploadedRoutines.length > 0 && (
+            {uploadedRoutines.length > 0 && uploadedRoutines[0].dataUrl && (
               <button
                 onClick={() => setSelectedOriginalDoc(uploadedRoutines[0])}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"

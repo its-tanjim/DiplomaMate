@@ -995,7 +995,7 @@ export const CommunityScreen: React.FC = () => {
               type="file" 
               ref={fileInputRef} 
               onChange={handleFileChange} 
-              accept="image/*,.pdf,.doc,.docx,video/mp4,video/webm" 
+              accept="image/*,video/*,.pdf,.doc,.docx,.pptx,.xlsx,.zip,.txt" 
               className="hidden" 
             />
             <button
