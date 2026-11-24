@@ -1044,8 +1044,37 @@
   "communityMemberships": [],
   "communityMessages": [],
   "communityReports": [],
-  "deletedAccountIds": [],
+  "deletedAccountIds": [
+    "std_ffa33f21-bdb4-426a-ad25-e0d40720fac5"
+  ],
   "adminAuditLogs": [
+    {
+      "id": "audit_955cffa9-fb1a-4940-b343-1ea6c4f61b2b",
+      "adminId": "sysadmin_1792821774886",
+      "action": "account_deleted",
+      "targetId": "std_ffa33f21-bdb4-426a-ad25-e0d40720fac5",
+      "targetName": "Test User",
+      "timestamp": "2026-11-24T18:06:59.748Z",
+      "details": "Soft-deleted; related academic records retained."
+    },
+    {
+      "id": "audit_11153ae7-575f-49f0-b119-97663859843d",
+      "adminId": "sysadmin_1792821774886",
+      "action": "admin_login_success",
+      "targetId": "sysadmin_1792821774886",
+      "targetName": "its.tanjim.06@gmail.com",
+      "timestamp": "2026-11-24T18:06:41.993Z",
+      "details": "Administrator signed in."
+    },
+    {
+      "id": "audit_eca90af0-bf9b-4e01-baa8-13436bef35e2",
+      "adminId": "system",
+      "action": "admin_pin_verified",
+      "targetId": "admin-pin-gate",
+      "targetName": "Admin Panel PIN",
+      "timestamp": "2026-11-24T18:06:37.829Z",
+      "details": "Admin panel PIN verified; login form unlocked for 15 minutes."
+    },
     {
       "id": "audit_6249584e-6d3a-4f1a-a473-05a134d7535c",
       "adminId": "system",
