@@ -1,6 +1,7 @@
 import { apiFetch } from '../../services/apiClient';
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { LiquidFillLoader } from '../LiquidFillLoader';
 import { TurnstileWidget, isTurnstileEnabled } from '../TurnstileWidget';
 import {
@@ -70,6 +71,7 @@ export const WelcomeScreen: React.FC = () => {
     setActiveScreen,
     showToast
   } = useApp();
+  const { t } = useLanguage();
   const [tab, setTab] = useState<'signin' | 'signup'>('signin');
   const [selectedRole, setSelectedRole] = useState<AccountType>('student');
 
@@ -154,7 +156,7 @@ export const WelcomeScreen: React.FC = () => {
     try {
       if (selectedRole === 'teacher') {
         if (!teacherPhoneOrEmail.trim() || !teacherPin.trim()) {
-          setSignInError('Please enter both your registered Phone/Email and Security PIN.');
+          setSignInError(t('welcome.errTeacherCredentials'));
           return;
         }
 
@@ -167,19 +169,19 @@ export const WelcomeScreen: React.FC = () => {
         const cleanRoll = normalizeDigits(signInRoll);
         const cleanPin = normalizeDigits(signInPin);
         if (!cleanRoll || !cleanPin) {
-          setSignInError('Please enter both Board Roll and your 4–6 digit PIN.');
+          setSignInError(t('welcome.errRollPin'));
           return;
         }
         if (!/^\d{4,8}$/.test(cleanRoll)) {
-          setSignInError('Board Roll must be a valid 4 to 8 digit number.');
+          setSignInError(t('welcome.errRollInvalid'));
           return;
         }
         if (!/^\d{4,6}$/.test(cleanPin)) {
-          setSignInError('PIN must be 4 to 6 digits.');
+          setSignInError(t('welcome.errPinInvalid'));
           return;
         }
         if (selectedRole !== 'student' && selectedRole !== 'class_captain') {
-          setSignInError('Select a student account type to continue.');
+          setSignInError(t('welcome.errSelectStudentType'));
           return;
         }
 
@@ -209,7 +211,7 @@ export const WelcomeScreen: React.FC = () => {
     if (!smsChallenge) return;
     const code = normalizeDigits(smsCode);
     if (!/^\d{6}$/.test(code)) {
-      setSignInError('Please enter the 6-digit code sent to your phone.');
+      setSignInError(t('welcome.errSmsCode'));
       return;
     }
     setSignInError('');
@@ -231,7 +233,7 @@ export const WelcomeScreen: React.FC = () => {
     if (!result.success) {
       setSignInError(result.message);
     } else {
-      showToast('A new SMS code was sent.');
+      showToast(t('welcome.smsResentToast'));
     }
   };
 
@@ -260,7 +262,7 @@ export const WelcomeScreen: React.FC = () => {
         setSignInError(result.message);
       }
     } catch (err) {
-      setSignInError(err instanceof Error ? err.message : 'Facebook sign-in failed.');
+      setSignInError(err instanceof Error ? err.message : t('welcome.errFacebookFailed'));
     } finally {
       setSocialLoading(false);
     }
@@ -293,22 +295,22 @@ export const WelcomeScreen: React.FC = () => {
     try {
       if (selectedRole === 'teacher') {
         if (!teacherName.trim() || !teacherPhone.trim() || !teacherNewPin.trim()) {
-          setSignInError('Please fill in Full Name, Phone Number, and Security PIN.');
+          setSignInError(t('welcome.errTeacherFields'));
           return;
         }
 
         if (teacherNewPin !== teacherConfirmPin) {
-          setSignInError('PIN confirmation does not match.');
+          setSignInError(t('welcome.errPinMismatch'));
           return;
         }
 
         if (!/^\d{4,6}$/.test(normalizeDigits(teacherNewPin))) {
-          setSignInError('PIN must be 4 to 6 digits.');
+          setSignInError(t('welcome.errPinInvalid'));
           return;
         }
 
         if (teacherSemesters.length === 0) {
-          setSignInError('Please select at least one semester you teach.');
+          setSignInError(t('welcome.errNoSemester'));
           return;
         }
 
@@ -337,26 +339,26 @@ export const WelcomeScreen: React.FC = () => {
           setTab('signin');
           setTeacherPhoneOrEmail(teacherPhone.trim());
           setTeacherPin('');
-          showToast('Registration submitted. Sign in after an administrator approves your account.');
+          showToast(t('welcome.teacherRegisteredToast'));
         }
       } else {
         const cleanRoll = normalizeDigits(signUpData.boardRoll || '');
         const cleanReg = normalizeDigits(signUpData.regNumber || '');
         if (!signUpData.name?.trim() || !cleanRoll || !cleanReg) {
-          setSignInError('Please fill in your Name, Board Roll, and Registration Number.');
+          setSignInError(t('welcome.errStudentFields'));
           return;
         }
         if (!/^\d{4,8}$/.test(cleanRoll)) {
-          setSignInError('Board Roll must be a valid 4 to 8 digit number.');
+          setSignInError(t('welcome.errRollInvalid'));
           return;
         }
         const cleanPin = normalizeDigits(signUpPin);
         if (!/^\d{4,6}$/.test(cleanPin)) {
-          setSignInError('Please choose a 4–6 digit PIN. You will sign in with Board Roll + PIN.');
+          setSignInError(t('welcome.errChoosePin'));
           return;
         }
         if (cleanPin !== normalizeDigits(signUpConfirmPin)) {
-          setSignInError('PIN confirmation does not match.');
+          setSignInError(t('welcome.errPinMismatch'));
           return;
         }
 
@@ -392,7 +394,7 @@ export const WelcomeScreen: React.FC = () => {
           resetTurnstile();
           const data = await response.json();
           if (!response.ok || !data.success || !data.account) {
-            setSignInError(data.error || 'Could not create your account.');
+            setSignInError(data.error || t('welcome.errCreateAccount'));
             return;
           }
           newProfile = {
@@ -408,7 +410,7 @@ export const WelcomeScreen: React.FC = () => {
           localStorage.setItem('diplomamate_registered_students', JSON.stringify(filtered));
         } catch (error) {
           console.error('Student registration failed:', error);
-          setSignInError('Could not connect to the account service. Please try again.');
+          setSignInError(t('welcome.errConnectService'));
           return;
         }
 
@@ -507,10 +509,10 @@ export const WelcomeScreen: React.FC = () => {
                 <Users className="w-6 h-6" />
               </div>
               <h2 className="text-xl font-bold text-text-primary">
-                Welcome, {onboardingProfile.name}!
+                {t('welcome.onboardingWelcome')} {onboardingProfile.name}!
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Your academic profile is verified for:
+                {t('welcome.profileVerifiedFor')}
               </p>
               <div className="inline-flex flex-wrap items-center justify-center gap-1.5 text-xs font-semibold text-blue-900 bg-blue-50 border border-blue-200/80 rounded-xl px-3 py-1.5 mt-2">
                 <span>{onboardingProfile.college}</span>
@@ -524,20 +526,20 @@ export const WelcomeScreen: React.FC = () => {
             <div className="border-t border-slate-100 pt-4">
               <div className="flex items-center justify-between mb-2.5">
                 <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">
-                  Recommended Academic Communities
+                  {t('welcome.recommendedCommunities')}
                 </h3>
-                <span className="text-[11px] text-teal-600 font-semibold">Cohort Verified</span>
+                <span className="text-[11px] text-teal-600 font-semibold">{t('home.cohortVerified')}</span>
               </div>
 
               {loadingRecommendations ? (
                 <div className="py-8 flex justify-center">
-                  <LiquidFillLoader size={44} label="Finding your cohort study groups..." />
+                  <LiquidFillLoader size={44} label={t('welcome.findingGroups')} />
                 </div>
               ) : recommendedCommunities.length === 0 ? (
                 <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 text-center space-y-1.5">
-                  <p className="text-xs font-bold text-slate-700">No active groups created yet for your cohort</p>
+                  <p className="text-xs font-bold text-slate-700">{t('welcome.noGroupsYet')}</p>
                   <p className="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
-                    Groups are created dynamically when your Class Captain or Department Teacher sets one up for Semester {onboardingProfile.semester}. You can always join from the Community Hub anytime!
+                    {t('welcome.noGroupsBodyPrefix')} {onboardingProfile.semester}{t('welcome.noGroupsBodySuffix')}
                   </p>
                 </div>
               ) : (
@@ -552,7 +554,7 @@ export const WelcomeScreen: React.FC = () => {
                         <div className="min-w-0">
                           <h4 className="font-bold text-slate-900 truncate">{comm.name}</h4>
                           <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                            {comm.member_count} members · Created by {comm.created_by_name} ({comm.created_by_role === 'teacher' ? 'Faculty' : 'CR'})
+                            {comm.member_count} {t('welcome.members')} · {t('welcome.createdBy')} {comm.created_by_name} ({comm.created_by_role === 'teacher' ? t('welcome.facultyRole') : t('welcome.captainShort')})
                           </p>
                         </div>
                         <button
@@ -565,7 +567,7 @@ export const WelcomeScreen: React.FC = () => {
                               : 'bg-brand-blue hover:bg-blue-700 text-white cursor-pointer shadow-xs'
                           }`}
                         >
-                          {isJoined ? '✓ Joined' : 'Join Group'}
+                          {isJoined ? t('welcome.joined') : t('welcome.joinGroup')}
                         </button>
                       </div>
                     );
@@ -580,7 +582,7 @@ export const WelcomeScreen: React.FC = () => {
                 onClick={handleFinishOnboarding}
                 className="w-full py-2.5 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/20 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
-                <span>{joinedCommunityIds.length > 0 ? 'Enter Community Hub' : 'Proceed to Dashboard'}</span>
+                <span>{joinedCommunityIds.length > 0 ? t('welcome.enterCommunityHub') : t('welcome.proceedDashboard')}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -602,7 +604,7 @@ export const WelcomeScreen: React.FC = () => {
             DiplomaMate
           </h1>
           <p className="mt-1 text-sm text-slate-600 font-normal">
-            BTEB Diploma Engineering Academic System
+            {t('welcome.signInSubtitle')}
           </p>
         </div>
 
@@ -619,7 +621,7 @@ export const WelcomeScreen: React.FC = () => {
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Sign In
+              {t('welcome.signInTitle')}
             </button>
             <button
               type="button"
@@ -630,14 +632,14 @@ export const WelcomeScreen: React.FC = () => {
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Create Account
+              {t('welcome.createAccountTitle')}
             </button>
           </div>
 
           {/* Role Selection Segmented Control */}
           <div className="mb-4">
             <label className="block text-[11px] font-bold text-slate-600 mb-1.5">
-              Account Type:
+              {t('welcome.accountType')}
             </label>
             <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
               <button
@@ -650,7 +652,7 @@ export const WelcomeScreen: React.FC = () => {
                 }`}
               >
                 <UserCheck className="w-3.5 h-3.5" />
-                <span>Student</span>
+                <span>{t('welcome.student')}</span>
               </button>
 
               <button
@@ -663,7 +665,7 @@ export const WelcomeScreen: React.FC = () => {
                 }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Captain</span>
+                <span>{t('welcome.captain')}</span>
               </button>
 
               <button
@@ -676,7 +678,7 @@ export const WelcomeScreen: React.FC = () => {
                 }`}
               >
                 <GraduationCap className="w-3.5 h-3.5" />
-                <span>Teacher</span>
+                <span>{t('welcome.teacher')}</span>
               </button>
             </div>
           </div>
@@ -696,16 +698,16 @@ export const WelcomeScreen: React.FC = () => {
                   <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-center space-y-1">
                     <Smartphone className="w-5 h-5 text-blue-600 mx-auto" />
                     <p className="text-xs font-bold text-slate-800">
-                      {smsChallenge.name ? `Hi ${smsChallenge.name}, a code was sent` : 'A code was sent'}
-                      {smsChallenge.maskedPhone ? ` to ${smsChallenge.maskedPhone}` : ' to your phone'}
+                      {smsChallenge.name ? `${t('welcome.smsHi')} ${smsChallenge.name}, ${t('welcome.smsCodeSentLower')}` : t('welcome.smsCodeSent')}
+                      {smsChallenge.maskedPhone ? ` ${t('welcome.smsTo')} ${smsChallenge.maskedPhone}` : ` ${t('welcome.smsToPhone')}`}
                     </p>
                     <p className="text-[11px] text-slate-500">
-                      Enter the 6-digit code. It expires in 10 minutes.
+                      {t('welcome.smsCodeHint')}
                     </p>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-text-primary mb-1">
-                      SMS Verification Code
+                      {t('welcome.smsCodeLabel')}
                     </label>
                     <input
                       type="text"
@@ -724,7 +726,7 @@ export const WelcomeScreen: React.FC = () => {
                     className="dm-primary-action w-full py-3 px-4 text-sm font-bold shadow-sm flex items-center justify-center gap-2"
                   >
                     {isSubmitting && <LiquidFillLoader size={18} />}
-                    <span>{isSubmitting ? 'Verifying...' : 'Verify Code & Sign In'}</span>
+                    <span>{isSubmitting ? t('welcome.verifying') : t('welcome.verifyCodeSignIn')}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                   <div className="flex items-center justify-between text-[11px]">
@@ -733,14 +735,14 @@ export const WelcomeScreen: React.FC = () => {
                       onClick={() => { setSmsChallenge(null); setSmsCode(''); setSignInError(''); }}
                       className="font-semibold text-slate-500 hover:text-text-primary cursor-pointer"
                     >
-                      ← Back to Sign In
+                      {t('welcome.backToSignIn')}
                     </button>
                     <button
                       type="button"
                       onClick={handleSmsResend}
                       className="font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
                     >
-                      Resend Code
+                      {t('welcome.resendCode')}
                     </button>
                   </div>
                 </form>
@@ -750,7 +752,7 @@ export const WelcomeScreen: React.FC = () => {
                     <>
                       <div>
                         <label className="block text-xs font-semibold text-text-primary mb-1">
-                          Faculty Phone Number or Institutional Email
+                          {t('welcome.teacherPhoneEmail')}
                         </label>
                         <input
                           type="text"
@@ -764,14 +766,14 @@ export const WelcomeScreen: React.FC = () => {
 
                       <div>
                         <label className="block text-xs font-semibold text-text-primary mb-1 flex items-center justify-between">
-                          <span>Faculty Security PIN</span>
+                          <span>{t('welcome.teacherPin')}</span>
                         </label>
                         <input
                           type="password"
                           required
                           maxLength={6}
                           inputMode="numeric"
-                          placeholder="Enter 4–6 digit PIN"
+                          placeholder={t('welcome.pinPlaceholder')}
                           value={teacherPin}
                           onChange={(e) => setTeacherPin(e.target.value)}
                           className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -779,19 +781,19 @@ export const WelcomeScreen: React.FC = () => {
                       </div>
 
                       <p className="text-[11px] text-slate-500 bg-blue-50/60 border border-blue-100 p-2 rounded-xl">
-                        Institutional faculty PIN is salt-hashed on the server with 5-attempt rate-limiting lockout.
+                        {t('welcome.teacherPinNote')}
                       </p>
                     </>
                   ) : (
                     <>
                       <div>
                         <label className="block text-xs font-semibold text-text-primary mb-1">
-                          BTEB Board Roll Number
+                          {t('welcome.boardRoll')}
                         </label>
                         <input
                           type="text"
                           required
-                          placeholder="Enter your Board Roll Number"
+                          placeholder={t('welcome.boardRollPlaceholder')}
                           value={signInRoll}
                           onChange={(e) => setSignInRoll(e.target.value)}
                           className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -800,14 +802,14 @@ export const WelcomeScreen: React.FC = () => {
 
                       <div>
                         <label className="block text-xs font-semibold text-text-primary mb-1">
-                          Security PIN
+                          {t('welcome.pin')}
                         </label>
                         <input
                           type="password"
                           required
                           maxLength={6}
                           inputMode="numeric"
-                          placeholder="Enter your 4–6 digit PIN"
+                          placeholder={t('welcome.pinPlaceholder')}
                           value={signInPin}
                           onChange={(e) => setSignInPin(e.target.value)}
                           className="dm-field w-full px-3 py-2.5 text-sm text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -816,7 +818,7 @@ export const WelcomeScreen: React.FC = () => {
 
                       {selectedRole === 'class_captain' && (
                         <p className="text-[11px] text-teal-700 bg-teal-50/70 border border-teal-200 p-2 rounded-xl">
-                          ★ Class Captain login requires prior Guide Teacher and administrator verification.
+                          {t('welcome.captainLoginNote')}
                         </p>
                       )}
                     </>
@@ -830,7 +832,7 @@ export const WelcomeScreen: React.FC = () => {
                     className="dm-primary-action w-full py-3 px-4 text-sm font-bold shadow-sm flex items-center justify-center gap-2"
                   >
                     {isSubmitting && <LiquidFillLoader size={18} />}
-                    <span>{isSubmitting ? 'Authenticating...' : `Sign In as ${selectedRole === 'teacher' ? 'Teacher' : selectedRole === 'class_captain' ? 'Class Captain' : 'Student'}`}</span>
+                    <span>{isSubmitting ? t('welcome.authenticating') : selectedRole === 'teacher' ? t('welcome.signInAsTeacher') : selectedRole === 'class_captain' ? t('welcome.signInAsCaptain') : t('welcome.signInAsStudent')}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </form>
@@ -841,7 +843,7 @@ export const WelcomeScreen: React.FC = () => {
                 <div className="mt-5">
                   <div className="flex items-center gap-3 mb-3">
                     <span className="flex-1 h-px bg-slate-200" />
-                    <span className="text-[11px] font-semibold text-slate-400">or continue with</span>
+                    <span className="text-[11px] font-semibold text-slate-400">{t('welcome.orContinueWith')}</span>
                     <span className="flex-1 h-px bg-slate-200" />
                   </div>
                   <div className="space-y-2.5">
@@ -856,12 +858,12 @@ export const WelcomeScreen: React.FC = () => {
                         className="w-full py-2.5 rounded-xl bg-[#1877f2] hover:bg-[#1667d6] text-white text-sm font-bold shadow-sm flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-60"
                       >
                         {socialLoading ? <LiquidFillLoader size={18} /> : <Facebook className="w-4 h-4" />}
-                        <span>Continue with Facebook</span>
+                        <span>{t('welcome.continueFacebook')}</span>
                       </button>
                     )}
                   </div>
                   <p className="text-[11px] text-slate-400 text-center mt-2">
-                    Social sign-in works with the email on your existing DiplomaMate account.
+                    {t('welcome.socialNote')}
                   </p>
                 </div>
               )}
@@ -875,7 +877,7 @@ export const WelcomeScreen: React.FC = () => {
               {selectedRole === 'teacher' ? (
                 <>
                   <div>
-                    <label className="block text-xs font-semibold text-text-primary mb-1">Full Name (with Title) *</label>
+                    <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.fullNameTitle')}</label>
                     <input
                       type="text"
                       required
@@ -888,7 +890,7 @@ export const WelcomeScreen: React.FC = () => {
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">Phone Number *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.phone')}</label>
                       <input
                         type="text"
                         required
@@ -899,7 +901,7 @@ export const WelcomeScreen: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">Official Email</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.officialEmail')}</label>
                       <input
                         type="email"
                         placeholder="teacher@dpi.gov.bd"
@@ -913,7 +915,7 @@ export const WelcomeScreen: React.FC = () => {
                   <SearchableCollegeSelect
                     value={teacherCollege}
                     onChange={(name) => setTeacherCollege(name)}
-                    label="Polytechnic Institute"
+                    label={t('welcome.college')}
                     required
                   />
 
@@ -921,11 +923,11 @@ export const WelcomeScreen: React.FC = () => {
                     <SearchableDepartmentSelect
                       value={teacherDepartment}
                       onChange={(name) => setTeacherDepartment(name)}
-                      label="Department"
+                      label={t('welcome.department')}
                       required
                     />
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1.5">Designation</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1.5">{t('welcome.designation')}</label>
                       <select
                         value={teacherDesignation}
                         onChange={(e) => setTeacherDesignation(e.target.value)}
@@ -941,7 +943,7 @@ export const WelcomeScreen: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div className="sm:col-span-2">
                       <label className="block text-xs font-semibold text-text-primary mb-1">
-                        Semesters Taught (1–8):
+                        {t('welcome.semestersTaught')}
                       </label>
                       <div className="grid grid-cols-4 sm:grid-cols-8 gap-1">
                         {([1, 2, 3, 4, 5, 6, 7, 8] as SemesterNumber[]).map(sem => {
@@ -966,7 +968,7 @@ export const WelcomeScreen: React.FC = () => {
 
                     <div>
                       <label className="block text-xs font-semibold text-text-primary mb-1">
-                        Regulation
+                        {t('welcome.regulation')}
                       </label>
                       <select
                         value={teacherRegulation}
@@ -990,45 +992,45 @@ export const WelcomeScreen: React.FC = () => {
                       isMulti={true}
                       selectedSubjects={teacherSubjectsList}
                       onMultiSelect={(vals) => setTeacherSubjectsList(vals)}
-                      label="Teaching Subjects (Central Catalog Suggestions)"
+                      label={t('welcome.teachingSubjects')}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-text-primary mb-1">Assigned Shift</label>
+                    <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.assignedShift')}</label>
                     <select
                       value={teacherShift}
                       onChange={(e) => setTeacherShift(e.target.value as Shift | 'Both')}
                       className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
                     >
-                      <option value="Morning">Morning Shift</option>
-                      <option value="Day">Day Shift</option>
-                      <option value="Both">Both Shifts (Morning & Day)</option>
+                      <option value="Morning">{t('welcome.shiftMorning')}</option>
+                      <option value="Day">{t('welcome.shiftDay')}</option>
+                      <option value="Both">{t('welcome.shiftBoth')}</option>
                     </select>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">Security PIN (4–6 digits) *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.securityPinLabel')}</label>
                       <input
                         type="password"
                         required
                         maxLength={6}
                         inputMode="numeric"
-                        placeholder="Choose a 4–6 digit PIN"
+                        placeholder={t('welcome.choosePinPlaceholder')}
                         value={teacherNewPin}
                         onChange={(e) => setTeacherNewPin(e.target.value)}
                         className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-center font-mono"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">Confirm PIN *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.confirmPin')}</label>
                       <input
                         type="password"
                         required
                         maxLength={6}
                         inputMode="numeric"
-                        placeholder="Re-enter PIN"
+                        placeholder={t('welcome.reenterPinPlaceholder')}
                         value={teacherConfirmPin}
                         onChange={(e) => setTeacherConfirmPin(e.target.value)}
                         className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-center font-mono"
@@ -1039,17 +1041,17 @@ export const WelcomeScreen: React.FC = () => {
                   <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] space-y-1">
                     <p className="font-semibold flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                      Institutional Verification Notice:
+                      {t('welcome.verificationNoticeTitle')}
                     </p>
                     <p>
-                      Teacher accounts are registered with <strong>Pending Verification</strong> status. You can sign in immediately, but an Academic Administrator must verify your credentials before you can approve Class Captain applications.
+                      {t('welcome.verificationNoticeBodyPrefix')} <strong>Pending Verification</strong>{t('welcome.verificationNoticeBodySuffix')}
                     </p>
                   </div>
                 </>
               ) : (
                 <>
                   <div>
-                    <label className="block text-xs font-semibold text-text-primary mb-1">Student Full Name *</label>
+                    <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.studentFullName')}</label>
                     <input
                       type="text"
                       required
@@ -1062,22 +1064,22 @@ export const WelcomeScreen: React.FC = () => {
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">Board Roll *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.boardRollShort')}</label>
                       <input
                         type="text"
                         required
-                        placeholder="Enter your Board Roll"
+                        placeholder={t('welcome.boardRollPlaceholderShort')}
                         value={signUpData.boardRoll}
                         onChange={(e) => setSignUpData({ ...signUpData, boardRoll: e.target.value })}
                         className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-mono"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">Registration No *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.registrationNo')}</label>
                       <input
                         type="text"
                         required
-                        placeholder="Enter your Registration Number"
+                        placeholder={t('welcome.registrationPlaceholder')}
                         value={signUpData.regNumber}
                         onChange={(e) => setSignUpData({ ...signUpData, regNumber: e.target.value })}
                         className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-mono"
@@ -1086,7 +1088,7 @@ export const WelcomeScreen: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-text-primary mb-1">Phone Number (for SMS login verification)</label>
+                    <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.phoneSms')}</label>
                     <input
                       type="tel"
                       placeholder="+880 1XXX-XXXXXX"
@@ -1098,26 +1100,26 @@ export const WelcomeScreen: React.FC = () => {
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">Security PIN (4–6 digits) *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.securityPinLabel')}</label>
                       <input
                         type="password"
                         required
                         maxLength={6}
                         inputMode="numeric"
-                        placeholder="Choose a PIN"
+                        placeholder={t('welcome.choosePinShortPlaceholder')}
                         value={signUpPin}
                         onChange={(e) => setSignUpPin(e.target.value)}
                         className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-center font-mono"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">Confirm PIN *</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.confirmPin')}</label>
                       <input
                         type="password"
                         required
                         maxLength={6}
                         inputMode="numeric"
-                        placeholder="Re-enter PIN"
+                        placeholder={t('welcome.reenterPinPlaceholder')}
                         value={signUpConfirmPin}
                         onChange={(e) => setSignUpConfirmPin(e.target.value)}
                         className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-center font-mono"
@@ -1128,7 +1130,7 @@ export const WelcomeScreen: React.FC = () => {
                   <SearchableCollegeSelect
                     value={signUpData.college || ''}
                     onChange={(name) => setSignUpData({ ...signUpData, college: name })}
-                    label="Polytechnic Institute"
+                    label={t('welcome.college')}
                     required
                   />
 
@@ -1136,35 +1138,35 @@ export const WelcomeScreen: React.FC = () => {
                     <SearchableDepartmentSelect
                       value={signUpData.department || ''}
                       onChange={(name) => setSignUpData({ ...signUpData, department: name })}
-                      label="Department"
+                      label={t('welcome.department')}
                       required
                     />
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1.5">Semester</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1.5">{t('welcome.semester')}</label>
                       <select
                         value={signUpData.semester}
                         onChange={(e) => setSignUpData({ ...signUpData, semester: Number(e.target.value) as SemesterNumber })}
                         className="w-full px-2.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
                       >
-                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>{t('welcome.semester')} {s}</option>)}
                       </select>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">Shift</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.shift')}</label>
                       <select
                         value={signUpData.shift}
                         onChange={(e) => setSignUpData({ ...signUpData, shift: e.target.value as Shift })}
                         className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
                       >
-                        <option value="Morning">Morning</option>
-                        <option value="Day">Day</option>
+                        <option value="Morning">{t('welcome.shiftMorningShort')}</option>
+                        <option value="Day">{t('welcome.shiftDayShort')}</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">Section</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.section')}</label>
                       <select
                         value={signUpData.section}
                         onChange={(e) => setSignUpData({ ...signUpData, section: e.target.value as Section })}
@@ -1177,7 +1179,7 @@ export const WelcomeScreen: React.FC = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-text-primary mb-1">Session</label>
+                      <label className="block text-xs font-semibold text-text-primary mb-1">{t('welcome.session')}</label>
                       <select
                         value={signUpData.session}
                         onChange={(e) => setSignUpData({ ...signUpData, session: e.target.value })}
@@ -1192,10 +1194,10 @@ export const WelcomeScreen: React.FC = () => {
                     <div className="p-2.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-800 text-[11px] space-y-1">
                       <p className="font-semibold flex items-center gap-1">
                         <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
-                        Class Captain Registration:
+                        {t('welcome.captainRegistrationTitle')}
                       </p>
                       <p>
-                        Your account will start with "Pending" status until verified by your guide teacher and academic admin (max 2 captains per section).
+                        {t('welcome.captainRegistrationBody')}
                       </p>
                     </div>
                   )}
@@ -1216,7 +1218,7 @@ export const WelcomeScreen: React.FC = () => {
                 }`}
               >
                 {isSubmitting && <LiquidFillLoader size={18} />}
-                <span>{isSubmitting ? 'Registering...' : `Complete ${selectedRole === 'teacher' ? 'Teacher' : selectedRole === 'class_captain' ? 'Captain' : 'Student'} Registration`}</span>
+                <span>{isSubmitting ? t('welcome.registering') : selectedRole === 'teacher' ? t('welcome.completeTeacherRegistration') : selectedRole === 'class_captain' ? t('welcome.completeCaptainRegistration') : t('welcome.completeStudentRegistration')}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </form>
@@ -1224,14 +1226,14 @@ export const WelcomeScreen: React.FC = () => {
 
           {/* Dedicated System Administrator Sign-In Link (Separate from public registration) */}
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-            <span>Central Academic Authority</span>
+            <span>{t('welcome.centralAuthority')}</span>
             <button
               type="button"
               onClick={() => setActiveScreen('admin_login')}
               className="font-semibold text-slate-600 hover:text-text-primary inline-flex items-center gap-1 cursor-pointer"
             >
               <Lock className="w-3 h-3" />
-              <span>System Administrator Sign In →</span>
+              <span>{t('welcome.adminSignIn')}</span>
             </button>
           </div>
         </div>

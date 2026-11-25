@@ -53,13 +53,13 @@ class AppErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: 'sans-serif', textAlign: 'center', background: '#f8fafc' }}>
-          <h1 style={{ fontSize: 20, fontWeight: 800, color: '#12355b' }}>DiplomaMate</h1>
-          <p style={{ color: '#475569', marginTop: 8 }}>Something went wrong while opening the app.</p>
-          <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{this.state.message}</p>
+        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: 'sans-serif', textAlign: 'center', background: 'var(--dm-app-bg)' }}>
+          <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--primary)' }}>DiplomaMate</h1>
+          <p style={{ color: 'var(--text-secondary)', marginTop: 8 }}>Something went wrong while opening the app.</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>{this.state.message}</p>
           <button
             onClick={() => window.location.reload()}
-            style={{ marginTop: 16, padding: '10px 20px', borderRadius: 12, border: 'none', background: '#12355b', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+            style={{ marginTop: 16, padding: '10px 20px', borderRadius: 12, border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
           >
             Reload the app
           </button>

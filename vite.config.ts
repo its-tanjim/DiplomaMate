@@ -42,8 +42,8 @@ export default defineConfig(({mode}) => {
           short_name: 'DiplomaMate',
           description:
             'Companion app for diploma engineering students and class captains in Bangladesh with routine, notes, assignments, reminders, and teacher contacts.',
-          theme_color: '#12355B',
-          background_color: '#12355B',
+          theme_color: '#3880FF',
+          background_color: '#3880FF',
           display: 'standalone',
           start_url: '/',
           icons: [

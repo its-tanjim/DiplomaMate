@@ -47,7 +47,7 @@ class NativeService {
     try {
       // 1. Configure Android Status Bar
       await StatusBar.setStyle({ style: Style.Dark });
-      await StatusBar.setBackgroundColor({ color: '#2563EB' });
+      await StatusBar.setBackgroundColor({ color: '#3880FF' });
       await StatusBar.setOverlaysWebView({ overlay: false });
     } catch (err) {
       console.warn('Status bar configuration error:', err);

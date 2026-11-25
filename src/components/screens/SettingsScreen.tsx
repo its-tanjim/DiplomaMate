@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useTheme } from '../../context/ThemeContext';
 import { 
   Settings as SettingsIcon, 
   Bell, 
@@ -12,13 +13,18 @@ import {
   HelpCircle, 
   Sparkles,
   Layers,
+  Monitor,
+  Moon,
+  Sun,
   ChevronRight,
   Info,
   Smartphone,
   CheckCircle2,
   FolderDown,
-  GraduationCap
+  GraduationCap,
+  Globe
 } from 'lucide-react';
+import { LanguageSwitcher } from '../LanguageSwitcher';
 import { Shift, Section, AccountType } from '../../types';
 import { nativeService } from '../../services/nativeService';
 import { ReminderLeadTimeSlider } from '../common/ReminderLeadTimeSlider';
@@ -40,6 +46,7 @@ export const SettingsScreen: React.FC = () => {
     showToast,
     setActiveScreen
   } = useApp();
+  const { theme, setTheme } = useTheme();
 
   const platformInfo = nativeService.getPlatformInfo();
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -84,6 +91,55 @@ export const SettingsScreen: React.FC = () => {
             <p className="text-xs text-slate-500">Configure notifications, academic shift & student role</p>
           </div>
         </div>
+      </div>
+
+      {/* Appearance */}
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+          <div className="w-7 h-7 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
+            <Sun className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-text-primary">Appearance</h2>
+            <p className="text-[11px] text-slate-500">Choose how the app looks</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            { value: 'light', label: 'Light', Icon: Sun },
+            { value: 'dark', label: 'Dark', Icon: Moon },
+            { value: 'system', label: 'System', Icon: Monitor },
+          ] as const).map(({ value, label, Icon }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTheme(value)}
+              aria-pressed={theme === value}
+              className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                theme === value ? 'bg-brand-blue text-white' : 'bg-slate-100 text-slate-700'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Language */}
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+          <div className="w-7 h-7 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
+            <Globe className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-text-primary">Language / ভাষা</h2>
+            <p className="text-[11px] text-slate-500">Choose your language</p>
+          </div>
+        </div>
+
+        <LanguageSwitcher />
       </div>
 
       {/* Account Type Card (Strict Role Separation) */}
@@ -301,7 +357,7 @@ export const SettingsScreen: React.FC = () => {
             </div>
             <div className="text-right">
               <span className="font-semibold text-slate-800 block">Status Bar Color:</span>
-              <span className="text-[11px] font-mono text-brand-blue">#2563EB (Primary Blue)</span>
+              <span className="text-[11px] font-mono text-brand-blue">#3880FF (Primary Blue)</span>
             </div>
           </div>
 

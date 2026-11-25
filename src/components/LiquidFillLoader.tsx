@@ -32,14 +32,14 @@ export const LiquidFillLoader: React.FC<LiquidFillLoaderProps> = ({
       <svg width={size} height={size} viewBox="0 0 100 100" className="overflow-hidden rounded-full" aria-hidden="true">
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" />
-            <stop offset="100%" stopColor="#12355b" />
+            <stop offset="0%" stopColor="#3880FF" />
+            <stop offset="100%" stopColor="#5190FF" />
           </linearGradient>
           <clipPath id={clipId}>
             <circle cx="50" cy="50" r="48" />
           </clipPath>
         </defs>
-        <circle cx="50" cy="50" r="48" fill="#eff6ff" stroke="#dbeafe" strokeWidth="2" />
+        <circle cx="50" cy="50" r="48" fill="#EBF3FF" stroke="#D6E6FF" strokeWidth="2" />
         <g clipPath={`url(#${clipId})`}>
           <g className={progress === undefined ? 'dm-liquid-bob' : undefined}>
             <g style={{ transform: `translateY(${waveY}px)` }}>
