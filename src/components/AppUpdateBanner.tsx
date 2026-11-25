@@ -56,9 +56,6 @@ export const AppUpdateBanner: React.FC = () => {
           <p className="text-sm font-bold text-teal-900">
             A new update is available — {update.tag}
           </p>
-          <p className="text-xs text-teal-800/90 mt-0.5 leading-relaxed">
-            Download and install it to get the latest features and fixes.
-          </p>
           <div className="flex flex-wrap gap-2 mt-2.5">
             <button
               type="button"

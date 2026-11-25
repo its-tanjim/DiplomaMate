@@ -88,7 +88,6 @@ export const SettingsScreen: React.FC = () => {
           </div>
           <div>
             <h1 className="text-lg font-bold text-text-primary">Settings & Preferences</h1>
-            <p className="text-xs text-slate-500">Configure notifications, academic shift & student role</p>
           </div>
         </div>
       </div>
@@ -153,21 +152,12 @@ export const SettingsScreen: React.FC = () => {
             </div>
             <div>
               <h2 className="text-sm font-bold text-text-primary">Account Role</h2>
-              <p className="text-[11px] text-slate-500">Security-enforced institutional identity</p>
             </div>
           </div>
           <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
             {accountType === 'teacher' ? 'Faculty Member' : accountType === 'class_captain' ? 'Class Captain (CR)' : 'General Student'}
           </span>
         </div>
-
-        <p className="text-xs text-slate-600">
-          {accountType === 'teacher' 
-            ? `Signed in as faculty (${userProfile.designation || 'Instructor'}). You have administrative authority to verify captains, inspect rosters, and broadcast notices.`
-            : accountType === 'class_captain'
-              ? `Signed in as verified Class Captain for Section ${userProfile.section}. You have publishing rights for routine updates and study materials.`
-              : 'Signed in as general diploma student. To obtain Class Captain privileges, submit an application verified by your guide teacher.'}
-        </p>
       </div>
 
       {/* Notification Preferences */}
@@ -176,7 +166,6 @@ export const SettingsScreen: React.FC = () => {
           <Bell className="w-4 h-4 text-brand-blue" />
           <div>
             <h2 className="text-sm font-bold text-text-primary">Notification Preferences</h2>
-            <p className="text-[11px] text-slate-500">Manage real-time class alerts and schedule notifications</p>
           </div>
         </div>
 
@@ -184,7 +173,6 @@ export const SettingsScreen: React.FC = () => {
         <div className="flex items-center justify-between gap-3">
           <div>
             <span className="text-xs font-bold text-text-primary block">Class Routine Reminder</span>
-            <span className="text-[11px] text-slate-500">Alert before each scheduled class period starts</span>
           </div>
           <button
             type="button"
@@ -205,7 +193,7 @@ export const SettingsScreen: React.FC = () => {
             value={notifications.routineLeadMinutes}
             onChange={(mins) => updateNotifications({ routineLeadMinutes: mins })}
             label="Alert Lead Time Before Period"
-            helperText="Set how many minutes before the class bell rings to trigger audio and visual alerts"
+            helperText=""
           />
         )}
 
@@ -272,7 +260,6 @@ export const SettingsScreen: React.FC = () => {
             <Volume2 className="w-4 h-4 text-slate-400" />
             <div>
               <span className="text-xs font-bold text-text-primary block">Sound & Vibration</span>
-              <span className="text-[11px] text-slate-500">Play pleasant chime on reminder triggers</span>
             </div>
           </div>
           <button
@@ -341,7 +328,6 @@ export const SettingsScreen: React.FC = () => {
             </div>
             <div>
               <h2 className="text-sm font-bold text-text-primary">Android Native Integration</h2>
-              <p className="text-[11px] text-slate-500">Capacitor 6 Android Bridge & System Permissions</p>
             </div>
           </div>
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">
@@ -414,7 +400,6 @@ export const SettingsScreen: React.FC = () => {
       <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs flex items-center justify-between">
         <div>
           <h3 className="text-xs font-bold text-text-primary">Reset Local Demo Data</h3>
-          <p className="text-[11px] text-slate-500">Reset routine and remove legacy notes, assignments, reminders, and teacher contacts</p>
         </div>
         <button
           onClick={resetAllData}
@@ -430,7 +415,6 @@ export const SettingsScreen: React.FC = () => {
         <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs flex items-center justify-between">
           <div>
             <h3 className="text-xs font-bold text-text-primary">App Update</h3>
-            <p className="text-[11px] text-slate-500">Current version {currentVersionLabel()} — check for a newer build</p>
           </div>
           <button
             onClick={() => void handleManualUpdateCheck()}
@@ -446,9 +430,6 @@ export const SettingsScreen: React.FC = () => {
       {/* About Applet */}
       <div className="p-4 bg-slate-100/70 rounded-2xl text-center space-y-1 text-slate-500 text-xs">
         <div className="font-bold text-text-primary">DiplomaMate {currentVersionLabel()}</div>
-        <p className="text-[11px]">
-          Dedicated companion for 4-Year Diploma in Engineering students under Bangladesh Technical Education Board (BTEB).
-        </p>
       </div>
     </div>
   );

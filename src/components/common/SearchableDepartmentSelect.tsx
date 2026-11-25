@@ -18,7 +18,7 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
   value,
   onChange,
   label = 'Department / Technology',
-  placeholder = 'Type to search 19 technologies (e.g. CST, Civil, RAC, Electrical)...',
+  placeholder = 'Search technologies...',
   error,
   disabled = false,
   required = false,

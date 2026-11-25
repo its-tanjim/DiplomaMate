@@ -343,9 +343,6 @@ export const TeacherDashboardScreen: React.FC = () => {
               <h2 className="text-sm font-bold text-text-primary">
                 Take Attendance & Monthly Register
               </h2>
-              <p className="text-[11px] text-slate-600 mt-0.5">
-                Mark Present/Absent, upload roster PDFs/images via OCR, and view monthly attendance matrices
-              </p>
             </div>
           </div>
           <ChevronRight className="w-4 h-4 text-blue-600 shrink-0 mt-1" />
@@ -367,9 +364,6 @@ export const TeacherDashboardScreen: React.FC = () => {
               <h2 className="text-sm font-bold text-text-primary">
                 Publish Assignments & View Submissions
               </h2>
-              <p className="text-[11px] text-slate-600 mt-0.5">
-                Upload lecture notes, post class assignments, and inspect student submission totals
-              </p>
             </div>
           </div>
           <ChevronRight className="w-4 h-4 text-teal-600 shrink-0 mt-1" />
@@ -391,9 +385,6 @@ export const TeacherDashboardScreen: React.FC = () => {
               <h2 className="text-sm font-bold text-text-primary">
                 Create & Moderate Semester Academic Groups
               </h2>
-              <p className="text-[11px] text-slate-600 mt-0.5">
-                Create cohort study groups for your departments & semesters, post pinned announcements, share PDF notes, and moderate student discussions.
-              </p>
             </div>
           </div>
           <ChevronRight className="w-4 h-4 text-brand-blue shrink-0 mt-1" />
@@ -832,9 +823,6 @@ export const TeacherDashboardScreen: React.FC = () => {
               <Megaphone className="w-4 h-4 text-blue-600" />
               <span>Academic Management & Announcements</span>
             </h2>
-            <p className="text-xs text-slate-500">
-              Broadcast official departmental notices, analyze BTEB group examination results, manage class timetables, and publish assignments.
-            </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
               <button
@@ -846,9 +834,6 @@ export const TeacherDashboardScreen: React.FC = () => {
                   <Layers className="w-4 h-4" />
                 </div>
                 <h3 className="text-xs font-bold text-text-primary">BTEB Results & Group Analytics</h3>
-                <p className="text-[11px] text-slate-600 mt-0.5">
-                  Search individual rolls, batch roll ranges, pass rates & referred subjects
-                </p>
               </button>
 
               <button
@@ -910,9 +895,6 @@ export const TeacherDashboardScreen: React.FC = () => {
                   <Award className="w-4 h-4" />
                 </div>
                 <h3 className="text-xs font-bold text-text-primary">Semester GPA / CGPA Calculator</h3>
-                <p className="text-[11px] text-slate-600 mt-0.5">
-                  Educational & advising access to simulate subject-wise marks, BTEB 4.00 grades, and weighted 8-semester CGPA
-                </p>
               </button>
             </div>
           </div>
@@ -1195,7 +1177,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                 <textarea
                   rows={4}
                   required
-                  placeholder="State the instructions, dates, and requirements for the class..."
+                  placeholder="Notice message"
                   value={noticeContent}
                   onChange={(e) => setNoticeContent(e.target.value)}
                   className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800"

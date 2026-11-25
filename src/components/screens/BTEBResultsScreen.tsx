@@ -15,7 +15,6 @@ import {
   ArrowUpDown,
   Database,
   ShieldCheck,
-  BookOpen,
   Info,
   ChevronDown,
   ChevronUp,
@@ -1158,12 +1157,6 @@ export const BTEBResultsScreen: React.FC = () => {
               Result source: btebresultszone.com
             </span>
           </div>
-          <p className="text-xs text-teal-900/90 leading-relaxed">
-            The result shown below is fetched live from <strong>BTEB Result Zone</strong> and displayed here inside DiplomaMate, so you never have to leave the app. The page was opened with the <strong>Diploma in Engineering</strong> filter — the same roll can also have HSC or SSC results on that site.
-          </p>
-          <p className="text-xs text-teal-900/90 leading-relaxed" lang="bn">
-            নিচের ফলাফলটি BTEB Result Zone থেকে নেওয়া — DiplomaMate এখানেই দেখাচ্ছে। শুধু Diploma in Engineering এর ফলাফলের জন্য ফিল্টার করা হয়েছে।
-          </p>
         </div>
 
         {/* Unified-flow step 2 notice: opened automatically after a gazette miss */}
@@ -1323,26 +1316,10 @@ export const BTEBResultsScreen: React.FC = () => {
               Result source: Bangladesh Technical Education Board — result.bteb.gov.bd
             </span>
           </div>
-          <p className="text-xs text-blue-900/90 leading-relaxed">
-            The result shown below comes live from <strong>BTEB&apos;s official result portal</strong> and is displayed here inside DiplomaMate, so you never have to leave the app.
-          </p>
-          <p className="text-xs text-blue-900/90 leading-relaxed" lang="bn">
-            নিচের ফলাফলটি BTEB-এর অফিসিয়াল পোর্টাল থেকে নেওয়া — DiplomaMate এখানেই দেখাচ্ছে।
-          </p>
         </div>
 
         {/* How to use the portal, inside the app */}
         <div className="dm-card p-4 sm:p-5 space-y-2.5">
-          <h2 className="text-sm font-bold text-text-primary flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-brand-blue" />
-            <span>How to check your result here</span>
-          </h2>
-          <ol className="text-xs text-slate-600 leading-relaxed space-y-1 list-decimal list-inside">
-            <li>On the portal below, select your examination and choose <strong>Diploma in Engineering</strong> as the curriculum, then your semester and exam year.</li>
-            <li>Enter your Board Roll and Registration Number — tap “Copy” below to copy them, then paste them into the portal.</li>
-            <li>Type the characters shown in the portal&apos;s security-check image into the Code box and press Search. Only you can solve this check — the app cannot fill it in for you.</li>
-            <li>Your official result will appear right here, inside the app.</li>
-          </ol>
           {(userProfile.boardRoll || userProfile.regNumber) && (
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-600 space-y-2">
               <span className="font-bold text-slate-700 block">Your saved details (copy, then paste into the portal):</span>
@@ -1427,16 +1404,10 @@ export const BTEBResultsScreen: React.FC = () => {
                   <Award className="w-3.5 h-3.5 text-teal-300" />
                   BTEB Examination Hub
                 </span>
-                <span className="text-[11px] text-blue-200 font-mono">
-                  Native Result Search & Transcripts
-                </span>
               </div>
               <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white">
                 BTEB Examination Results
               </h1>
-              <p className="text-xs text-blue-200/90 mt-0.5">
-                Enter your Board Roll to view complete semester-wise grades, GPA, CGPA, and referred records inside DiplomaMate
-              </p>
             </div>
           </div>
 
@@ -1592,9 +1563,6 @@ export const BTEBResultsScreen: React.FC = () => {
                     className="dm-field w-full pl-10 pr-4 py-2.5 text-sm font-mono text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-blue"
                   />
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Usually a 6-digit number printed on your BTEB registration card or admit card.
-                </p>
               </div>
 
               {/* Verified Sample Test Rolls for One-Click Verification */}
@@ -1678,9 +1646,6 @@ export const BTEBResultsScreen: React.FC = () => {
               <li><strong>Step 2 — BTEB Result Zone:</strong> if the roll is not in the gazette, the live result from <strong>BTEB Result Zone</strong> (btebresultszone.com) opens automatically, with the Diploma in Engineering filter applied.</li>
               <li><strong>Step 3 — Official BTEB:</strong> if it is not there either, one tap opens <strong>BTEB&apos;s official portal</strong> (result.bteb.gov.bd) — your roll and registration number are ready to copy, and only you solve its security check.</li>
             </ol>
-            <p className="text-xs text-slate-600 leading-relaxed" lang="bn">
-              View Result চাপলেই প্রথমে DiplomaMate-এর গেজেটে খুঁজবে — না পেলে BTEB Result Zone, তারপর Official BTEB পোর্টাল — সব অ্যাপের ভিতরেই দেখাবে।
-            </p>
           </div>
 
           {/* Loading State Banner */}
@@ -1691,9 +1656,6 @@ export const BTEBResultsScreen: React.FC = () => {
                 <h3 className="text-sm font-bold text-text-primary">
                   Checking DiplomaMate’s Imported Gazette...
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Checking imported BTEB Gazette records for Board Roll <span className="font-mono font-bold text-slate-700">{rollInput}</span>.
-                </p>
               </div>
             </div>
           )}
@@ -1745,8 +1707,6 @@ export const BTEBResultsScreen: React.FC = () => {
                 )}
                 <div className="p-3 bg-slate-50 rounded-xl text-left text-xs text-slate-500 space-y-1 mt-2">
                   <span className="font-bold text-slate-700 block">Common reasons:</span>
-                  <p>• Verify that the 6-digit Board Roll is typed correctly without spaces.</p>
-                  <p>• Check if the result is for Diploma in Engineering — the same roll can belong to HSC BMT or SSC Vocational, which DiplomaMate never shows.</p>
                   <p>• If your semester result has not yet been imported into the official gazette dataset, ask your System Administrator to import the official BTEB result sheet PDF/text.</p>
                 </div>
               </div>
@@ -1809,7 +1769,7 @@ export const BTEBResultsScreen: React.FC = () => {
               <span>How Results Are Retrieved and Protected</span>
             </h3>
             <p className="text-slate-600 leading-relaxed">
-              One <strong>View Result</strong> tap checks every source in order, for <strong>Diploma in Engineering only</strong>: first DiplomaMate&apos;s locally imported official BTEB Gazette records; if the roll is not there, the live result from BTEB Result Zone (btebresultszone.com) opens automatically inside the app, with the Diploma filter applied; and from there BTEB&apos;s official portal (result.bteb.gov.bd) is one tap away. Results shown from BTEB Result Zone are credited to BTEB Result Zone, and results from the official portal are credited to the Bangladesh Technical Education Board. DiplomaMate cannot read inside the Result Zone page to verify which exam it shows, so always check the exam name at the top of the result. We do not store or track students&apos; private searches, nor do we fabricate academic results.
+              We do not store or track students&apos; private searches, nor do we fabricate academic results.
             </p>
           </div>
         </div>
@@ -1828,9 +1788,6 @@ export const BTEBResultsScreen: React.FC = () => {
                   <Users className="w-4 h-4 text-brand-teal" />
                   <span>Multi-Roll & Range Group Results Search</span>
                 </h2>
-                <p className="text-[11px] text-slate-500">
-                  Enter comma-separated rolls (e.g. <code className="font-mono text-slate-700">542880, 750102, 750104</code>) or ranges (e.g. <code className="font-mono text-slate-700">542880-542915</code>)
-                </p>
               </div>
 
               <button
@@ -2213,9 +2170,6 @@ export const BTEBResultsScreen: React.FC = () => {
                 <h2 className="text-sm font-bold text-text-primary">
                   Indexed Examination Batches ({batches.length})
                 </h2>
-                <p className="text-xs text-slate-500">
-                  Official gazette sheets and verified batches stored in the DiplomaMate backend
-                </p>
               </div>
               <button
                 type="button"

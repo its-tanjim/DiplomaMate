@@ -1,7 +1,6 @@
 import { apiFetch } from '../../services/apiClient';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  BookOpen,
   Search,
   ArrowUpDown,
   ShieldCheck,
@@ -179,11 +178,7 @@ export const BookListScreen: React.FC = () => {
       {/* Header Banner */}
       <div className="bg-gradient-to-br from-blue-950 via-blue-900 to-slate-900 rounded-2xl p-4 sm:p-5 text-white shadow-md relative overflow-hidden">
         <div className="relative z-10 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-blue-500/20 border border-blue-400/30 text-blue-200 text-[10px] font-bold uppercase tracking-wider">
-              <BookOpen className="w-3 h-3" />
-              BTEB Central Subject Catalog • বইয়ের তালিকা
-            </span>
+          <div className="flex items-center justify-end gap-2">
             {isServerVerifiedAdmin && (
               <button
                 type="button"
@@ -343,9 +338,6 @@ export const BookListScreen: React.FC = () => {
           <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
             <Layers className="w-5 h-5" />
           </div>
-          <h3 className="text-sm font-bold text-slate-800">
-            Select Technology, Regulation, and Semester
-          </h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto">
             Please complete all three selections above (Technology/Department, Regulation 2016 or 2022, and Semester 1–8) to load the matching subject book list.
           </p>
@@ -448,7 +440,6 @@ export const BookListScreen: React.FC = () => {
                 <span className="font-bold text-slate-700">{selectedTechObj?.name}</span> under{' '}
                 <span className="font-bold text-slate-700">Regulation {selectedRegulation}</span>,{' '}
                 <span className="font-bold text-slate-700">Semester {selectedSemester}</span>.
-                DiplomaMate never invents missing subjects, codes, or marks, and never falls back to another department, regulation, or semester.
               </p>
             </div>
           )}
@@ -588,18 +579,7 @@ export const BookListScreen: React.FC = () => {
             </div>
           )}
 
-          {/* Transparency Footer Banner */}
-          <div className="p-3.5 rounded-xl bg-slate-100 border border-slate-200/80 text-[11px] text-slate-600 flex items-start gap-2.5">
-            <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-            <div className="space-y-0.5">
-              <p className="font-bold text-slate-800">
-                Data Verification & Published Department Datasets Notice
-              </p>
-              <p>
-                Verified Regulation 2022 book lists are published for 15 departments (Architecture, Automobile, Chemical, Civil, Computer Science &amp; Technology, Construction, Electrical, Electromedical, Electronics, Environmental, Food, Mechanical, Power, Refrigeration and Air Conditioning [RAC], and Telecommunication Technology) across Semesters 1–8 (796 verified subject records). Entries labeled <strong>Provisional</strong> await official BTEB book list verification by a System Administrator. Selections without uploaded curriculum records explicitly display <em>"Book list is not available for this selection yet."</em>
-              </p>
-            </div>
-          </div>
+          {/* Transparency Footer Banner removed — data-coverage paragraph deleted */}
         </div>
       )}
     </div>

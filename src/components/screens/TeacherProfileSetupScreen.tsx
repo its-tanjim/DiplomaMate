@@ -153,9 +153,6 @@ export const TeacherProfileSetupScreen: React.FC = () => {
               <h1 className="text-base sm:text-lg font-bold text-text-primary">
                 Teacher Profile Setup
               </h1>
-              <p className="text-xs text-slate-500">
-                Institutional details, teaching subjects & cohort allocation
-              </p>
             </div>
           </div>
 
@@ -417,10 +414,6 @@ export const TeacherProfileSetupScreen: React.FC = () => {
 
           {isGuideTeacher ? (
             <div className="space-y-3 bg-green-50/40 p-3 rounded-xl border border-green-100">
-              <p className="text-xs text-green-900 font-medium">
-                As an assigned Guide Teacher, Class Captain applications matching your cohort will be routed to your dashboard for verification.
-              </p>
-
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-[11px] font-semibold text-text-primary mb-1">

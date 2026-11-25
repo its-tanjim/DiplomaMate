@@ -13,7 +13,6 @@ import {
   ShieldCheck, 
   UserCheck, 
   Sparkles, 
-  CheckCircle2, 
   AlertCircle, 
   AlertTriangle,
   HelpCircle,
@@ -256,14 +255,7 @@ export const TeachersContactsScreen: React.FC = () => {
               <h1 className="text-base sm:text-lg font-bold text-text-primary">
                 Teachers' Contacts
               </h1>
-              <span className="bg-teal-50 text-brand-teal border border-teal-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" />
-                <span>Free access</span>
-              </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Direct faculty dialer & consulting schedule across 46 polytechnics
-            </p>
           </div>
 
           {/* Action Button: Strictly forbidden for students! Admin has full access. */}
@@ -323,7 +315,7 @@ export const TeachersContactsScreen: React.FC = () => {
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
-            placeholder="Search by teacher name, subject, department, or college..."
+            placeholder="Search teachers..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl text-text-primary placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-teal"
@@ -337,7 +329,6 @@ export const TeachersContactsScreen: React.FC = () => {
           <h2 className="text-sm font-bold text-text-primary">
             Faculty Directory ({filteredTeachers.length})
           </h2>
-          <span className="text-xs text-slate-500">Tap to call or message</span>
         </div>
 
         {filteredTeachers.length === 0 ? (

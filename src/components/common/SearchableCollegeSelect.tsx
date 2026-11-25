@@ -18,7 +18,7 @@ export const SearchableCollegeSelect: React.FC<SearchableCollegeSelectProps> = (
   value,
   onChange,
   label = 'Polytechnic Institution',
-  placeholder = 'Type to search 46 polytechnics (e.g. Dhaka, Chittagong, Bogra, DPI)...',
+  placeholder = 'Search colleges...',
   error,
   disabled = false,
   required = false,

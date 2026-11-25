@@ -208,9 +208,6 @@ export const HomeScreen: React.FC = () => {
                 <h3 className="text-xs sm:text-sm font-bold text-text-primary">
                   {t('home.captainControlCenter')}
                 </h3>
-                <p className="text-[11px] text-teal-700">
-                  {t('home.captainControlSubtitle')} {userProfile.section}
-                </p>
               </div>
             </div>
             <button
@@ -286,13 +283,6 @@ export const HomeScreen: React.FC = () => {
             <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider">
               {t('home.noticeBoard')}
             </h2>
-            <button
-              onClick={() => openNotesSection('notices')}
-              className="text-[11px] font-bold text-brand-blue hover:underline flex items-center gap-0.5 cursor-pointer"
-            >
-              <span>{t('home.allNotices')}</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
           </div>
           <div className="dm-card p-4 space-y-3">
             {announcements.slice(0, 2).map((ann) => (
@@ -508,8 +498,6 @@ export const HomeScreen: React.FC = () => {
               </p>
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-600">
                 <span className="font-semibold text-blue-600">{activeReminders.length} {t('home.activeReminders')}</span>
-                <span className="text-slate-300">·</span>
-                <span>{t('home.nextReminder')}</span>
               </div>
             </div>
           </button>
@@ -576,9 +564,6 @@ export const HomeScreen: React.FC = () => {
                 <Contact2 className="w-5 h-5" />
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-brand-teal border border-teal-200">
-                  {t('home.freeAccess')}
-                </span>
                 <span className="text-xs font-semibold text-brand-teal group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                   {t('home.directory')} <ChevronRight className="w-3.5 h-3.5" />
                 </span>
@@ -612,9 +597,6 @@ export const HomeScreen: React.FC = () => {
             </div>
             <div className="mt-3">
               <h3 className="font-bold text-base text-text-primary">{t('home.bookList')}</h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {t('home.bookListDesc')}
-              </p>
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-600">
                 <span className="font-semibold text-blue-600">{t('home.technologies19')}</span>
                 <span className="text-slate-300">·</span>

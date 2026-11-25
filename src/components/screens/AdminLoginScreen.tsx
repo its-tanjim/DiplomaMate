@@ -9,7 +9,6 @@ import {
   ArrowLeft,
   AlertTriangle,
   CheckCircle2,
-  Terminal,
   UserCheck
 } from 'lucide-react';
 
@@ -216,9 +215,6 @@ export const AdminLoginScreen: React.FC = () => {
                 </h1>
               </div>
             </div>
-            <p className="text-xs text-slate-300 mt-2 leading-relaxed">
-              Authorized BTEB Result Import, Faculty Credential Verification, and Class Captain Quota Governance.
-            </p>
           </div>
 
           <div className="p-5 space-y-4">
@@ -396,9 +392,6 @@ export const AdminLoginScreen: React.FC = () => {
                     <KeyRound className="w-3.5 h-3.5" />
                     One-Time First Administrator Provisioning
                   </span>
-                  <p className="leading-relaxed">
-                    No <code className="font-mono font-bold">system_admin</code> account exists yet. Enter the server bootstrap setup token (from <code className="font-mono">ADMIN_BOOTSTRAP_TOKEN</code> or <code className="font-mono">data/.admin-bootstrap-token</code>) or run <code className="font-mono">npm run provision-admin</code> in the server terminal.
-                  </p>
                 </div>
 
                 <div>
@@ -480,16 +473,6 @@ export const AdminLoginScreen: React.FC = () => {
               </form>
             )}
 
-            {/* Security Notice Footer */}
-            <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-500 space-y-1.5">
-              <div className="flex items-center gap-1.5 font-semibold text-slate-700">
-                <Terminal className="w-3.5 h-3.5 text-slate-500" />
-                <span>Server CLI Provisioning Command:</span>
-              </div>
-              <code className="block bg-slate-100 text-slate-800 px-2.5 py-1.5 rounded-lg font-mono text-[10px] break-all">
-                npm run provision-admin -- --email admin@dpi.gov.bd --password "&lt;StrongPassword&gt;"
-              </code>
-            </div>
               </>
             )}
           </div>

@@ -1597,9 +1597,6 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         : 'Campus, Teacher & Class Captain (CR) Notices'}
                   </h2>
                 </div>
-                <span className="text-[11px] text-slate-500">
-                  Separate from Official BTEB Board Notices
-                </span>
               </div>
 
               {isLoadingCampusNotices ? (
@@ -1613,9 +1610,6 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   <h3 className="text-xs sm:text-sm font-bold text-text-primary">
                     No Teacher or Class Captain notices found for this filter
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Authorized Teachers and Verified Class Captains can publish notices for their college, department, or class section.
-                  </p>
                 </div>
               ) : (
                 campusNotices.map(cNotice => {
@@ -1816,9 +1810,6 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   <h3 className="text-sm font-bold text-text-primary">
                     No BTEB notices match your current search filter
                   </h3>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Try clearing the search query or selecting "All BTEB Curriculums".
-                  </p>
                 </div>
               ) : (
                 <div className="space-y-2.5">
@@ -2076,11 +2067,11 @@ export const NotesAssignmentsScreen: React.FC = () => {
             <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
               <Briefcase className="w-10 h-10 text-slate-300 mx-auto mb-2" />
               <h3 className="text-sm font-bold text-text-primary">No matching job circulars found</h3>
-              <p className="text-xs text-slate-500 mt-1">
-                {jobSearch || jobDeptFilter !== 'all' || jobLocationFilter !== 'all' || jobTypeFilter !== 'all' || jobStatusFilter !== 'all'
-                  ? 'Try clearing your filters or check back later for new Diploma Engineer postings.'
-                  : 'No verified job circulars are posted right now — DiplomaMate never shows sample or invented listings. Check these trusted portals directly:'}
-              </p>
+              {!(jobSearch || jobDeptFilter !== 'all' || jobLocationFilter !== 'all' || jobTypeFilter !== 'all' || jobStatusFilter !== 'all') && (
+                <p className="text-xs text-slate-500 mt-1">
+                  No verified job circulars are posted right now — DiplomaMate never shows sample or invented listings. Check these trusted portals directly:
+                </p>
+              )}
               {!(jobSearch || jobDeptFilter !== 'all' || jobLocationFilter !== 'all' || jobTypeFilter !== 'all' || jobStatusFilter !== 'all') && (
                 <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
                   <a
@@ -2514,7 +2505,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 type="text"
                 value={noteSearchQuery}
                 onChange={e => setNoteSearchQuery(e.target.value)}
-                placeholder="Search lecture notes, subject code, headings, or extracted PDF/Image text..."
+                placeholder="Search notes..."
                 className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 text-text-primary focus:outline-none focus:border-brand-teal"
               />
             </div>
@@ -2637,23 +2628,23 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       )}
                       {' '}· {note.uploadedDate}
                     </span>
-                    <span className="text-slate-500 text-[11px] block">
-                      Source:{' '}
-                      {note.sourceUrl ? (
-                        <a
-                          href={note.sourceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-medium text-brand-blue hover:underline break-all"
-                        >
-                          {note.sourceName || note.sourceUrl}
-                        </a>
-                      ) : note.sourceName ? (
-                        <span className="font-medium text-slate-700">{note.sourceName}</span>
-                      ) : (
-                        <span>Teacher / captain upload — no external source given</span>
-                      )}
-                    </span>
+                    {(note.sourceUrl || note.sourceName) && (
+                      <span className="text-slate-500 text-[11px] block">
+                        Source:{' '}
+                        {note.sourceUrl ? (
+                          <a
+                            href={note.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-brand-blue hover:underline break-all"
+                          >
+                            {note.sourceName || note.sourceUrl}
+                          </a>
+                        ) : (
+                          <span className="font-medium text-slate-700">{note.sourceName}</span>
+                        )}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1.5">
@@ -2965,7 +2956,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 <textarea
                   rows={3}
                   required
-                  placeholder="Write clear instructions for students..."
+                  placeholder="Instructions"
                   value={noticeForm.description}
                   onChange={e => setNoticeForm(prev => ({ ...prev, description: e.target.value }))}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
@@ -3075,7 +3066,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 <textarea
                   rows={3}
                   required
-                  placeholder="Describe why this notice is inaccurate or inappropriate..."
+                  placeholder="Reason for report"
                   value={reportReason}
                   onChange={e => setReportReason(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
@@ -3379,23 +3370,23 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   Uploaded by {selectedNote.uploadedBy} on {selectedNote.uploadedDate} ({selectedNote.fileType},{' '}
                   {selectedNote.fileSize})
                 </div>
-                <div>
-                  Source:{' '}
-                  {selectedNote.sourceUrl ? (
-                    <a
-                      href={selectedNote.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-medium text-brand-blue hover:underline break-all"
-                    >
-                      {selectedNote.sourceName || selectedNote.sourceUrl}
-                    </a>
-                  ) : selectedNote.sourceName ? (
-                    <span className="font-medium text-slate-700">{selectedNote.sourceName}</span>
-                  ) : (
-                    <span>Teacher / captain upload — no external source given</span>
-                  )}
-                </div>
+                {(selectedNote.sourceUrl || selectedNote.sourceName) && (
+                  <div>
+                    Source:{' '}
+                    {selectedNote.sourceUrl ? (
+                      <a
+                        href={selectedNote.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-brand-blue hover:underline break-all"
+                      >
+                        {selectedNote.sourceName || selectedNote.sourceUrl}
+                      </a>
+                    ) : (
+                      <span className="font-medium text-slate-700">{selectedNote.sourceName}</span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -3908,7 +3899,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Upload an assignment sheet below to auto-extract questions, or type questions (one per line)..."
+                  placeholder="Type questions, one per line"
                   value={newAsgData.questionsText}
                   onChange={e => setNewAsgData({ ...newAsgData, questionsText: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary font-mono text-[11px]"
@@ -4175,9 +4166,6 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   />
                 </div>
               </div>
-              <p className="text-[11px] text-slate-500 -mt-1">
-                Name the book, site or official page this note is based on so students can verify it. Notes are always shown with the name of the teacher / captain who uploaded them.
-              </p>
 
               <div>
                 <label className="block font-semibold text-text-primary mb-1">
@@ -4198,7 +4186,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Upload a PDF, image, or lecture video below to extract searchable study text..."
+                  placeholder="Upload a file to extract text"
                   value={newNoteData.extractedText}
                   onChange={e => setNewNoteData({ ...newNoteData, extractedText: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary font-mono text-[11px]"
@@ -4432,7 +4420,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 <textarea
                   rows={2}
                   required
-                  placeholder="Describe responsibilities, required skills, and diploma technology eligibility..."
+                  placeholder="Job description"
                   value={newJobData.requirements}
                   onChange={e =>
                     setNewJobData({
@@ -4457,9 +4445,6 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   onChange={e => setNewJobData({ ...newJobData, applyUrl: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
                 />
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Required — link to the original circular or employer application page, not a job-board search page. Students apply there, so the link must be real and verifiable.
-                </p>
               </div>
 
               <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">

@@ -1142,7 +1142,6 @@ export const AdminPortalScreen: React.FC = () => {
               <Database className="w-4 h-4 text-brand-teal shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold">Official BTEB Result Extraction & Publishing Pipeline: </span>
-                Upload an official BTEB Result Book (`.pdf`, `.txt`, `.csv`, `.json`) or paste raw result text. All records are validated, mapped against the 19-technology curriculum subject catalog, and checked for duplicates before publishing.
               </div>
             </div>
             <button
@@ -1284,7 +1283,7 @@ export const AdminPortalScreen: React.FC = () => {
               </div>
               <textarea
                 rows={6}
-                placeholder={`Paste official BTEB result sheet text here. Supported syntax:\n50118 - Dhaka Polytechnic Institute\n750142 (3.85)  750143 (3.68)  750145 { 66662(T), 66664(T,P) }\n750148 (3.92)  750149 { 66661(P) }`}
+                placeholder="Paste result sheet text"
                 value={rawResultText}
                 onChange={(e) => {
                   setRawResultText(e.target.value);
@@ -1322,9 +1321,6 @@ export const AdminPortalScreen: React.FC = () => {
                     <CheckCircle2 className="w-4 h-4 text-brand-teal" />
                     <span>2. Validation Dry-Run Summary (Ready to Publish)</span>
                   </h3>
-                  <p className="text-xs text-slate-500">
-                    Review extracted records, curriculum subject mappings, and conflict counts before committing to the database.
-                  </p>
                 </div>
                 <span className="text-xs font-mono font-bold bg-teal-50 text-brand-teal px-3 py-1 rounded-lg border border-teal-200">
                   {previewResult.summary.totalParsed} Valid Records Parsed
@@ -1360,7 +1356,7 @@ export const AdminPortalScreen: React.FC = () => {
               {/* Sample Preview Table */}
               <div className="border border-slate-200 rounded-xl overflow-hidden">
                 <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 text-[11px] font-bold text-slate-600">
-                  Sample Extracted Records (Showing first {previewResult.sampleRecords.length})
+                  Extracted Records (Showing first {previewResult.sampleRecords.length})
                 </div>
                 <div className="overflow-x-auto max-h-60">
                   <table className="w-full text-left text-xs">
@@ -1521,7 +1517,7 @@ export const AdminPortalScreen: React.FC = () => {
                 Central Subject Catalog Governance & Protection Policy
               </div>
               <p className="text-[11px] text-amber-900 leading-relaxed">
-                Only authenticated System Administrators may import, approve, edit, or deactivate catalog records. The starter dataset is intentionally incomplete across all 19 technologies, and its CST entries outside verified Semester 6 records are marked <strong>provisional</strong>. Importing provisional records will <strong>never overwrite</strong> existing verified records.
+                Importing provisional records will <strong>never overwrite</strong> existing verified records.
               </p>
             </div>
           </div>
@@ -1574,7 +1570,7 @@ export const AdminPortalScreen: React.FC = () => {
                   setCatalogPreview(null);
                   setConfirmCatalogImportChecked(false);
                 }}
-                placeholder='Paste department book-list JSON object {"department":"Computer Science & Technology","regulation":"2022","semesters":{...}} or flat JSON array of subject records'
+                placeholder="Paste catalog JSON"
                 className="w-full p-3 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -2218,9 +2214,6 @@ export const AdminPortalScreen: React.FC = () => {
           <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="font-bold text-sm text-text-primary">
-                  Uploaded Verification Form
-                </h3>
                 <p className="text-xs text-slate-500">
                   {selectedAppForDoc.studentName} · Roll: {selectedAppForDoc.boardRoll}
                 </p>
@@ -2238,9 +2231,6 @@ export const AdminPortalScreen: React.FC = () => {
               <h4 className="text-xs font-bold text-text-primary">
                 {selectedAppForDoc.verificationFormName || 'BTEB_CR_Form_Signed.pdf'}
               </h4>
-              <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
-                Official BTEB Class Captain Application Form with Guide Teacher Signature & Institutional Seal.
-              </p>
 
               <div className="mt-3 p-3 bg-surface rounded-lg border border-slate-200 text-xs w-full text-left space-y-1 font-mono">
                 <div>Applicant: <strong>{selectedAppForDoc.studentName}</strong></div>
@@ -2338,7 +2328,7 @@ export const AdminPortalScreen: React.FC = () => {
                 rows={3}
                 value={teacherActionNotes}
                 onChange={(e) => setTeacherActionNotes(e.target.value)}
-                placeholder="e.g. Verified with Teacher Employment Registry & Departmental Head approval."
+                placeholder="Admin remarks"
                 className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
               />
             </div>

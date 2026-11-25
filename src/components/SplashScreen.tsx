@@ -31,9 +31,6 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onDone }) => {
       <h1 className="dm-splash-title mt-5 text-2xl font-extrabold tracking-tight text-text-primary">
         DiplomaMate
       </h1>
-      <p className="dm-splash-subtitle mt-1 text-xs text-slate-500">
-        BTEB Diploma Engineering Academic System
-      </p>
       <div className="mt-8">
         <LiquidFillLoader size={40} label="Loading..." />
       </div>

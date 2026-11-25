@@ -603,9 +603,6 @@ export const WelcomeScreen: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
             DiplomaMate
           </h1>
-          <p className="mt-1 text-sm text-slate-600 font-normal">
-            {t('welcome.signInSubtitle')}
-          </p>
         </div>
 
         {/* Main Card */}
@@ -862,9 +859,6 @@ export const WelcomeScreen: React.FC = () => {
                       </button>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-400 text-center mt-2">
-                    {t('welcome.socialNote')}
-                  </p>
                 </div>
               )}
 
@@ -1196,9 +1190,6 @@ export const WelcomeScreen: React.FC = () => {
                         <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
                         {t('welcome.captainRegistrationTitle')}
                       </p>
-                      <p>
-                        {t('welcome.captainRegistrationBody')}
-                      </p>
                     </div>
                   )}
                 </>
@@ -1225,8 +1216,7 @@ export const WelcomeScreen: React.FC = () => {
           )}
 
           {/* Dedicated System Administrator Sign-In Link (Separate from public registration) */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-            <span>{t('welcome.centralAuthority')}</span>
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-end text-[11px] text-slate-500">
             <button
               type="button"
               onClick={() => setActiveScreen('admin_login')}

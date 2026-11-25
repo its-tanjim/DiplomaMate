@@ -79,9 +79,6 @@ export const RemindersScreen: React.FC = () => {
                 Academic Reminders
               </h1>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Exams, job sheets submission deadlines & BTEB board notices
-            </p>
           </div>
 
           <button
@@ -116,7 +113,7 @@ export const RemindersScreen: React.FC = () => {
         value={notifications.routineLeadMinutes}
         onChange={(mins) => updateNotifications({ routineLeadMinutes: mins })}
         label="Notification Alert Lead Time"
-        helperText="Trigger device sound & vibration before scheduled class periods and deadline tasks"
+        helperText=""
       />
 
       {/* Stats Summary Strip */}
@@ -311,7 +308,7 @@ export const RemindersScreen: React.FC = () => {
                 <label className="block text-xs font-semibold text-text-primary mb-1">Additional Notes</label>
                 <textarea
                   rows={2}
-                  placeholder="e.g. Chapter 3 and 4, bring scientific calculator..."
+                  placeholder="Note (optional)"
                   value={newReminder.note || ''}
                   onChange={(e) => setNewReminder({ ...newReminder, note: e.target.value })}
                   className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"

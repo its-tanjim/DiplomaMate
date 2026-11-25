@@ -252,10 +252,6 @@ export const CaptainVerificationScreen: React.FC = () => {
                 <span className="font-semibold text-text-primary">{userProfile.session}</span>
               </div>
             </div>
-            <p className="text-[11px] text-slate-400">
-              Details wrong? Update them from your Profile first, then send the request.
-            </p>
-
             {applyError && (
               <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-1.5">
                 <XCircle className="w-4 h-4 shrink-0 text-red-600" />
@@ -269,7 +265,6 @@ export const CaptainVerificationScreen: React.FC = () => {
                   <Clock className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
                   <div>
                     <span className="font-semibold">Request already sent. </span>
-                    Your approval request is waiting with your Guide Teacher and the Admin.
                   </div>
                 </div>
                 <button
@@ -318,9 +313,6 @@ export const CaptainVerificationScreen: React.FC = () => {
               <h2 className="text-sm font-bold text-text-primary">
                 Teacher Faculty Digital Verification
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Authorized Guide Teachers and Faculty Members can digitally approve Class Captain applications using their official Teacher PIN.
-              </p>
             </div>
           </div>
 
@@ -371,7 +363,7 @@ export const CaptainVerificationScreen: React.FC = () => {
               </label>
               <textarea
                 rows={2}
-                placeholder="e.g. Recommended for CR role. Academic record and attendance are satisfactory."
+                placeholder="Comments (optional)"
                 value={teacherComments}
                 onChange={(e) => setTeacherComments(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
@@ -475,7 +467,6 @@ export const CaptainVerificationScreen: React.FC = () => {
                   <Clock className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
                   <div>
                     <span className="font-semibold">Awaiting Teacher PIN Sign-off: </span>
-                    Ask your Guide Teacher to enter their Faculty PIN in the "Teacher PIN Sign-off" tab, or wait for Institute Admin approval.
                   </div>
                 </div>
               )}
@@ -492,9 +483,6 @@ export const CaptainVerificationScreen: React.FC = () => {
             <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
               <ShieldCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
               <h3 className="text-sm font-bold text-text-primary">No Application Found</h3>
-              <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                You haven't sent a Class Captain approval request yet. Click "Apply Directly" to send one — no form needed.
-              </p>
             </div>
           )}
         </div>

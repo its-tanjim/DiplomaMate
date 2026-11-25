@@ -13,7 +13,6 @@ import {
   Calendar,
   Save,
   Trash2,
-  Sparkles,
   Info,
   ShieldCheck,
   BarChart3,
@@ -260,30 +259,6 @@ export const SemesterScreen: React.FC = () => {
     );
   };
 
-  // Quick sample fill for educational demonstration (Teachers / Captains / Students)
-  const handleFillDemoMarks = () => {
-    setSubjectEntries(prev =>
-      prev.map((entry, idx) => {
-        const cr = entry.effectiveCredits || entry.catalogCredits || 3;
-        const fullMarks =
-          entry.effectiveFullMarks && entry.effectiveFullMarks > 0
-            ? entry.effectiveFullMarks
-            : cr * 50;
-        const samplePercentages = [0.84, 0.78, 0.72, 0.81, 0.68, 0.76, 0.88];
-        const pct = samplePercentages[idx % samplePercentages.length];
-        const obtained = Math.round(fullMarks * pct);
-        return updateSubjectMarkEntry(entry, {
-          effectiveFullMarks: fullMarks,
-          isFullMarksProvisional: entry.catalogFullMarks === null,
-          effectiveCredits: cr,
-          isCreditsProvisional: entry.catalogCredits === null,
-          obtainedMarks: obtained
-        });
-      })
-    );
-    showToast('Populated sample subject marks for GPA calculation preview.');
-  };
-
   // Save current semester marks & GPA to user's private records
   const handleSaveCurrentSemesterResult = async () => {
     if (gpaSummary.evaluatedSubjectCount === 0) {
@@ -485,9 +460,6 @@ export const SemesterScreen: React.FC = () => {
                     : 'Student Academic Mode'}
                 </span>
               </div>
-              <p className="text-xs text-slate-500">
-                Central Subject Catalog · Subject-Wise Marks Entry · Official BTEB 4.00 Grading Scale & Weighted CGPA
-              </p>
             </div>
           </div>
 
@@ -632,9 +604,6 @@ export const SemesterScreen: React.FC = () => {
                 <h2 className="text-base sm:text-lg font-bold">
                   {selectedTechnology} · Regulation {selectedRegulation} · Semester {selectedSemester}
                 </h2>
-                <p className="text-xs text-blue-200">
-                  Enter obtained marks for each catalog subject to compute Percentage, Letter Grade, Grade Point, and Credit-Weighted GPA.
-                </p>
               </div>
 
               {/* Live GPA Readout Card */}
@@ -681,14 +650,6 @@ export const SemesterScreen: React.FC = () => {
                 )}
                 <button
                   type="button"
-                  onClick={handleFillDemoMarks}
-                  className="px-3 py-1.5 rounded-xl bg-surface/10 hover:bg-surface/20 border border-white/15 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-teal-300" />
-                  <span>Fill Sample Marks</span>
-                </button>
-                <button
-                  type="button"
                   onClick={handleSaveCurrentSemesterResult}
                   disabled={isSavingRecord || gpaSummary.evaluatedSubjectCount === 0}
                   className="px-4 py-1.5 rounded-xl bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors"
@@ -707,21 +668,12 @@ export const SemesterScreen: React.FC = () => {
           </div>
 
           {/* Missing Full Marks / Credits Transparency Notice (Requirement I & J) */}
-          {(subjectsMissingCatalogFullMarks.length > 0 ||
-            subjectsMissingCatalogCredits.length > 0 ||
+          {(subjectsMissingCatalogCredits.length > 0 ||
             gpaSummary.limitations.length > 0) && (
             <div className="p-3.5 bg-amber-50 border-b border-amber-200/80 text-xs text-amber-950 space-y-1.5">
               <div className="flex items-start gap-2">
                 <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <span className="font-bold block">
-                    Data Completeness & Estimate Notice:
-                  </span>
-                  {subjectsMissingCatalogFullMarks.length > 0 && (
-                    <p className="text-[11px] text-amber-900">
-                      • <strong>{subjectsMissingCatalogFullMarks.length}</strong> subject(s) in this catalog selection have verified Credits but do not have Full Marks explicitly stored in the source JSON dataset. Never inventing silent values: please enter the Full Marks for each subject below or click <strong>"Apply Standard BTEB Full Marks (Cr × 50)"</strong> to use provisional BTEB full marks (labeled as an Estimate).
-                    </p>
-                  )}
                   {subjectsMissingCatalogCredits.length > 0 && (
                     <p className="text-[11px] text-amber-900">
                       • <strong>{subjectsMissingCatalogCredits.length}</strong> subject(s) do not have verified Credits in the catalog. Enter provisional credits in the table below to include them in an estimated GPA calculation.
@@ -932,9 +884,6 @@ export const SemesterScreen: React.FC = () => {
                   Estimate · Provisional Reference Weightages
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Uses regulation-specific semester weightages rather than a simple arithmetic average of semester GPAs.
-              </p>
             </div>
           </div>
 
@@ -954,16 +903,6 @@ export const SemesterScreen: React.FC = () => {
                 Probidhan {reg} Weights
               </button>
             ))}
-          </div>
-        </div>
-
-        {/* Provisional Weightage Disclaimer Banner (Requirement H & J) */}
-        <div className="p-3 rounded-xl bg-amber-50/90 border border-amber-200 text-xs text-amber-950 flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-bold">Provisional Reference Weightage Notice: </span>
-            {cgpaCalculation.weightageNote} Calculated CGPA values are clearly labeled as{' '}
-            <strong>Estimates</strong> until verified against an official BTEB transcript.
           </div>
         </div>
 
@@ -1085,9 +1024,6 @@ export const SemesterScreen: React.FC = () => {
                 : '—'}
               <span className="text-xs font-normal text-slate-400"> / 4.00</span>
             </div>
-            <span className="text-[10px] text-slate-500 mt-0.5">
-              BTEB uses regulation semester weights, not simple average.
-            </span>
           </div>
 
           <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4 flex flex-col justify-center">
@@ -1116,9 +1052,6 @@ export const SemesterScreen: React.FC = () => {
             <h2 className="text-sm font-bold text-text-primary">
               Official BTEB Board Examination Results (1st – 8th Semester)
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Search individual board roll results, referred subject codes, or analyze group roll ranges
-            </p>
           </div>
         </div>
         <button

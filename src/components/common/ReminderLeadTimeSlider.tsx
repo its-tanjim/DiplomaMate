@@ -13,7 +13,7 @@ export const ReminderLeadTimeSlider: React.FC<ReminderLeadTimeSliderProps> = ({
   value,
   onChange,
   label = 'Reminder Lead Time',
-  helperText = 'How many minutes before each class period or deadline to trigger notification alerts',
+  helperText = '',
   disabled = false
 }) => {
   const presets = [5, 10, 15, 30, 45, 60];

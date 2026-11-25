@@ -147,11 +147,6 @@ export const ProfileScreen: React.FC = () => {
           )}
         </div>
         
-        {accountType === 'class_captain' && (
-          <p className="text-[11px] text-teal-700 bg-teal-50/70 p-2 rounded-lg mt-3 border border-teal-100">
-            ★ As Class Captain, you have authorized permission to broadcast notices, add or edit class routine slots, and post assignments for Section {userProfile.section}.
-          </p>
-        )}
       </div>
 
       {/* Class Captain Accreditation & Verification Card */}
@@ -163,7 +158,6 @@ export const ProfileScreen: React.FC = () => {
             </div>
             <div>
               <h3 className="font-bold text-sm text-text-primary">Class Captain Verification</h3>
-              <p className="text-[11px] text-slate-500">Official Guide Teacher & BTEB accreditation</p>
             </div>
           </div>
 

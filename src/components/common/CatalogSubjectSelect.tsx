@@ -4,7 +4,6 @@ import {
   Search,
   BookOpen,
   CheckCircle2,
-  AlertCircle,
   ChevronDown,
   X,
   Plus,
@@ -335,7 +334,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
       </div>
 
       {/* Criteria Banner */}
-      {resolvedTech && normalizedSemesters.length > 0 ? (
+      {resolvedTech && normalizedSemesters.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-50/70 border border-blue-100 text-[11px] text-blue-900">
           <div className="flex items-center gap-1.5 font-medium truncate">
             <span className="font-bold text-blue-700">{resolvedTech.shortCode}</span>
@@ -350,11 +349,6 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
             {loading ? 'Loading...' : `${records.length} catalog subject${records.length === 1 ? '' : 's'}`}
           </span>
         </div>
-      ) : (
-        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>Please select Technology, Regulation, and Semester first to load catalog subject suggestions.</span>
-        </div>
       )}
 
       {/* Main Catalog Selector (when not in manual override mode) */}
@@ -364,10 +358,6 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
             <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-center space-y-2">
               <p className="text-xs font-bold text-slate-700">
                 Book list is not available for this selection yet.
-              </p>
-              <p className="text-[11px] text-slate-500">
-                No verified or provisional subjects exist in the central catalog for{' '}
-                <span className="font-semibold text-slate-700">{resolvedTech?.name}</span> ({activeRegulation} Regulation, Semester {normalizedSemesters.join(', ')}).
               </p>
               {allowExceptionalManualEntry && (
                 <button

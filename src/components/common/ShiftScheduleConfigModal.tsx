@@ -331,9 +331,6 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  45 min is a default, not a restriction.
-                </p>
               </div>
             </div>
 
@@ -355,9 +352,6 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
               <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                 Individual Period Timings & Breaks ({draftConfig.periods.length} Periods)
               </h4>
-              <span className="text-[10px] text-slate-500">
-                Edit any start/end time to lock manual override
-              </span>
             </div>
 
             {draftConfig.periods.map((slot, index) => {

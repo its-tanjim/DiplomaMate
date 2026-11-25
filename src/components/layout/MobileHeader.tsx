@@ -33,9 +33,6 @@ export const MobileHeader: React.FC = () => {
                 DiplomaMate
               </span>
             </div>
-            <p className="hidden sm:block text-[10px] text-blue-100 font-medium leading-none -mt-0.5">
-              BTEB Polytechnic Hub
-            </p>
           </div>
         </button>
 

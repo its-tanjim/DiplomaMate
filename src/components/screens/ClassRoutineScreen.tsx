@@ -493,9 +493,6 @@ export const ClassRoutineScreen: React.FC = () => {
                 Class Timetable
               </h1>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Official class periods & laboratory schedule · <span className="font-semibold text-text-primary">{userProfile.college}</span> ({userProfile.department} · Sem {userProfile.semester})
-            </p>
           </div>
 
           {/* Action buttons */}
@@ -934,16 +931,12 @@ export const ClassRoutineScreen: React.FC = () => {
                   <Sparkles className="w-4 h-4 text-brand-teal" />
                   <span>Review Extracted Routine ({extractedPeriods.length} Classes)</span>
                 </h3>
-                <p className="text-xs text-slate-500">
-                  OCR leaves unclear information blank. Edit and complete every field before publishing to your class timetable.
-                </p>
               </div>
               <button onClick={() => setShowReviewModal(false)} className="text-slate-400 font-bold p-1">✕</button>
             </div>
 
             {detectedRoutineMeta && (
               <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-text-primary flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-bold text-brand-blue">Detected Routine Header:</span>
                 {detectedRoutineMeta.college && <span>College: <strong>{detectedRoutineMeta.college}</strong></span>}
                 {detectedRoutineMeta.department && <span>Dept: <strong>{detectedRoutineMeta.department}</strong></span>}
                 {detectedRoutineMeta.semester && <span>Semester: <strong>{detectedRoutineMeta.semester}</strong></span>}
@@ -963,10 +956,7 @@ export const ClassRoutineScreen: React.FC = () => {
               </div>
             )}
 
-            <details className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs">
-              <summary className="cursor-pointer font-semibold text-text-primary">
-                Raw OCR text & diagnostics
-              </summary>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs">
               {ocrDiagnostics.length > 0 && (
                 <pre className="mt-2 whitespace-pre-wrap break-words text-[10px] text-slate-600">
                   {ocrDiagnostics.join('\n')}
@@ -975,7 +965,7 @@ export const ClassRoutineScreen: React.FC = () => {
               <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] text-slate-700">
                 {ocrRawText || '[OCR returned no text]'}
               </pre>
-            </details>
+            </div>
 
             {/* Editable List / Table */}
             <div className="max-h-[52vh] overflow-y-auto space-y-3 pr-1">
@@ -1180,7 +1170,6 @@ export const ClassRoutineScreen: React.FC = () => {
               ) : (
                 <div className="p-8 text-center space-y-2">
                   <FileText className="w-12 h-12 text-brand-blue mx-auto" />
-                  <p className="text-xs font-bold text-text-primary">Preserved Routine PDF</p>
                   <a
                     href={selectedOriginalDoc.dataUrl}
                     download={selectedOriginalDoc.fileName}
@@ -1273,11 +1262,6 @@ export const ClassRoutineScreen: React.FC = () => {
                     </option>
                   ))}
                 </select>
-                {selectedPeriodSlotNumber === '' && (
-                  <p className="text-[10px] text-blue-800">
-                    Periods are not auto-selected. Please choose a period slot above.
-                  </p>
-                )}
               </div>
 
               {/* Curriculum Context for Automatic Subject Suggestions */}

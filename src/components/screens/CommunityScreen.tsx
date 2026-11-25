@@ -788,9 +788,6 @@ export const CommunityScreen: React.FC = () => {
                   <MessageSquare className="w-6 h-6" />
                 </div>
                 <h4 className="font-bold text-sm text-text-primary">No messages yet</h4>
-                <p className="text-xs text-slate-500 max-w-xs mx-auto mt-1">
-                  Start the discussion! Share academic questions, study notes, PDFs, or small lab videos.
-                </p>
               </div>
             ) : (
               messages
@@ -1036,16 +1033,9 @@ export const CommunityScreen: React.FC = () => {
           <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-text-primary rounded-2xl p-4 sm:p-5 text-white shadow-md relative overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
               <div>
-                <div className="flex items-center gap-2 mb-1 text-blue-200 text-xs">
-                  <Users className="w-4 h-4 text-teal-300" />
-                  <span>Academic Community & Peer Collaboration</span>
-                </div>
                 <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
                   Academic Community Hub
                 </h1>
-                <p className="text-xs text-blue-100/90 mt-1 max-w-xl leading-relaxed">
-                  Connect strictly with your polytechnic institute peers, Class Captains, and verified faculty. Share lecture PDFs, practical lab videos, and class announcements.
-                </p>
 
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-blue-200 mt-2 font-mono">
                   <span className="bg-surface/10 px-2 py-0.5 rounded border border-white/10">
@@ -1324,7 +1314,6 @@ export const CommunityScreen: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-sm text-text-primary">Community Abuse & Reports Queue</h3>
-                  <p className="text-xs text-slate-500">Review reported messages and toggle community active states.</p>
                 </div>
               </div>
 
@@ -1435,7 +1424,7 @@ export const CommunityScreen: React.FC = () => {
                 <textarea
                   value={createDescription}
                   onChange={e => setCreateDescription(e.target.value)}
-                  placeholder="Announcements, notes sharing, lab practicals & midterms prep..."
+                  placeholder="What is this group for?"
                   rows={2}
                   className="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-blue"
                 />
