@@ -305,6 +305,9 @@ export const CaptainVerificationScreen: React.FC = () => {
               <h2 className="text-sm font-bold text-text-primary">
                 Teacher Faculty Digital Verification
               </h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Approving here is final — the student becomes Class Captain immediately. No further admin step is needed.
+              </p>
             </div>
           </div>
 
@@ -330,7 +333,7 @@ export const CaptainVerificationScreen: React.FC = () => {
               </select>
               {applications.filter(a => a.status === 'Pending').length === 0 && (
                 <p className="text-[11px] text-slate-400 mt-1">
-                  No applications currently pending teacher endorsement.
+                  No applications currently pending approval.
                 </p>
               )}
             </div>
@@ -351,7 +354,7 @@ export const CaptainVerificationScreen: React.FC = () => {
 
             <div>
               <label className="block font-semibold text-text-primary mb-1">
-                Faculty Endorsement Remarks / Observations (Optional)
+                Faculty Approval Remarks / Observations (Optional)
               </label>
               <textarea
                 rows={2}
@@ -375,7 +378,7 @@ export const CaptainVerificationScreen: React.FC = () => {
               className="w-full py-2.5 rounded-xl bg-brand-teal hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <ShieldCheck aria-hidden="true" className="w-4 h-4" />
-              <span>{isEndorsing ? 'Verifying PIN & Endorsing...' : 'Endorse & Approve Student as Class Captain'}</span>
+              <span>{isEndorsing ? 'Verifying PIN & Approving...' : 'Approve Student as Class Captain'}</span>
             </button>
           </form>
         </div>

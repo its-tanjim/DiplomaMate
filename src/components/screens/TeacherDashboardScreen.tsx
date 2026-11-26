@@ -709,7 +709,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                         disabled={!isFacultyVerified}
                         onClick={() => {
                           setActionApp({ app, action: 'approve' });
-                          setActionComment('Endorsed as official student Class Captain.');
+                          setActionComment('Approved as official student Class Captain.');
                           setTeacherPinInput('');
                         }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors cursor-pointer ${
@@ -717,10 +717,10 @@ export const TeacherDashboardScreen: React.FC = () => {
                             ? 'bg-teal-600 hover:bg-teal-700 text-white'
                             : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                         }`}
-                        title={!isFacultyVerified ? 'Requires Administrator Verification First' : 'Endorse with PIN'}
+                        title={!isFacultyVerified ? 'Requires Administrator Verification First' : 'Approve with PIN — final approval, no admin step needed'}
                       >
                         <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5" />
-                        <span>Verify & Approve (PIN)</span>
+                        <span>Approve Captain (PIN)</span>
                       </button>
                     </div>
                   )}
@@ -984,7 +984,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                 </div>
                 <div>
                   <h3 id="teacher-action-app-title" className="text-sm font-bold text-text-primary">
-                    {actionApp.action === 'approve' ? 'Verify & Endorse Class Captain' : 'Reject Captain Application'}
+                    {actionApp.action === 'approve' ? 'Approve Class Captain' : 'Reject Captain Application'}
                   </h3>
                   <p className="text-xs text-slate-500">
                     Applicant: {actionApp.app.studentName} (Sec {actionApp.app.section})
@@ -999,10 +999,16 @@ export const TeacherDashboardScreen: React.FC = () => {
               </button>
             </div>
 
+            {actionApp.action === 'approve' && (
+              <p className="p-2.5 rounded-xl bg-teal-50 border border-teal-200 text-[11px] leading-relaxed text-teal-900">
+                This approval is final — the student becomes Class Captain immediately. No further admin step is needed afterwards.
+              </p>
+            )}
+
             <form onSubmit={handleConfirmAction} className="space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-text-primary mb-1">
-                  {actionApp.action === 'approve' ? 'Endorsement Remarks' : 'Rejection Reason *'}
+                  {actionApp.action === 'approve' ? 'Approval Remarks' : 'Rejection Reason *'}
                 </label>
                 <textarea
                   rows={2}
@@ -1030,7 +1036,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                   className="w-full px-2.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 tracking-widest font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Protects against unauthorized endorsements. Account locks for 15 minutes after 5 failed attempts.
+                  Protects against unauthorized approvals. Account locks for 15 minutes after 5 failed attempts.
                 </p>
               </div>
 

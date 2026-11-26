@@ -4461,7 +4461,19 @@ app.post('/api/verification/teacher-approve', authRateLimiter, authIpRateLimiter
         serverRecord.status = 'Rejected';
         serverRecord.rejectionReason = comments || 'Rejected by Guide Teacher.';
       } else {
+        // Rule change 2026-11-27: a teacher endorsement IS a full
+        // approval — the captain record becomes Approved here, with no
+        // admin step. The same 2-per-section quota as the admin decision
+        // routes applies (skipped when already Approved, as before).
+        const endorsedStudent = academicStore.students.find(item => item.id === serverRecord.studentId);
+        if (endorsedStudent && serverRecord.status !== 'Approved') {
+          const approvedCount = await countApprovedCaptainsForStudent(endorsedStudent);
+          if (approvedCount >= 2) {
+            return res.status(409).json({ success: false, error: 'This class already has the maximum of two approved captains.' });
+          }
+        }
         serverRecord.teacherEndorsement = endorsement;
+        serverRecord.status = 'Approved';
       }
       // Phase 4 write route 1: dual-write the captain-record mutation to
       // Postgres FIRST (teacher_endorsement / status + rejection_reason).
@@ -4470,8 +4482,30 @@ app.post('/api/verification/teacher-approve', authRateLimiter, authIpRateLimiter
       // dual-written below (Postgres first, then JSON).
       const endorsementPatch: Parameters<typeof updateCaptainRecordById>[1] = action === 'reject'
         ? { status: 'Rejected', rejection_reason: comments || 'Rejected by Guide Teacher.' }
-        : { teacher_endorsement: endorsement };
+        : { status: 'Approved', teacher_endorsement: endorsement };
       await persistCaptainRecordToSupabase(applicationId, endorsementPatch, 'TeacherEndorsement');
+      if (action !== 'reject') {
+        // Dual-write the linked student's captain status to Postgres
+        // FIRST (same pattern as the admin captain decision routes),
+        // then the JSON store below.
+        const endorsedStudent = academicStore.students.find(item => item.id === serverRecord.studentId);
+        if (endorsedStudent) {
+          await persistCaptainStudentToSupabase(endorsedStudent.id, {
+            account_type: 'class_captain',
+            captain_verification_status: 'Approved'
+          }, 'TeacherEndorsement');
+          endorsedStudent.accountType = 'class_captain';
+          endorsedStudent.captainVerificationStatus = 'Approved';
+        }
+        // Audit: the endorsing teacher is named in the entry.
+        appendSystemAudit(
+          'account_approved',
+          serverRecord.studentId,
+          serverRecord.studentName,
+          `Approved by guide teacher ${teacher.name} (${teacher.designation}) via teacher endorsement.`,
+          teacher.id
+        );
+      }
     }
     if (action !== 'reject') {
       // Registry write: remember this endorsement independently of the
@@ -15124,9 +15158,9 @@ app.post('/api/admin/accounts/:id/decision', requireSystemAdmin, async (req: Req
     if (currentStatus !== 'Pending') {
       return res.status(409).json({ success: false, error: 'Only pending captain accounts can be reviewed.' });
     }
-    if (decision === 'approve' && !application?.teacherEndorsement) {
-      return res.status(409).json({ success: false, error: 'A teacher endorsement is required before approving a class captain.' });
-    }
+    // Rule change 2026-11-27: no teacher endorsement is required — the
+    // admin may approve a pending captain directly. The 2-per-section
+    // quota check below still applies.
     if (decision === 'approve') {
       // Phase 4 write route 1: quota via the Supabase-first
       // getApprovedCaptainsForGroupAsync() (falls back to the JSON store).

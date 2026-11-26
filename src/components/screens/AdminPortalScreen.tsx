@@ -1038,7 +1038,7 @@ export const AdminPortalScreen: React.FC = () => {
                     ) : (
                       <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500 flex items-center gap-2">
                         <AlertTriangle aria-hidden="true" className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                        <span>Awaiting digital endorsement from authorized department guide teacher.</span>
+                        <span>No teacher endorsement on file — you can approve this request directly.</span>
                       </div>
                     )}
 
@@ -1082,7 +1082,7 @@ export const AdminPortalScreen: React.FC = () => {
                             <button
                               onClick={() => {
                                 setActionModal({ app, action: 'approve' });
-                                setActionReason('Verified with guide teacher endorsement and institute record.');
+                                setActionReason('Verified with institute record.');
                               }}
                               className="px-3 py-1 rounded-lg bg-brand-teal hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                             >

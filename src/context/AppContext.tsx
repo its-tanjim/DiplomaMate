@@ -1660,8 +1660,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return a;
       }));
 
-      // Push the endorsement to the server record as well, so the admin
-      // approval guard (which reads the server record) sees it.
+      // Push the updated record to the server as well, so the server record
+      // stays in sync with this final approval.
       void syncCaptainRecordToServer({
         ...targetApp,
         status: 'Approved',
@@ -1677,7 +1677,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }));
       }
 
-      showToast(`Verified & endorsed by ${data.endorsement.teacherName}`);
+      showToast(data.endorsement?.teacherName ? `Approved by ${data.endorsement.teacherName} — student is now a Class Captain.` : 'Captain approved.');
       return { success: true, message: data.message };
     } catch (e) {
       return { success: false, message: 'Could not contact teacher verification service.' };
@@ -1733,7 +1733,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           adminDecision: decisionData.adminDecision || {
             decidedBy: 'System Administrator',
             decidedAt,
-            notes: notes || 'Verified with Guide Teacher signature & departmental record.'
+            notes: notes || 'Verified with departmental record.'
           }
         };
       }
