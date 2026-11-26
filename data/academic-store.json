@@ -220,7 +220,7 @@
       "is_active": true,
       "avatar_emoji": "📚",
       "created_at": "2026-11-26T22:35:40.895Z",
-      "updated_at": "2026-11-26T22:36:24.487Z",
+      "updated_at": "2026-11-26T22:48:08.340Z",
       "pinned_notice_id": "msg_1795732540895_welcome"
     }
   ],
@@ -285,6 +285,21 @@
       "is_deleted": false,
       "reports_count": 0,
       "created_at": "2026-11-26T22:36:24.487Z"
+    },
+    {
+      "id": "msg_1795733288341_fq6dz",
+      "community_id": "comm_1795732540895_oz3mr",
+      "sender_id": "std_4bdf8ad5-de93-45e1-ba60-64925b2520d5",
+      "sender_name": "Tanjim Khan",
+      "sender_role": "class_captain",
+      "sender_designation": "Class Captain",
+      "is_moderator": true,
+      "content": "Assalamualaikum",
+      "attachments": [],
+      "is_pinned": false,
+      "is_deleted": false,
+      "reports_count": 0,
+      "created_at": "2026-11-26T22:48:08.340Z"
     }
   ],
   "communityReports": [],
