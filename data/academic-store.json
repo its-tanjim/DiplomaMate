@@ -14,7 +14,7 @@
       "section": "B2",
       "phone": "01846699054",
       "accountType": "class_captain",
-      "captainVerificationStatus": "Pending",
+      "captainVerificationStatus": "Approved",
       "attendanceRate": "",
       "createdAt": "2026-11-24T17:33:33.730Z",
       "isRegisteredAccount": true,
@@ -185,11 +185,15 @@
       "regNumber": "1502342950",
       "phone": "01846699054",
       "session": "2021-2022",
-      "status": "Pending",
+      "status": "Approved",
       "appliedAt": "27 Nov 2026, 02:28 AM",
       "verificationFormUrl": "",
       "verificationFormName": "",
-      "isRegisteredAccount": true
+      "isRegisteredAccount": true,
+      "adminDecision": {
+        "decidedBy": "Academic System Administrator (its.tanjim.06@gmail.com)",
+        "decidedAt": "2026-11-26T21:56:24.816Z"
+      }
     }
   ],
   "communities": [],
@@ -199,6 +203,23 @@
   "accountDeletionRequests": [],
   "deletedAccountIds": [],
   "adminAuditLogs": [
+    {
+      "id": "audit_e6b2e73d-f9f5-4ffe-821a-d8e6ed4c2f29",
+      "adminId": "sysadmin_1792821774886",
+      "action": "account_approved",
+      "targetId": "std_4bdf8ad5-de93-45e1-ba60-64925b2520d5",
+      "targetName": "Tanjim Khan",
+      "timestamp": "2026-11-26T21:56:24.932Z"
+    },
+    {
+      "id": "audit_953547e0-a70f-4211-b0ee-77707fceb820",
+      "adminId": "sysadmin_1792821774886",
+      "action": "admin_login_success",
+      "targetId": "sysadmin_1792821774886",
+      "targetName": "its.tanjim.06@gmail.com",
+      "timestamp": "2026-11-26T21:56:15.788Z",
+      "details": "Administrator signed in."
+    },
     {
       "id": "audit_9d9f2021-6813-40df-8e47-78140818c0d5",
       "adminId": "system",
