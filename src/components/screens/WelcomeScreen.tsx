@@ -93,14 +93,14 @@ const ConsentCheckbox: React.FC<{ checked: boolean; onChange: (v: boolean) => vo
   const { lang } = useLanguage();
   const bn = lang === 'bn';
   return (
-    <label className="flex items-start gap-2 text-[11px] leading-relaxed text-slate-600 cursor-pointer">
+    <label className="flex w-full items-start gap-2 text-[11px] leading-relaxed text-slate-600 cursor-pointer">
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
         className="mt-0.5 w-4 h-4 shrink-0 accent-blue-600 cursor-pointer"
       />
-      <span>
+      <span className="min-w-0 flex-1 break-words">
         {bn ? 'আমি ' : 'I agree to the '}
         <button
           type="button"
@@ -1304,8 +1304,6 @@ export const WelcomeScreen: React.FC = () => {
                 <span>{isSubmitting ? t('welcome.registering') : selectedRole === 'teacher' ? t('welcome.completeTeacherRegistration') : selectedRole === 'class_captain' ? t('welcome.completeCaptainRegistration') : t('welcome.completeStudentRegistration')}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
-
-              <LegalLinks />
             </form>
           )}
         </div>
