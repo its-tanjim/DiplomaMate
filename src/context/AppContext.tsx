@@ -211,7 +211,6 @@ interface AppContextType {
   setSelectedShift: (shift: Shift) => void;
   selectedSection: Section;
   setSelectedSection: (section: Section) => void;
-  resetAllData: () => void;
   
   // Configurable Period & Shift Schedule Management
   shiftSchedules: Record<Shift, ShiftScheduleConfig>;
@@ -2730,27 +2729,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return localReset;
   };
 
-  const resetAllData = () => {
-    setAllStoredRoutines(INITIAL_ROUTINE);
-    setUploadedRoutines([]);
-    setNotes(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.notes));
-    setAssignments(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.assignments));
-    setJobs(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.jobs));
-    setReminders(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.reminders));
-    setTeachers(prev => removeLegacyDemoContent(prev, LEGACY_DEMO_CONTENT_IDS.teachers));
-    setApplications(INITIAL_APPLICATIONS);
-    setAnnouncements(INITIAL_ANNOUNCEMENTS);
-    setUserProfile(EMPTY_STUDENT_PROFILE);
-    setNotifications(DEFAULT_NOTIFICATION_SETTINGS);
-    setSelectedShift(EMPTY_STUDENT_PROFILE.shift);
-    setSelectedSection(EMPTY_STUDENT_PROFILE.section);
-    setShiftSchedules({
-      Morning: buildDefaultShiftScheduleConfig('Morning', { scopeKey: 'default' }),
-      Day: buildDefaultShiftScheduleConfig('Day', { scopeKey: 'default' })
-    });
-    showToast('Legacy demo content removed; user-created academic content preserved.');
-  };
-
   return (
     <AppContext.Provider
       value={{
@@ -2833,7 +2811,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedShift,
         selectedSection,
         setSelectedSection,
-        resetAllData,
         shiftSchedules,
         getShiftSchedule,
         saveShiftSchedule,

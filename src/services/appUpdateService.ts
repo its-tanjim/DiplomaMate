@@ -10,6 +10,14 @@ import { APP_VERSION_CODE, APP_VERSION_NAME } from '../config/appVersion';
 
 const LATEST_RELEASE_URL =
   'https://api.github.com/repos/its-tanjim/DiplomaMate/releases/latest';
+// Fallback source: a small JSON file committed to the repo. The GitHub
+// Releases API is unauthenticated (60 req/hour per IP) and fails on shared
+// mobile IPs, so when it fails the app reads this file from
+// raw.githubusercontent.com instead — raw file serving has no API rate
+// limit. Every release must update releases/latest.json to match the new
+// version (see the release habit doc).
+const LATEST_JSON_URL =
+  'https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/latest.json';
 const LAST_CHECK_KEY = 'diplomamate_update_last_check';
 const DISMISSED_TAG_KEY = 'diplomamate_update_dismissed_tag';
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -36,10 +44,10 @@ export async function fetchLatestRelease(): Promise<AppUpdateInfo | null> {
       headers: { Accept: 'application/vnd.github+json' }
     });
     window.clearTimeout(timeoutId);
-    if (!res.ok) return null;
+    if (!res.ok) return fetchLatestReleaseFromRepoFile();
     const data = await res.json();
     const latestCode = parseReleaseTag(String(data.tag_name || ''));
-    if (latestCode === null) return null;
+    if (latestCode === null) return fetchLatestReleaseFromRepoFile();
     const apk = Array.isArray(data.assets)
       ? data.assets.find(
           (asset: any) =>
@@ -60,6 +68,37 @@ export async function fetchLatestRelease(): Promise<AppUpdateInfo | null> {
       tag: String(data.tag_name || ''),
       downloadUrl,
       notes: String(data.body || '')
+    };
+  } catch {
+    return fetchLatestReleaseFromRepoFile();
+  }
+}
+
+// Fallback when the GitHub Releases API fails (e.g. its unauthenticated
+// 60 req/hour per-IP rate limit on shared mobile IPs): read the small
+// releases/latest.json file from raw.githubusercontent.com, which has no
+// API rate limit. Returns null only when this source fails too.
+async function fetchLatestReleaseFromRepoFile(): Promise<AppUpdateInfo | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(LATEST_JSON_URL, { signal: controller.signal });
+    window.clearTimeout(timeoutId);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const versionCode = Number(data.versionCode);
+    const tag = String(data.tag || '');
+    if (!Number.isInteger(versionCode) || versionCode <= 0 || !tag) return null;
+    const downloadUrl =
+      typeof data.downloadUrl === 'string' && data.downloadUrl
+        ? data.downloadUrl
+        : `https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.${versionCode}-debug.apk`;
+    return {
+      available: versionCode > APP_VERSION_CODE,
+      latestCode: versionCode,
+      tag,
+      downloadUrl,
+      notes: ''
     };
   } catch {
     return null;

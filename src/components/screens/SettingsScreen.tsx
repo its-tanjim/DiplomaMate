@@ -9,7 +9,6 @@ import {
   Volume2, 
   ShieldCheck, 
   UserCheck, 
-  RotateCcw, 
   RefreshCw,
   HelpCircle, 
   Sparkles,
@@ -46,7 +45,6 @@ export const SettingsScreen: React.FC = () => {
     setUserProfile, 
     accountType, 
     setAccountType,
-    resetAllData,
     requestAccountDeletion,
     showToast,
     setActiveScreen
@@ -552,21 +550,6 @@ export const SettingsScreen: React.FC = () => {
             </button>
           </div>
         </div>
-      </div>
-
-      {/* Reset Local Demo Content — this device only; does NOT delete your account */}
-      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-xs font-bold text-text-primary">Reset local demo content (this device only — does not delete your account)</h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">Only clears demo content stored on this device. Your server account is untouched — to delete your account, use “Delete my account” above.</p>
-        </div>
-        <button
-          onClick={resetAllData}
-          className="px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Reset</span>
-        </button>
       </div>
 
       {/* App Update (Android app only) */}
