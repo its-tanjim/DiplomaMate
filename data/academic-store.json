@@ -180,6 +180,24 @@
   "deletedAccountIds": [],
   "adminAuditLogs": [
     {
+      "id": "audit_2cb0880f-285b-432a-91ae-85efbbf1a320",
+      "adminId": "sysadmin_1792821774886",
+      "action": "admin_login_success",
+      "targetId": "sysadmin_1792821774886",
+      "targetName": "its.tanjim.06@gmail.com",
+      "timestamp": "2026-11-26T20:14:54.408Z",
+      "details": "Administrator signed in."
+    },
+    {
+      "id": "audit_58dc718a-76b9-443f-8225-8f1a8f8a4abf",
+      "adminId": "system",
+      "action": "admin_pin_verified",
+      "targetId": "admin-pin-gate",
+      "targetName": "Admin Panel PIN",
+      "timestamp": "2026-11-26T20:14:22.070Z",
+      "details": "Admin panel PIN verified; login form unlocked for 15 minutes."
+    },
+    {
       "id": "audit_23a84db9-6b9a-4aff-918f-7600c88f4ec6",
       "adminId": "sysadmin_1792821774886",
       "action": "admin_login_success",
@@ -318,6 +336,41 @@
   "jobs": [],
   "campusNotices": [],
   "campusNoticeReports": [],
+  "adminNotifications": [],
+  "featureFlags": {
+    "notes_upload": {
+      "enabled": true,
+      "updatedBy": "system",
+      "updatedAt": "2026-11-26T20:08:32.804Z"
+    },
+    "community_create": {
+      "enabled": true,
+      "updatedBy": "system",
+      "updatedAt": "2026-11-26T20:08:32.804Z"
+    },
+    "bteb_results": {
+      "enabled": true,
+      "updatedBy": "system",
+      "updatedAt": "2026-11-26T20:08:32.804Z"
+    }
+  },
+  "maintenanceMode": {
+    "enabled": false,
+    "message": "",
+    "updatedBy": "system",
+    "updatedAt": "2026-11-26T20:08:32.804Z"
+  },
+  "appVersionControl": {
+    "minVersionCode": 20,
+    "latestVersionCode": 20,
+    "latestVersionName": "1.0.20",
+    "forceUpdate": false,
+    "updateUrl": "https://github.com/its-tanjim/DiplomaMate/releases/latest",
+    "updatedBy": "system",
+    "updatedAt": "2026-11-26T20:08:32.804Z"
+  },
+  "adminAccounts": [],
+  "supportTickets": [],
   "teacherContactAccessLocked": false,
   "adminPinLockout": {
     "failedAttempts": 0,
