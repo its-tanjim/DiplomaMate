@@ -40,7 +40,6 @@ import {
   Calendar, 
   CheckCircle2, 
   AlertTriangle, 
-  Lock,
   Building,
   ArrowRight,
   Users,
@@ -1309,18 +1308,6 @@ export const WelcomeScreen: React.FC = () => {
               <LegalLinks />
             </form>
           )}
-
-          {/* Dedicated System Administrator Sign-In Link (Separate from public registration) */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end text-[11px] text-slate-500">
-            <button
-              type="button"
-              onClick={() => setActiveScreen('admin_login')}
-              className="font-semibold text-slate-600 hover:text-text-primary inline-flex items-center gap-1 cursor-pointer"
-            >
-              <Lock className="w-3 h-3" />
-              <span>{t('welcome.adminSignIn')}</span>
-            </button>
-          </div>
         </div>
       </div>
     </div>

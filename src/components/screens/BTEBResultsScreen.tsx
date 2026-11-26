@@ -1426,7 +1426,7 @@ export const BTEBResultsScreen: React.FC = () => {
             </div>
             {canAccessAdminImport && (
               <button
-                onClick={() => setActiveScreen('admin_portal')}
+                onClick={() => window.location.replace('https://admin.diplomamate.online/')}
                 className="text-[11px] font-semibold bg-surface/10 hover:bg-surface/20 text-white px-3 py-1.5 rounded-xl border border-white/15 transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <Database aria-hidden="true" className="w-3.5 h-3.5 text-teal-300" />

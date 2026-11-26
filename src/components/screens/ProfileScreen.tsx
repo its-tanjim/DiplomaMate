@@ -186,7 +186,7 @@ export const ProfileScreen: React.FC = () => {
 
           {accountType === 'system_admin' && isServerVerifiedAdmin && (
             <button
-              onClick={() => setActiveScreen('admin_portal')}
+              onClick={() => window.location.replace('https://admin.diplomamate.online/')}
               className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer"
             >
               <span>Admin Review Portal</span>

@@ -17,8 +17,6 @@ import { ProfileScreen } from './components/screens/ProfileScreen';
 import { SemesterScreen } from './components/screens/SemesterScreen';
 import { SettingsScreen } from './components/screens/SettingsScreen';
 import { CaptainVerificationScreen } from './components/screens/CaptainVerificationScreen';
-import { AdminPortalScreen } from './components/screens/AdminPortalScreen';
-import { AdminLoginScreen } from './components/screens/AdminLoginScreen';
 import { TeacherDashboardScreen } from './components/screens/TeacherDashboardScreen';
 import { TeacherProfileSetupScreen } from './components/screens/TeacherProfileSetupScreen';
 import { BTEBResultsScreen } from './components/screens/BTEBResultsScreen';
@@ -88,21 +86,21 @@ const AppContent: React.FC = () => {
     nativeService.initializeNativeApp();
   }, []);
 
-  // Support direct URL navigation to /admin/login, /admin, /book-list, /community, /notices, or /jobs
+  // Support direct URL navigation to /book-list, /community, /notices, or /jobs
   // — and to the public legal pages /privacy, /terms and /delete-account
   // (no sign-in required for any of the three).
+  // Admin URLs (/admin, /admin/login, /admin/results-import) live in the
+  // separate admin app — send them there instead of rendering admin here.
   React.useEffect(() => {
     const path = window.location.pathname.toLowerCase();
-    if (path === '/admin/login') {
-      setActiveScreen('admin_login');
+    if (path === '/admin/login' || path === '/admin' || path === '/admin/results-import') {
+      window.location.replace('https://admin.diplomamate.online/');
     } else if (path === '/privacy') {
       setActiveScreen('privacy_policy');
     } else if (path === '/terms') {
       setActiveScreen('terms');
     } else if (path === '/delete-account') {
       setActiveScreen('delete_account');
-    } else if (path === '/admin' || path === '/admin/results-import') {
-      setActiveScreen('admin_portal');
     } else if (path === '/book-list' || path === '/books') {
       setActiveScreen('book_list');
     } else if (path === '/community' || path === '/communities') {
@@ -125,6 +123,14 @@ const AppContent: React.FC = () => {
     });
   }, [activeScreen, setActiveScreen]);
 
+  // A stale admin session (e.g. restored from a previous version) has no
+  // admin UI in this app any more — send it to the separate admin app.
+  React.useEffect(() => {
+    if (isLoggedIn && accountType === 'system_admin' && isServerVerifiedAdmin) {
+      window.location.replace('https://admin.diplomamate.online/');
+    }
+  }, [isLoggedIn, accountType, isServerVerifiedAdmin]);
+
   // Splash renders ONLY after every hook above has run. An early return
   // before these hooks made React throw "Rendered more hooks than during
   // the previous render" the moment the splash finished (~1.2s), which
@@ -132,20 +138,6 @@ const AppContent: React.FC = () => {
   // conditional return above a hook in this component.
   if (showSplash) {
     return <SplashScreen onDone={() => setShowSplash(false)} />;
-  }
-
-  if (activeScreen === 'admin_login') {
-    return (
-      <div className="min-h-screen bg-app-bg">
-        <AdminLoginScreen />
-        {toastMessage && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-text-primary text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-150">
-            <CheckCircle2 className="w-4 h-4 text-teal-400" />
-            <span>{toastMessage}</span>
-          </div>
-        )}
-      </div>
-    );
   }
 
   // Public legal pages — privacy, terms and account deletion need no
@@ -177,8 +169,7 @@ const AppContent: React.FC = () => {
   }
 
   // If not signed in or currently on welcome screen, show WelcomeScreen
-  // (Unless user navigated directly to admin_portal to verify 403 guard)
-  if ((!isLoggedIn || activeScreen === 'welcome') && activeScreen !== 'admin_portal') {
+  if (!isLoggedIn || activeScreen === 'welcome') {
     return (
       <div className="min-h-screen bg-app-bg">
         <WelcomeScreen />
@@ -192,7 +183,7 @@ const AppContent: React.FC = () => {
     );
   }
 
-  const isWideScreen = activeScreen === 'notes' || activeScreen === 'bteb_results' || activeScreen === 'book_list' || activeScreen === 'admin_portal' || activeScreen === 'teacher_portal' || activeScreen === 'community' || (activeScreen === 'home' && accountType === 'system_admin');
+  const isWideScreen = activeScreen === 'notes' || activeScreen === 'bteb_results' || activeScreen === 'book_list' || activeScreen === 'teacher_portal' || activeScreen === 'community';
 
   return (
     <div className="min-h-screen bg-app-bg text-text-primary flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
@@ -213,9 +204,7 @@ const AppContent: React.FC = () => {
       {/* Main Content Viewport */}
       <main id="main-content" className={`dm-app-content flex-1 ${isWideScreen ? 'max-w-6xl' : 'max-w-4xl'} mx-auto w-full px-4 sm:px-6 lg:px-8 pt-5`}>
         {activeScreen === 'home' && (
-          accountType === 'system_admin' && isServerVerifiedAdmin ? (
-            <AdminPortalScreen />
-          ) : accountType === 'teacher' ? (
+          accountType === 'teacher' ? (
             <TeacherDashboardScreen />
           ) : (
             <HomeScreen />
@@ -232,7 +221,6 @@ const AppContent: React.FC = () => {
         {activeScreen === 'profile' && <ProfileScreen />}
         {activeScreen === 'settings' && <SettingsScreen />}
         {activeScreen === 'captain_verification' && <CaptainVerificationScreen />}
-        {activeScreen === 'admin_portal' && <AdminPortalScreen />}
         {activeScreen === 'teacher_setup' && <TeacherProfileSetupScreen />}
         {activeScreen === 'bteb_results' && <BTEBResultsScreen />}
       </main>

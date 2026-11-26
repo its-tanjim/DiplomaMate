@@ -52,7 +52,7 @@ export const MobileHeader: React.FC = () => {
           {/* Role Status Indicator */}
           {accountType === 'system_admin' && isServerVerifiedAdmin ? (
             <button 
-              onClick={() => setActiveScreen('admin_portal')}
+              onClick={() => window.location.replace('https://admin.diplomamate.online/')}
               title="System Administrator Account"
               className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
             >

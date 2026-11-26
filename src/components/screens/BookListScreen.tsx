@@ -24,7 +24,7 @@ import {
 } from '../../types';
 
 export const BookListScreen: React.FC = () => {
-  const { userProfile, currentTeacherProfile, isServerVerifiedAdmin, setActiveScreen } = useApp();
+  const { userProfile, currentTeacherProfile, isServerVerifiedAdmin } = useApp();
 
   // Resolve user's default technology and semester if available
   const defaultTechId = useMemo(() => {
@@ -182,7 +182,7 @@ export const BookListScreen: React.FC = () => {
             {isServerVerifiedAdmin && (
               <button
                 type="button"
-                onClick={() => setActiveScreen('admin_portal')}
+                onClick={() => window.location.replace('https://admin.diplomamate.online/')}
                 className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-200 text-[10px] font-bold hover:bg-amber-500/30 transition-colors"
               >
                 Manage Catalog (Admin)
