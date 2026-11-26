@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
+    "build:admin": "VITE_ADMIN_ONLY=true vite build --config vite.admin.config.ts && cp dist-admin/index-admin.html dist-admin/index.html",
     "start": "tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
