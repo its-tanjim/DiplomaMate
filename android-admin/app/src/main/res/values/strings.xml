@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DiplomaMate Admin</string>
+    <string name="title_activity_main">DiplomaMate Admin</string>
+    <string name="package_name">bd.gov.bteb.diplomamate.admin</string>
+    <string name="custom_url_scheme">bd.gov.bteb.diplomamate.admin</string>
+</resources>
