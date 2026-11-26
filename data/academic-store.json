@@ -180,6 +180,15 @@
   "deletedAccountIds": [],
   "adminAuditLogs": [
     {
+      "id": "audit_83fbf289-e44a-46e8-85a2-a5601bc16e86",
+      "adminId": "system",
+      "action": "admin_pin_verified",
+      "targetId": "admin-pin-gate",
+      "targetName": "Admin Panel PIN",
+      "timestamp": "2026-11-26T17:23:08.458Z",
+      "details": "Admin panel PIN verified; login form unlocked for 15 minutes."
+    },
+    {
       "id": "audit_68a01b39-9d7e-4c4c-b352-6c75c82965fa",
       "adminId": "system",
       "action": "admin_pin_verified",
