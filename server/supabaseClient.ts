@@ -1004,6 +1004,19 @@ export async function listCaptainRecordsByCohort(filter: CaptainCohortFilter): P
 }
 
 /**
+ * List ALL captain records, newest first. Used by GET /api/captains —
+ * the role filter runs in memory in server.ts (roster-style), because
+ * stored college/department display names do not equal canonical
+ * resolver names, so no SQL cohort filter is applied here.
+ */
+export async function listAllCaptainRecords(): Promise<CaptainRecord[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('captain_records').select('*').order('applied_at', { ascending: false });
+  throwIfError(error, 'listAllCaptainRecords');
+  return ((data ?? []) as CaptainRow[]).map(toCaptain);
+}
+
+/**
  * Approved captains for one exact group — the 2-per-section quota check (`getApprovedCaptainsForGroup()`).
  * WARNING: `filter.college` / `filter.department` must be the EXACT STORED
  * display names (e.g. "Dhaka Polytechnic Institute (DPI), Tejgaon"), NOT

@@ -185,6 +185,7 @@ interface AppContextType {
   
   // Class Captain Verification Workflow
   applications: CaptainApplication[];
+  loadCaptainApplications: () => Promise<boolean>;
   submitCaptainApplication: (data: Partial<CaptainApplication>) => Promise<boolean>;
   teacherEndorseApplication: (
     appId: string, 
@@ -664,6 +665,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (retryTimer) clearTimeout(retryTimer);
     };
   }, [isLoggedIn, userProfile.accountType, authToken, currentTeacherProfile?.id]);
+
+  // Captain applications used to live in this device's localStorage only,
+  // so the Admin and the Guide Teacher — on their own devices — never saw
+  // requests submitted on a student's device, and the admin Captains tab
+  // showed (0). Load the server list whenever a session is active. This
+  // also runs on session restore (app reopen with a stored token), not
+  // just on a fresh login. For students it also refreshes their own
+  // captain status from the server record, so an admin approval shows up
+  // without a re-login.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    void loadCaptainApplications();
+    // loadCaptainApplications is defined below; the effect callback only
+    // runs after the render completes, so the reference is initialized.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn, authToken, userProfile.accountType, currentTeacherProfile?.id]);
+
+  // Student self-refresh: when the Profile or Captain Verification
+  // screen opens, reload the student's own record from the server so the
+  // displayed role/status cannot go stale after an admin decision.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    if (userProfile.accountType !== 'student' && userProfile.accountType !== 'class_captain') return;
+    if (activeScreen !== 'profile' && activeScreen !== 'captain_verification') return;
+    void loadCaptainApplications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeScreen]);
 
   const refreshAcademicFeed = async () => {
     try {
@@ -1519,6 +1547,88 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ).length;
   };
 
+  // Guard against concurrent/duplicate in-flight loads of the server
+  // captain-application list (the session trigger effect and the
+  // post-mutation refreshes can otherwise fire at the same time).
+  const captainApplicationsLoadInFlight = useRef(false);
+
+  // Load captain applications from the server (`GET /api/captains`,
+  // Bearer session token; role gating is server-side: admin sees all,
+  // teacher sees own cohort, student sees own record only). Merge rule:
+  // SERVER ROWS WIN by id; a LOCAL row with status `Pending` (e.g. an
+  // offline submit) or `Approved` that the server does not have yet is
+  // kept so it still shows. For students the own server record also
+  // refreshes the profile (role + verification status). On any failure
+  // (non-OK, network error) the local cache is kept silently — the list
+  // is never wiped by a failed load, and a failed load never logs the
+  // user out.
+  const loadCaptainApplications = async (): Promise<boolean> => {
+    if (captainApplicationsLoadInFlight.current) return false;
+    const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+    if (!tokenToUse) return false;
+    captainApplicationsLoadInFlight.current = true;
+    try {
+      const res = await apiFetch('/api/captains', {
+        headers: { Authorization: `Bearer ${tokenToUse}` }
+      });
+      if (!res.ok) {
+        console.warn('Captain applications load failed:', res.status);
+        return false;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!data.success || !Array.isArray(data.applications)) {
+        console.warn('Captain applications load failed: unexpected response.');
+        return false;
+      }
+      const serverApps = data.applications as CaptainApplication[];
+      const serverIds = new Set(serverApps.map(app => app.id));
+      setApplications(prev => {
+        // Server rows win by id. Keep a local row the server has not seen
+        // yet when it is still Pending (e.g. an offline submit) or already
+        // Approved — a failed or empty load must never wipe or downgrade
+        // the local state.
+        const keptLocal = prev.filter(
+          app =>
+            !serverIds.has(app.id) &&
+            (app.status === 'Pending' || app.status === 'Approved')
+        );
+        return [...serverApps, ...keptLocal];
+      });
+      // Student self-refresh: if the server returned this student's own
+      // record, refresh the profile from it, so an admin approval (or
+      // rejection) shows up without a re-login. Only applies when a server
+      // record actually exists and differs from the local profile; a
+      // failed or empty load never touches the profile, and a failed load
+      // never logs the user out (v1.0.22 rule: only 401/403 logs out).
+      if (
+        userProfile.accountType === 'student' ||
+        userProfile.accountType === 'class_captain'
+      ) {
+        const ownRecord = serverApps.find(app => app.studentId === userProfile.id);
+        if (ownRecord) {
+          const nextAccountType = ownRecord.status === 'Approved' ? 'class_captain' : 'student';
+          const nextStatus = ownRecord.status;
+          if (
+            userProfile.accountType !== nextAccountType ||
+            userProfile.captainVerificationStatus !== nextStatus
+          ) {
+            setUserProfile(prev => ({
+              ...prev,
+              accountType: nextAccountType,
+              captainVerificationStatus: nextStatus
+            }));
+          }
+        }
+      }
+      return true;
+    } catch (err) {
+      console.warn('Captain applications load failed:', err);
+      return false;
+    } finally {
+      captainApplicationsLoadInFlight.current = false;
+    }
+  };
+
   // Push one captain record to the server (`POST /api/captains/sync`).
   // Captain applications used to live in this device's local state only, so
   // the Guide Teacher and the Admin — on their own devices — never saw
@@ -1636,6 +1746,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return a;
         }));
         showToast('Application marked as Rejected by Teacher.');
+        // Reconcile with the server state after the decision.
+        void loadCaptainApplications();
         return { success: true, message: data.message };
       }
 
@@ -1677,6 +1789,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       showToast(data.endorsement?.teacherName ? `Approved by ${data.endorsement.teacherName} — student is now a Class Captain.` : 'Captain approved.');
+      // Reconcile with the server state after the decision.
+      void loadCaptainApplications();
       return { success: true, message: data.message };
     } catch (e) {
       return { success: false, message: 'Could not contact teacher verification service.' };
@@ -1749,6 +1863,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     showToast(`Approved ${target.studentName} as official Class Captain.`);
+    // Reconcile with the server state after the decision.
+    void loadCaptainApplications();
     return { success: true, message: 'Class Captain approved successfully.' };
   };
 
@@ -1796,6 +1912,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     showToast('Application marked as Rejected.');
+    // Reconcile with the server state after the decision.
+    void loadCaptainApplications();
     return true;
   };
 
@@ -1837,6 +1955,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     showToast(`Revoked Class Captain status for ${target.studentName}.`);
+    // Reconcile with the server state after the decision.
+    void loadCaptainApplications();
     return true;
   };
 
@@ -2797,6 +2917,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isTeacherContactAccessLocked,
         updateTeacherContactAccessLock,
         applications,
+        loadCaptainApplications,
         submitCaptainApplication,
         teacherEndorseApplication,
         adminApproveApplication,

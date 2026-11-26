@@ -17,6 +17,7 @@ export const CaptainVerificationScreen: React.FC = () => {
     userProfile, 
     accountType, 
     applications, 
+    loadCaptainApplications,
     submitCaptainApplication, 
     teacherEndorseApplication, 
     getVerifiedCaptainsCount,
@@ -29,6 +30,7 @@ export const CaptainVerificationScreen: React.FC = () => {
   // sent straight to the semester's Guide Teacher and the Institute Admin.
   const [applyError, setApplyError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
 
   // Teacher Endorsement form state
   const [teacherSelectedAppId, setTeacherSelectedAppId] = useState<string>('');
@@ -75,6 +77,21 @@ export const CaptainVerificationScreen: React.FC = () => {
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // "Check Request Status" must hit the server, not just re-read local
+  // state: after an admin decision the local record is stale until the
+  // server list is reloaded. The loader refreshes the application list
+  // and the student's own profile (role + verification status); switching
+  // to the status tab afterwards shows the updated status.
+  const handleCheckStatus = async () => {
+    setIsCheckingStatus(true);
+    try {
+      await loadCaptainApplications();
+    } finally {
+      setIsCheckingStatus(false);
+      setActiveTab('status');
     }
   };
 
@@ -261,10 +278,11 @@ export const CaptainVerificationScreen: React.FC = () => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('status')}
-                  className="w-full py-3 rounded-xl font-bold text-xs text-white bg-brand-blue hover:bg-blue-700 shadow-xs transition-colors cursor-pointer"
+                  onClick={() => void handleCheckStatus()}
+                  disabled={isCheckingStatus}
+                  className="w-full py-3 rounded-xl font-bold text-xs text-white bg-brand-blue hover:bg-blue-700 shadow-xs transition-colors cursor-pointer disabled:opacity-60"
                 >
-                  Check Request Status
+                  {isCheckingStatus ? 'Checking…' : 'Check Request Status'}
                 </button>
               </div>
             ) : myApplication?.status === 'Approved' ? (

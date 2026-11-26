@@ -78,6 +78,7 @@ import type {
   RoutinePeriod,
   RoutinePublicationStatus,
   RoutineNotificationRecord,
+  CaptainApplication,
   CaptainRecord,
   AcademicCommunity,
   CommunityMembershipRecord,
@@ -185,6 +186,7 @@ import {
   insertRoutine,
   insertStudent,
   isUniqueViolationError,
+  listAllCaptainRecords,
   listAttendanceSheets,
   listCampusNotices,
   listCaptainRecordsByCohort,
@@ -1381,7 +1383,16 @@ app.post('/api/auth/session', authRateLimiter, authIpRateLimiter, (req: Request,
     if (role === 'class_captain' && !canUseCaptainRole) {
       return res.status(403).json({ success: false, error: 'Class Captain access requires administrator approval.' });
     }
-    const safeRole: AccountType = role === 'class_captain' ? 'class_captain' : 'student';
+    // The minted role is derived from the PERSISTED student, not the
+    // client's requested role: a student whose captain application was
+    // approved (accountType class_captain + status Approved) gets a
+    // 'class_captain' session even when the client still sends the stale
+    // requested role 'student' (e.g. from a cached profile) — otherwise
+    // the client keeps showing Pending after the admin approved them.
+    // This only upgrades the role when the server record says Approved
+    // (canUseCaptainRole); requesting 'class_captain' without approval
+    // is still rejected with 403 above.
+    const safeRole: AccountType = role === 'class_captain' || canUseCaptainRole ? 'class_captain' : 'student';
     const session = createServerSession({
       userId: sessionUserId,
       role: safeRole,
@@ -13229,6 +13240,135 @@ app.delete('/api/routines/:id', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[Routines API] DELETE /api/routines/:id error:', err);
     return res.status(500).json({ success: false, error: 'Failed to delete routine period.' });
+  }
+});
+
+/**
+ * Map a stored CaptainRecord to the CaptainApplication shape the admin
+ * portal / teacher dashboard render. Fields are 1:1; `status` is cast
+ * to CaptainVerificationStatus and endorsement / decision / rejection
+ * pass through untouched. Optional record fields default to '' so the
+ * required CaptainApplication string fields are always present.
+ */
+function toCaptainApplication(record: CaptainRecord): CaptainApplication {
+  return {
+    id: record.id,
+    studentId: record.studentId,
+    studentName: record.studentName,
+    college: record.college,
+    department: record.department,
+    semester: record.semester,
+    shift: record.shift,
+    section: record.section,
+    boardRoll: record.boardRoll || '',
+    regNumber: record.regNumber || '',
+    phone: record.phone || '',
+    session: record.session || '',
+    status: record.status as CaptainApplication['status'],
+    appliedAt: record.appliedAt,
+    verificationFormUrl: record.verificationFormUrl,
+    verificationFormName: record.verificationFormName,
+    teacherEndorsement: record.teacherEndorsement,
+    adminDecision: record.adminDecision,
+    rejectionReason: record.rejectionReason
+  };
+}
+
+/**
+ * Teacher cohort filter for GET /api/captains (roster-style, in memory).
+ * The teacher's scope comes from the server-side teacher record
+ * (`serverTeachers`, never the client): college + department matched by
+ * canonical id via resolveStrictCollege()/resolveStrictTechnology()
+ * — the stored display names do NOT equal the canonical names (e.g.
+ * stored "Dhaka Polytechnic Institute (DPI), Tejgaon" vs canonical
+ * "Dhaka Polytechnic Institute"), so an exact-name match would
+ * silently drop records, exactly as GET /api/roster documents. Then
+ * semester must be one the teacher teaches (when semestersTaught is
+ * set), shift must match unless the teacher covers 'Both', and section
+ * must be one the teacher teaches (when sectionsTaught is set). When
+ * no server teacher record exists, the session's own college /
+ * department are used and the semester/shift/section checks are
+ * skipped. If neither source resolves to a known college/department,
+ * nothing is returned (fail closed — never leak another cohort).
+ */
+function filterCaptainRecordsForTeacher(records: CaptainRecord[], session: ServerSession): CaptainRecord[] {
+  const teacher = serverTeachers.get(session.userId);
+  const teacherCollege = resolveStrictCollege(teacher?.college ?? session.college ?? null);
+  const teacherDepartment = resolveStrictTechnology(teacher?.department ?? session.department ?? null);
+  if (!teacherCollege || !teacherDepartment) return [];
+  const semestersTaught = teacher?.semestersTaught ?? [];
+  const teacherShift = teacher?.shift;
+  const sectionsTaught = teacher?.sectionsTaught ?? [];
+  return records.filter((record) => {
+    const recordCollege = resolveStrictCollege(record.college);
+    const recordDepartment = resolveStrictTechnology(record.department);
+    if (!recordCollege || !recordDepartment) return false;
+    if (recordCollege.id !== teacherCollege.id || recordDepartment.id !== teacherDepartment.id) return false;
+    if (semestersTaught.length > 0 && !semestersTaught.includes(Number(record.semester))) return false;
+    if (teacherShift && teacherShift !== 'Both' && record.shift !== teacherShift) return false;
+    if (sectionsTaught.length > 0 && !sectionsTaught.includes(record.section)) return false;
+    return true;
+  });
+}
+
+/**
+ * 14G. LIST CAPTAIN APPLICATIONS (`GET /api/captains`)
+ * - The read endpoint for the admin portal Captains tab (and the
+ *   teacher dashboard / student's own application view): there was
+ *   previously no GET for captain records, so the client could never
+ *   load applications the admin had decided on.
+ * - Phase 4 read pattern (copied from GET /api/communities): tries
+ *   Supabase (Postgres) first via listAllCaptainRecords(), falling
+ *   back to the JSON store (academicStore.captainRecords) on missing
+ *   env or any query error — the route never crashes for a DB error
+ *   and the response shape is identical either way.
+ * - Role gating is server-side, from the session only: `system_admin`
+ *   and the sub-admin roles in ADMIN_ROLES see ALL records; `teacher`
+ *   sees only their own cohort (filterCaptainRecordsForTeacher,
+ *   in-memory by canonical college/department id, roster-style);
+ *   `student` / `class_captain` see only records whose studentId is
+ *   their own userId; any other role gets 403.
+ */
+app.get('/api/captains', async (req: Request, res: Response) => {
+  try {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Valid academic session required.' });
+    }
+
+    // Supabase first; any Postgres error falls back to the JSON store.
+    let records: CaptainRecord[];
+    if (isSupabaseConfigured()) {
+      try {
+        records = await listAllCaptainRecords();
+      } catch (err) {
+        console.warn('[Captains List] Supabase read failed, falling back to JSON store:', err);
+        records = academicStore.captainRecords;
+      }
+    } else {
+      records = academicStore.captainRecords;
+    }
+
+    // Server-side role gating, applied identically to both sources.
+    let visible: CaptainRecord[];
+    if (session.role === 'system_admin' || (ADMIN_ROLES as string[]).includes(session.role)) {
+      visible = records;
+    } else if (session.role === 'teacher') {
+      visible = filterCaptainRecordsForTeacher(records, session);
+    } else if (session.role === 'student' || session.role === 'class_captain') {
+      visible = records.filter((record) => record.studentId === session.userId);
+    } else {
+      return res.status(403).json({ success: false, error: 'Forbidden: Your role is not authorized to view captain applications.' });
+    }
+
+    const applications = visible
+      .map(toCaptainApplication)
+      .sort((a, b) => (Date.parse(b.appliedAt) || 0) - (Date.parse(a.appliedAt) || 0));
+
+    return res.status(200).json({ success: true, applications });
+  } catch (err) {
+    console.error('[Captains List] Error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to retrieve captain applications.' });
   }
 });
 

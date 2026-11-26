@@ -218,85 +218,6 @@ export const SettingsScreen: React.FC = () => {
         </button>
       </div>
 
-      {/* Delete my account */}
-      <div className="bg-surface rounded-2xl border border-rose-200 p-4 shadow-xs space-y-3">
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-          <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-            <Trash2 className="w-4 h-4" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-text-primary">{lang === 'bn' ? 'আমার অ্যাকাউন্ট মুছে ফেলুন' : 'Delete my account'}</h2>
-          </div>
-        </div>
-
-        {deleteQueued ? (
-          <div className="p-3 rounded-xl bg-teal-50 border border-teal-200 text-teal-900 flex items-start gap-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-teal-600 mt-px" />
-            <p className="text-xs leading-relaxed">
-              {lang === 'bn'
-                ? 'আপনার অ্যাকাউন্ট মুছে ফেলার অনুরোধ সারিতে গেছে। একজন অ্যাডমিন এটি প্রক্রিয়া করবেন এবং আপনার ব্যক্তিগত ডেটা পুরোপুরি মুছে ফেলা হবে। শুধু নামবিহীন একাডেমিক রেকর্ড রাখা হবে।'
-                : 'Your account deletion request has been queued. An admin will process it and your personal data will be hard-erased. Only anonymised academic records will be kept.'}
-            </p>
-          </div>
-        ) : (
-          <>
-            <p className="text-[11px] leading-relaxed text-slate-600">
-              {lang === 'bn'
-                ? 'মুছে ফেলা হলে আপনার ব্যক্তিগত ডেটা — নাম, বোর্ড রোল, রেজিস্ট্রেশন নম্বর, ফোন নম্বর, ইমেইল ঠিকানা, PIN হ্যাশ ও প্রোফাইল — পুরোপুরি মুছে ফেলা হয়। শুধু নামবিহীন একাডেমিক রেকর্ড রাখা হয়। মুছে ফেলা স্থায়ী।'
-                : 'When deleted, your personal data — name, board roll, registration number, phone number, email address, PIN hash and profile — is hard-erased. Only anonymised academic records are kept. Deletion is permanent.'}
-            </p>
-            {deleteError && (
-              <div role="alert" className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{deleteError}</span>
-              </div>
-            )}
-            {showDeleteConfirm ? (
-              <div className="space-y-2">
-                <p className="text-xs font-bold text-rose-700">
-                  {lang === 'bn' ? 'আপনি কি নিশ্চিত যে আপনার অ্যাকাউন্ট মুছে ফেলতে চান? এটি পূর্বাবস্থায় ফেরানো যাবে না।' : 'Are you sure you want to delete your account? This cannot be undone.'}
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteAccount()}
-                    disabled={deleteSubmitting}
-                    className="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-60"
-                  >
-                    {deleteSubmitting
-                      ? (lang === 'bn' ? 'পাঠানো হচ্ছে…' : 'Sending…')
-                      : (lang === 'bn' ? 'হ্যাঁ, মুছে ফেলার অনুরোধ করুন' : 'Yes, request deletion')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowDeleteConfirm(false)}
-                    className="flex-1 py-2 px-3 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer"
-                  >
-                    {lang === 'bn' ? 'বাতিল' : 'Cancel'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirm(true)}
-                className="w-full py-2 px-3 rounded-xl border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>{lang === 'bn' ? 'আমার অ্যাকাউন্ট মুছে ফেলুন' : 'Delete my account'}</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setActiveScreen('delete_account')}
-              className="w-full text-center text-[11px] font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
-            >
-              {lang === 'bn' ? 'অথবা সাইন ইন ছাড়া মুছে ফেলার পাতাটি খুলুন' : 'Or open the public deletion page (no sign-in needed)'}
-            </button>
-          </>
-        )}
-      </div>
-
       {/* Account Type Card (Strict Role Separation) */}
       <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
         <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -572,6 +493,85 @@ export const SettingsScreen: React.FC = () => {
       {/* About Applet */}
       <div className="p-4 bg-slate-100/70 rounded-2xl text-center space-y-1 text-slate-500 text-xs">
         <div className="font-bold text-text-primary">DiplomaMate {currentVersionLabel()}</div>
+      </div>
+
+      {/* Delete my account */}
+      <div className="bg-surface rounded-2xl border border-rose-200 p-4 shadow-xs space-y-3">
+        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+          <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+            <Trash2 className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-text-primary">{lang === 'bn' ? 'আমার অ্যাকাউন্ট মুছে ফেলুন' : 'Delete my account'}</h2>
+          </div>
+        </div>
+
+        {deleteQueued ? (
+          <div className="p-3 rounded-xl bg-teal-50 border border-teal-200 text-teal-900 flex items-start gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-teal-600 mt-px" />
+            <p className="text-xs leading-relaxed">
+              {lang === 'bn'
+                ? 'আপনার অ্যাকাউন্ট মুছে ফেলার অনুরোধ সারিতে গেছে। একজন অ্যাডমিন এটি প্রক্রিয়া করবেন এবং আপনার ব্যক্তিগত ডেটা পুরোপুরি মুছে ফেলা হবে। শুধু নামবিহীন একাডেমিক রেকর্ড রাখা হবে।'
+                : 'Your account deletion request has been queued. An admin will process it and your personal data will be hard-erased. Only anonymised academic records will be kept.'}
+            </p>
+          </div>
+        ) : (
+          <>
+            <p className="text-[11px] leading-relaxed text-slate-600">
+              {lang === 'bn'
+                ? 'মুছে ফেলা হলে আপনার ব্যক্তিগত ডেটা — নাম, বোর্ড রোল, রেজিস্ট্রেশন নম্বর, ফোন নম্বর, ইমেইল ঠিকানা, PIN হ্যাশ ও প্রোফাইল — পুরোপুরি মুছে ফেলা হয়। শুধু নামবিহীন একাডেমিক রেকর্ড রাখা হয়। মুছে ফেলা স্থায়ী।'
+                : 'When deleted, your personal data — name, board roll, registration number, phone number, email address, PIN hash and profile — is hard-erased. Only anonymised academic records are kept. Deletion is permanent.'}
+            </p>
+            {deleteError && (
+              <div role="alert" className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+            {showDeleteConfirm ? (
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-rose-700">
+                  {lang === 'bn' ? 'আপনি কি নিশ্চিত যে আপনার অ্যাকাউন্ট মুছে ফেলতে চান? এটি পূর্বাবস্থায় ফেরানো যাবে না।' : 'Are you sure you want to delete your account? This cannot be undone.'}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteAccount()}
+                    disabled={deleteSubmitting}
+                    className="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {deleteSubmitting
+                      ? (lang === 'bn' ? 'পাঠানো হচ্ছে…' : 'Sending…')
+                      : (lang === 'bn' ? 'হ্যাঁ, মুছে ফেলার অনুরোধ করুন' : 'Yes, request deletion')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 py-2 px-3 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full py-2 px-3 rounded-xl border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{lang === 'bn' ? 'আমার অ্যাকাউন্ট মুছে ফেলুন' : 'Delete my account'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setActiveScreen('delete_account')}
+              className="w-full text-center text-[11px] font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
+            >
+              {lang === 'bn' ? 'অথবা সাইন ইন ছাড়া মুছে ফেলার পাতাটি খুলুন' : 'Or open the public deletion page (no sign-in needed)'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
