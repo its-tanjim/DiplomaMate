@@ -180,6 +180,24 @@
   "deletedAccountIds": [],
   "adminAuditLogs": [
     {
+      "id": "audit_23a84db9-6b9a-4aff-918f-7600c88f4ec6",
+      "adminId": "sysadmin_1792821774886",
+      "action": "admin_login_success",
+      "targetId": "sysadmin_1792821774886",
+      "targetName": "its.tanjim.06@gmail.com",
+      "timestamp": "2026-11-26T19:34:35.728Z",
+      "details": "Administrator signed in."
+    },
+    {
+      "id": "audit_eb0eee38-88e1-4ac3-a60a-6f89ff86fa22",
+      "adminId": "system",
+      "action": "admin_pin_verified",
+      "targetId": "admin-pin-gate",
+      "targetName": "Admin Panel PIN",
+      "timestamp": "2026-11-26T19:34:14.821Z",
+      "details": "Admin panel PIN verified; login form unlocked for 15 minutes."
+    },
+    {
       "id": "audit_60ae5454-94d7-43ad-97d8-835938dfba5b",
       "adminId": "system",
       "action": "admin_pin_verified",
