@@ -1104,10 +1104,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           apiFetch('/api/admin/login', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
-              ...(pinToken ? { 'x-admin-pin-token': pinToken } : {})
+              'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ email, password })
+            body: JSON.stringify({ email, password, ...(pinToken ? { pinToken } : {}) })
           }),
         { onRetry: options?.onRetry }
       );
@@ -1140,10 +1139,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const response = await apiFetch('/api/admin/bootstrap', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          ...(pinToken ? { 'x-admin-pin-token': pinToken } : {})
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ bootstrapToken, name, email, password })
+        body: JSON.stringify({ bootstrapToken, name, email, password, ...(pinToken ? { pinToken } : {}) })
       });
       const data = await response.json();
       if (!response.ok || !data.success || !data.sessionToken || !data.admin) {

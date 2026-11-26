@@ -252,7 +252,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     res.vary('Origin');
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, x-admin-pin-token');
     if (req.method === 'OPTIONS') return res.sendStatus(204);
   }
   next();
@@ -1834,7 +1834,8 @@ app.post('/api/auth/logout', (req: Request, res: Response) => {
 //
 // The admin login form is hidden behind a PIN: the client must first pass
 // POST /api/admin/pin-verify and present the short-lived pin session token
-// (header `x-admin-pin-token`) to POST /api/admin/login or
+// (pinToken in the JSON body; the `x-admin-pin-token` header is also still
+// accepted) to POST /api/admin/login or
 // POST /api/admin/bootstrap. The PIN itself comes ONLY from the
 // ADMIN_PANEL_PIN env var — there is no default PIN and none is hardcoded.
 //
