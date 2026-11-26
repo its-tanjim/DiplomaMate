@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { ShieldCheck, UserCheck, Bell, GraduationCap, Users, BookOpen } from 'lucide-react';
+import { ShieldCheck, UserCheck, Bell, GraduationCap, Users, BookOpen, Settings } from 'lucide-react';
 
 export const MobileHeader: React.FC = () => {
   const { 
@@ -128,6 +128,16 @@ export const MobileHeader: React.FC = () => {
             {pendingRemindersCount > 0 && (
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-500" />
             )}
+          </button>
+
+          {/* Settings */}
+          <button
+            onClick={() => setActiveScreen('settings')}
+            className={`min-h-10 min-w-9 p-2 rounded-xl text-white hover:text-white hover:bg-white/15 transition-colors flex items-center justify-center ${activeScreen === 'settings' ? 'bg-white text-brand-navy' : ''}`}
+            aria-label="Settings"
+            title="Settings"
+          >
+            <Settings aria-hidden="true" className="w-4 h-4" />
           </button>
         </div>
       </div>

@@ -24,10 +24,8 @@ import {
   Building2, 
   GraduationCap, 
   Layers, 
-  Phone,
   Mail,
-  Calendar,
-  Settings as SettingsIcon
+  Calendar
 } from 'lucide-react';
 
 export const ProfileScreen: React.FC = () => {
@@ -35,8 +33,6 @@ export const ProfileScreen: React.FC = () => {
     userProfile, 
     setUserProfile, 
     accountType, 
-    isTeacherContactUnlocked,
-    isTeacherContactAccessLocked,
     isServerVerifiedAdmin,
     logout, 
     setActiveScreen,
@@ -72,14 +68,6 @@ export const ProfileScreen: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveScreen('settings')}
-              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
-              aria-label="Settings"
-              title="Settings"
-            >
-              <SettingsIcon aria-hidden="true" className="w-4 h-4" />
-            </button>
             {!isEditing && (
               <button
                 onClick={() => {
@@ -192,34 +180,6 @@ export const ProfileScreen: React.FC = () => {
               <span>Admin Review Portal</span>
             </button>
           )}
-        </div>
-      </div>
-
-      {/* Teacher Contact access status */}
-      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-teal-50 text-brand-teal flex items-center justify-center font-bold">
-              <Phone aria-hidden="true" className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-text-primary">Teacher's Contact Access</h3>
-              <p className="text-[11px] text-slate-500">
-                {isTeacherContactUnlocked
-                  ? isTeacherContactAccessLocked && userProfile.isTeacherContactUnlocked
-                    ? 'Lifetime access active'
-                    : 'Free and available'
-                  : 'Access restricted by administrator'}
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setActiveScreen('teachers')}
-            className="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer bg-teal-50 text-brand-teal border border-teal-200 hover:bg-teal-100"
-          >
-            Open Directory
-          </button>
         </div>
       </div>
 

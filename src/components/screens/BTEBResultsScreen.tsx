@@ -1132,23 +1132,6 @@ export const BTEBResultsScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Persistent Diploma-only warning — always visible above the result.
-            The viewer is a cross-origin iframe, so DiplomaMate cannot read
-            inside the page to check which exam is shown; the student must
-            check the exam name at the top of the result themselves. */}
-        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-xs space-y-1.5" role="alert">
-          <p className="text-xs font-bold text-amber-950 flex items-start gap-2">
-            <AlertTriangle aria-hidden="true" className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <span>Diploma in Engineering result only — if this page shows HSC / BMT, SSC (Vocational) or any other exam, it is NOT your result.</span>
-          </p>
-          <p className="text-xs text-amber-900/90 leading-relaxed">
-            This page was opened with the Diploma in Engineering filter, but DiplomaMate cannot see inside it to double-check — please look at the exam name at the top of the result below. If it is not Diploma in Engineering, use “Open Official BTEB” above and check on BTEB&apos;s own portal.
-          </p>
-          <p className="text-xs text-amber-900/90 leading-relaxed" lang="bn">
-            শুধু Diploma in Engineering এর ফলাফল দেখুন — নিচে HSC / BMT বা SSC দেখালে সেটা আপনার ফলাফল নয়।
-          </p>
-        </div>
-
         {/* Source attribution — the result below comes from BTEB Result Zone */}
         <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4 shadow-xs space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
@@ -1161,26 +1144,6 @@ export const BTEBResultsScreen: React.FC = () => {
             </span>
           </div>
         </div>
-
-        {/* Unified-flow step 2 notice: opened automatically after a gazette miss */}
-        {zoneFallbackRoll && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-xs space-y-2.5">
-            <p className="text-xs text-amber-900 leading-relaxed">
-              DiplomaMate&apos;s gazette did not have a record for Board Roll <strong className="font-mono">{zoneFallbackRoll}</strong>, so the live result from <strong>BTEB Result Zone</strong> is shown here instead — still inside the app.
-            </p>
-            <p className="text-xs text-amber-900 leading-relaxed" lang="bn">
-              এই রোলের ফলাফল DiplomaMate-এর গেজেটে পাওয়া যায়নি, তাই BTEB Result Zone থেকে দেখানো হচ্ছে।
-            </p>
-            <button
-              type="button"
-              onClick={openOfficialBteb}
-              className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-sm font-bold shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <ShieldCheck aria-hidden="true" className="w-4 h-4" />
-              <span>Not here either? Check Official BTEB Result →</span>
-            </button>
-          </div>
-        )}
 
         {/* Roll input inside the app */}
         <form
@@ -1272,6 +1235,44 @@ export const BTEBResultsScreen: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Persistent Diploma-only warning — shown below the result so the
+            result itself comes first. The viewer is a cross-origin iframe,
+            so DiplomaMate cannot read inside the page to check which exam
+            is shown; the student must check the exam name at the top of
+            the result themselves. */}
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-xs space-y-1.5" role="alert">
+          <p className="text-xs font-bold text-amber-950 flex items-start gap-2">
+            <AlertTriangle aria-hidden="true" className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <span>Diploma in Engineering result only — if this page shows HSC / BMT, SSC (Vocational) or any other exam, it is NOT your result.</span>
+          </p>
+          <p className="text-xs text-amber-900/90 leading-relaxed">
+            This page was opened with the Diploma in Engineering filter, but DiplomaMate cannot see inside it to double-check — please look at the exam name at the top of the result below. If it is not Diploma in Engineering, use “Open Official BTEB” above and check on BTEB&apos;s own portal.
+          </p>
+          <p className="text-xs text-amber-900/90 leading-relaxed" lang="bn">
+            শুধু Diploma in Engineering এর ফলাফল দেখুন — নিচে HSC / BMT বা SSC দেখালে সেটা আপনার ফলাফল নয়।
+          </p>
+        </div>
+
+        {/* Unified-flow step 2 notice: opened automatically after a gazette miss */}
+        {zoneFallbackRoll && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-xs space-y-2.5">
+            <p className="text-xs text-amber-900 leading-relaxed">
+              DiplomaMate&apos;s gazette did not have a record for Board Roll <strong className="font-mono">{zoneFallbackRoll}</strong>, so the live result from <strong>BTEB Result Zone</strong> is shown here instead — still inside the app.
+            </p>
+            <p className="text-xs text-amber-900 leading-relaxed" lang="bn">
+              এই রোলের ফলাফল DiplomaMate-এর গেজেটে পাওয়া যায়নি, তাই BTEB Result Zone থেকে দেখানো হচ্ছে।
+            </p>
+            <button
+              type="button"
+              onClick={openOfficialBteb}
+              className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-sm font-bold shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <ShieldCheck aria-hidden="true" className="w-4 h-4" />
+              <span>Not here either? Check Official BTEB Result →</span>
+            </button>
+          </div>
+        )}
       </div>
     );
   }

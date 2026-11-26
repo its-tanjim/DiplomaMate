@@ -1,4 +1,9 @@
 import { apiFetch } from '../services/apiClient';
+import {
+  fetchWithNetworkRetry,
+  NETWORK_ERROR_MESSAGE,
+  type NetworkRetryOptions
+} from '../services/networkRetry';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { 
   StudentProfile, 
@@ -95,7 +100,7 @@ interface AppContextType {
   systemAdminProfile: SystemAdminProfile | null;
   isServerVerifiedAdmin: boolean;
   isCheckingAdminSession: boolean;
-  adminLogin: (email: string, password: string, pinToken?: string) => Promise<{ success: boolean; message: string }>;
+  adminLogin: (email: string, password: string, pinToken?: string, options?: Pick<NetworkRetryOptions, 'onRetry'>) => Promise<{ success: boolean; message: string }>;
   adminBootstrap: (bootstrapToken: string, name: string, email: string, password: string, pinToken?: string) => Promise<{ success: boolean; message: string }>;
   verifyServerAdminSession: () => Promise<boolean>;
 
@@ -1086,17 +1091,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const adminLogin = async (
     email: string,
     password: string,
-    pinToken?: string
+    pinToken?: string,
+    options?: Pick<NetworkRetryOptions, 'onRetry'>
   ): Promise<{ success: boolean; message: string }> => {
     try {
-      const response = await apiFetch('/api/admin/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(pinToken ? { 'x-admin-pin-token': pinToken } : {})
-        },
-        body: JSON.stringify({ email, password })
-      });
+      // Render free tier sleeps after ~15 min idle: the first login attempt
+      // often fails at the network level. Retry network failures only (2
+      // more attempts, ~3s then ~8s); HTTP error responses (401/403/...)
+      // are real answers and are never retried.
+      const response = await fetchWithNetworkRetry(
+        () =>
+          apiFetch('/api/admin/login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(pinToken ? { 'x-admin-pin-token': pinToken } : {})
+            },
+            body: JSON.stringify({ email, password })
+          }),
+        { onRetry: options?.onRetry }
+      );
       const data = await response.json();
       if (!response.ok || !data.success || !data.sessionToken || !data.admin) {
         return { success: false, message: data.error || 'System Administrator authentication failed.' };
@@ -1106,9 +1120,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: true, message: data.message || 'Authenticated as System Administrator.' };
         } catch (error) {
       console.error('Admin authentication error:', error);
+      // Never surface a raw JS error string (e.g. "Failed to fetch") to
+      // the admin: after all retries, report a human-readable message.
       return {
         success: false,
-        message: error instanceof Error ? error.message : 'Could not connect to administrator authentication server.'
+        message: NETWORK_ERROR_MESSAGE
       };
     }
   };

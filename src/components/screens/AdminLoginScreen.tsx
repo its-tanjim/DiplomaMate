@@ -1,4 +1,9 @@
 import { apiFetch } from '../../services/apiClient';
+import {
+  fetchWithNetworkRetry,
+  NETWORK_ERROR_MESSAGE,
+  NETWORK_RETRY_MESSAGE
+} from '../../services/networkRetry';
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -31,20 +36,35 @@ export const AdminLoginScreen: React.FC = () => {
   const [pinAttemptsRemaining, setPinAttemptsRemaining] = useState<number | null>(null);
   const [isCheckingPin, setIsCheckingPin] = useState<boolean>(true);
   const [isSubmittingPin, setIsSubmittingPin] = useState<boolean>(false);
+  // Shown while a PIN request is being retried after a network failure
+  // (Render free tier sleeps after ~15 min idle).
+  const [pinRetryNotice, setPinRetryNotice] = useState<string>('');
 
   // Login state
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  // Shown while the admin login request is being retried after a network
+  // failure; set via adminLogin's onRetry callback.
+  const [retryNotice, setRetryNotice] = useState<string>('');
 
   // First-Admin Bootstrap state (only usable when zero admins exist on server)
   const [bootstrapToken, setBootstrapToken] = useState<string>('');
   const [adminName, setAdminName] = useState<string>('Academic System Administrator');
 
   const refreshPinStatus = async () => {
+    setPinRetryNotice('');
     try {
-      const res = await apiFetch('/api/admin/pin-status');
+      // Retry network failures only (2 more attempts, ~3s then ~8s);
+      // HTTP error responses are real answers and are never retried.
+      // Fail-open behaviour unchanged: any failure still falls through
+      // to the old password form so a status failure can never lock
+      // the admin out.
+      const res = await fetchWithNetworkRetry(() => apiFetch('/api/admin/pin-status'), {
+        onRetry: () => setPinRetryNotice(NETWORK_RETRY_MESSAGE)
+      });
+      setPinRetryNotice('');
       const data = await res.json();
       if (data.success) {
         const enabled = Boolean(data.pinGateEnabled);
@@ -64,6 +84,7 @@ export const AdminLoginScreen: React.FC = () => {
         setPinUnlocked(true);
       }
     } catch {
+      setPinRetryNotice('');
       setPinGateEnabled(false);
       setPinUnlocked(true);
     } finally {
@@ -95,12 +116,22 @@ export const AdminLoginScreen: React.FC = () => {
       return;
     }
     setIsSubmittingPin(true);
+    setPinRetryNotice('');
     try {
-      const res = await apiFetch('/api/admin/pin-verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: pin.trim() })
-      });
+      // Retry network failures only (2 more attempts, ~3s then ~8s).
+      // HTTP error responses (wrong PIN, lockout) are real answers and
+      // are never retried — the 3-wrong-PINs = 5-hour lockout rule and
+      // the attempts-remaining count are unchanged.
+      const res = await fetchWithNetworkRetry(
+        () =>
+          apiFetch('/api/admin/pin-verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin: pin.trim() })
+          }),
+        { onRetry: () => setPinRetryNotice(NETWORK_RETRY_MESSAGE) }
+      );
+      setPinRetryNotice('');
       const data = await res.json();
       if (!res.ok || !data.success) {
         if (data.locked && typeof data.lockedUntil === 'number') {
@@ -117,7 +148,8 @@ export const AdminLoginScreen: React.FC = () => {
       setPinUnlocked(true);
       setPin('');
     } catch {
-      setPinError('Could not reach the server to verify the PIN.');
+      setPinRetryNotice('');
+      setPinError(NETWORK_ERROR_MESSAGE);
     } finally {
       setIsSubmittingPin(false);
     }
@@ -142,16 +174,23 @@ export const AdminLoginScreen: React.FC = () => {
     }
 
     setIsSubmitting(true);
+    setRetryNotice('');
     try {
-      const res = await adminLogin(email.trim(), password, pinToken || undefined);
+      const res = await adminLogin(email.trim(), password, pinToken || undefined, {
+        onRetry: () => setRetryNotice(NETWORK_RETRY_MESSAGE)
+      });
       if (!res.success) {
         if (res.message.includes('PIN verification is required')) {
           handlePinRequired();
           return;
         }
-        setErrorMessage(res.message);
+        // Defence in depth: never show a raw JS error string on screen.
+        setErrorMessage(
+          res.message.includes('Failed to fetch') ? NETWORK_ERROR_MESSAGE : res.message
+        );
       }
     } finally {
+      setRetryNotice('');
       setIsSubmitting(false);
     }
   };
@@ -221,7 +260,9 @@ export const AdminLoginScreen: React.FC = () => {
             {/* Admin panel PIN gate: password form stays hidden until the PIN is verified. */}
             {pinGateEnabled && !pinUnlocked ? (
               isCheckingPin ? (
-                <div className="p-4 text-center text-xs text-slate-500">Checking admin panel access...</div>
+                <div className="p-4 text-center text-xs text-slate-500">
+                  {pinRetryNotice || 'Checking admin panel access...'}
+                </div>
               ) : pinLockedUntil && pinLockedUntil > Date.now() ? (
                 <div className="space-y-3">
                   <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
@@ -254,6 +295,12 @@ export const AdminLoginScreen: React.FC = () => {
                       Enter the admin panel PIN to unlock the sign-in form. 3 wrong PINs lock the panel for 5 hours.
                     </p>
                   </div>
+
+                  {pinRetryNotice && (
+                    <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-sky-700 text-xs">
+                      {pinRetryNotice}
+                    </div>
+                  )}
 
                   {pinError && (
                     <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
@@ -328,6 +375,12 @@ export const AdminLoginScreen: React.FC = () => {
                 >
                   First-Admin Setup
                 </button>
+              </div>
+            )}
+
+            {retryNotice && (
+              <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-sky-700 text-xs">
+                {retryNotice}
               </div>
             )}
 
