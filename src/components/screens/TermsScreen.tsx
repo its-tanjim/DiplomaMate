@@ -14,7 +14,7 @@ const EN: { title: string; updated: string; intro: string[]; sections: Section[]
   updated: 'Last updated: 26 November 2026 · Version 2026-11-26',
   intro: [
     'These Terms of Service govern your use of DiplomaMate, an app for BTEB Diploma in Engineering students, teachers, class captains and administrators. By creating an account or using the app, you agree to these terms and to the Privacy Policy.',
-    'Operator: [PLACEHOLDER — legal name of the person or organisation that operates DiplomaMate]. Support / contact: [PLACEHOLDER — support contact email].'
+    'Operator: [PLACEHOLDER — legal name of the person or organisation that operates DiplomaMate]. Support / contact: its.tanjim.06@gmail.com.'
   ],
   sections: [
     {
@@ -120,8 +120,8 @@ const EN: { title: string; updated: string; intro: string[]; sections: Section[]
       h: '13. Contact',
       b: [
         'Operator: [PLACEHOLDER — legal name].',
-        'Support contact: [PLACEHOLDER — support contact email].',
-        'Privacy questions: see the Privacy Policy, or contact [PLACEHOLDER — privacy contact email].'
+        'Support contact: its.tanjim.06@gmail.com.',
+        'Privacy questions: see the Privacy Policy, or contact its.tanjim.06@gmail.com.'
       ]
     }
   ]
@@ -132,7 +132,7 @@ const BN: typeof EN = {
   updated: 'সর্বশেষ হালনাগাদ: ২৬ নভেম্বর ২০২৬ · সংস্করণ 2026-11-26',
   intro: [
     'এই সেবার শর্তাবলি DiplomaMate ব্যবহারের নিয়ম নির্ধারণ করে। DiplomaMate BTEB ডিপ্লোমা ইন ইঞ্জিনিয়ারিং শিক্ষার্থী, শিক্ষক, ক্লাস ক্যাপ্টেন এবং অ্যাডমিনদের জন্য একটি অ্যাপ। অ্যাকাউন্ট খুলে বা অ্যাপ ব্যবহার করে আপনি এই শর্তাবলি এবং গোপনীয়তা নীতিতে রাজি হচ্ছেন।',
-    'পরিচালক: [PLACEHOLDER — DiplomaMate পরিচালনাকারী ব্যক্তি বা প্রতিষ্ঠানের আইনি নাম]। সহায়তা / যোগাযোগ: [PLACEHOLDER — সহায়তা যোগাযোগের ইমেইল]।'
+    'পরিচালক: [PLACEHOLDER — DiplomaMate পরিচালনাকারী ব্যক্তি বা প্রতিষ্ঠানের আইনি নাম]। সহায়তা / যোগাযোগ: its.tanjim.06@gmail.com।'
   ],
   sections: [
     {
@@ -238,8 +238,8 @@ const BN: typeof EN = {
       h: '১৩. যোগাযোগ',
       b: [
         'পরিচালক: [PLACEHOLDER — আইনি নাম]।',
-        'সহায়তা যোগাযোগ: [PLACEHOLDER — সহায়তা যোগাযোগের ইমেইল]।',
-        'গোপনীয়তা বিষয়ক প্রশ্ন: গোপনীয়তা নীতি দেখুন, অথবা যোগাযোগ করুন [PLACEHOLDER — গোপনীয়তা যোগাযোগের ইমেইল]।'
+        'সহায়তা যোগাযোগ: its.tanjim.06@gmail.com।',
+        'গোপনীয়তা বিষয়ক প্রশ্ন: গোপনীয়তা নীতি দেখুন, অথবা যোগাযোগ করুন its.tanjim.06@gmail.com।'
       ]
     }
   ]

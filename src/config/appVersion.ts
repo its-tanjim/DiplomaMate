@@ -4,4 +4,4 @@
 // together on every release — the in-app update checker compares this
 // number with the latest release tag to tell the user a new APK is ready.
 export const APP_VERSION_NAME = '1.0';
-export const APP_VERSION_CODE = 13;
+export const APP_VERSION_CODE = 14;

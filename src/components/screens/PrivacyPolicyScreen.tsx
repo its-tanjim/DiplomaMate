@@ -18,7 +18,7 @@ const EN: { title: string; updated: string; intro: string[]; backupTitle: string
   updated: 'Last updated: 26 November 2026 · Version 2026-11-26',
   intro: [
     'DiplomaMate is an app for BTEB Diploma in Engineering students, teachers, class captains and administrators of polytechnic institutes in Bangladesh. It helps students follow their class routine, results, notes, assignments, jobs and community groups.',
-    'Data controller / operator: [PLACEHOLDER — legal name of the person or organisation that operates DiplomaMate]. Privacy contact: [PLACEHOLDER — privacy contact email]. If you have a question about your data, contact us at that address.',
+    'Data controller / operator: [PLACEHOLDER — legal name of the person or organisation that operates DiplomaMate]. Privacy contact: its.tanjim.06@gmail.com. If you have a question about your data, contact us at that address.',
     'This policy explains what data DiplomaMate collects, why, where it is stored, who can see it, how long it is kept, and how you can ask for it to be deleted.'
   ],
   backupTitle: 'Important — please read: your account data is copied to a public GitHub repository',
@@ -118,7 +118,7 @@ const EN: { title: string; updated: string; intro: string[]; backupTitle: string
       h: '10. Contact',
       b: [
         'Data controller / operator: [PLACEHOLDER — legal name].',
-        'Privacy contact email: [PLACEHOLDER — privacy contact email].',
+        'Privacy contact email: its.tanjim.06@gmail.com.',
         'For account deletion, use Settings → “Delete my account” or the public /delete-account page in the app.'
       ]
     }
@@ -130,7 +130,7 @@ const BN: typeof EN = {
   updated: 'সর্বশেষ হালনাগাদ: ২৬ নভেম্বর ২০২৬ · সংস্করণ 2026-11-26',
   intro: [
     'DiplomaMate বাংলাদেশের পলিটেকনিক ইনস্টিটিউটের BTEB ডিপ্লোমা ইন ইঞ্জিনিয়ারিং শিক্ষার্থী, শিক্ষক, ক্লাস ক্যাপ্টেন এবং অ্যাডমিনদের জন্য একটি অ্যাপ। এটি শিক্ষার্থীদের ক্লাস রুটিন, রেজাল্ট, নোট, অ্যাসাইনমেন্ট, চাকরি এবং কমিউনিটি গ্রুপ অনুসরণ করতে সাহায্য করে।',
-    'ডেটা নিয়ন্ত্রক / পরিচালক: [PLACEHOLDER — DiplomaMate পরিচালনাকারী ব্যক্তি বা প্রতিষ্ঠানের আইনি নাম]। গোপনীয়তা যোগাযোগ: [PLACEHOLDER — গোপনীয়তা যোগাযোগের ইমেইল]। আপনার ডেটা সম্পর্কে কোনো প্রশ্ন থাকলে ওই ঠিকানায় যোগাযোগ করুন।',
+    'ডেটা নিয়ন্ত্রক / পরিচালক: [PLACEHOLDER — DiplomaMate পরিচালনাকারী ব্যক্তি বা প্রতিষ্ঠানের আইনি নাম]। গোপনীয়তা যোগাযোগ: its.tanjim.06@gmail.com। আপনার ডেটা সম্পর্কে কোনো প্রশ্ন থাকলে ওই ঠিকানায় যোগাযোগ করুন।',
     'এই নীতিতে বলা হয়েছে DiplomaMate কী ডেটা সংগ্রহ করে, কেন করে, কোথায় সংরক্ষণ করে, কে দেখতে পারে, কতদিন রাখা হয় এবং কীভাবে মুছে ফেলার অনুরোধ করবেন।'
   ],
   backupTitle: 'গুরুত্বপূর্ণ — দয়া করে পড়ুন: আপনার অ্যাকাউন্টের ডেটা একটি পাবলিক GitHub রিপোজিটরিতে কপি করা হয়',
@@ -230,7 +230,7 @@ const BN: typeof EN = {
       h: '১০. যোগাযোগ',
       b: [
         'ডেটা নিয়ন্ত্রক / পরিচালক: [PLACEHOLDER — আইনি নাম]।',
-        'গোপনীয়তা যোগাযোগের ইমেইল: [PLACEHOLDER — গোপনীয়তা যোগাযোগের ইমেইল]।',
+        'গোপনীয়তা যোগাযোগের ইমেইল: its.tanjim.06@gmail.com।',
         'অ্যাকাউন্ট মুছতে Settings → “Delete my account” ব্যবহার করুন অথবা অ্যাপের পাবলিক /delete-account পাতা ব্যবহার করুন।'
       ]
     }
