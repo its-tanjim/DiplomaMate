@@ -161,8 +161,14 @@ import {
 // is served only through its authenticated download endpoint.
 import {
   isSupabaseConfigured,
+  anonymizeCaptainRecordsByStudentId,
+  anonymizeCommunitiesByCreator,
+  anonymizeCommunityMessagesBySenderId,
   deleteAttendanceSheetById,
+  deleteMembershipsByUserId,
   deleteRoutineById,
+  deleteStudentById,
+  deleteTeacherById,
   downloadCommunityFile,
   downloadStorageFile,
   getPendingTeacherEndorsement,
@@ -448,6 +454,7 @@ function requireAdminOrTeacher(req: Request, res: Response, next: NextFunction) 
 
 const PUBLIC_MUTATING_ROUTES = new Set([
   'POST /api/payments/verify', // payments disabled: handler returns 503
+  'POST /api/account/deletion-request', // public deletion form: PIN-verified internally
   'POST /api/teachers/register',
   'POST /api/students/register',
   'POST /api/students/sms/verify', // login step, challenge-authenticated internally
@@ -475,8 +482,9 @@ function requireAuthForMutations(req: Request, res: Response, next: NextFunction
 app.use(apiRateLimitMiddleware);
 app.use(requireAuthForMutations);
 
-// In-memory verified transaction storage to prevent replay attacks / duplicate payments
-const verifiedTransactions = new Set<string>();
+// (No verified-transactions store: the payment verification stub was
+// removed with the dead payment code — POST /api/payments/verify only
+// ever answers 503 now, so there is nothing to dedupe.)
 
 /**
  * ============================================================================
@@ -946,7 +954,10 @@ async function sendSms(phone: string, message: string): Promise<boolean> {
 export interface ServerTeacher {
   id: string;
   name: string;
-  email: string;
+  // Null when the teacher registered without an email address. Never
+  // fabricate one (the old `<phone-digits>@polytechnic.edu.bd` placeholder
+  // is removed — compliance audit §5).
+  email: string | null;
   phone: string;
   college: string;
   department: string;
@@ -968,6 +979,12 @@ export interface ServerTeacher {
   createdAt: string;
   adminNotes?: string;
   isRegisteredAccount?: boolean;
+  // Signup consent (compliance audit §5): recorded at registration from
+  // the client's consent checkbox. consentAt is the server timestamp, so
+  // it cannot be forged by the client.
+  consentAccepted?: boolean;
+  consentVersion?: string;
+  consentAt?: string;
 }
 
 // PBKDF2 helper for secure PIN hashing.
@@ -1048,6 +1065,35 @@ function sanitizeStudent(student: EnrolledStudent) {
     ...safeStudent,
     hasPin: Boolean(student.pinHash)
   };
+}
+
+// Signup consent fields, stored on account records (compliance audit §5).
+// ServerTeacher carries these as optional fields above; EnrolledStudent
+// carries them as an extension (that type lives in src/data/mockData.ts,
+// so student records take them via Object.assign instead of a type
+// change). Supabase has NO consent columns — checked against
+// supabase-schema-phase1.sql, supabase-migration-phase2.sql and
+// supabase-schema-phase4.sql, none of which defines a `consent_*` column
+// on `students` or `teacher_accounts` — so consent is JSON-store only and
+// must NOT be added to any Supabase row payload (no migration invented).
+interface ConsentFields {
+  consentAccepted?: boolean;
+  consentVersion?: string;
+  consentAt?: string;
+}
+
+const CONSENT_VERSION = '2026-11-26';
+
+function parseConsentFields(body: Record<string, unknown>): ConsentFields {
+  if (body.consentAccepted !== true && body.consentAccepted !== false) return {};
+  if (body.consentAccepted !== true) return { consentAccepted: false };
+  const version =
+    typeof body.consentVersion === 'string' && body.consentVersion.trim()
+      ? body.consentVersion.trim()
+      : CONSENT_VERSION;
+  // consentAt is stamped by the server at registration, never trusted
+  // from the client.
+  return { consentAccepted: true, consentVersion: version, consentAt: new Date().toISOString() };
 }
 
 function maskPhone(phone: string): string {
@@ -1134,73 +1180,16 @@ function areDepartmentsEquivalent(dept1?: string, dept2?: string): boolean {
 }
 
 /**
- * 1. BACKEND PAYMENT VERIFICATION (BDT 10 ONE-TIME LIFETIME ACCESS)
- * Verifies gateway transaction, enforces BDT 10 amount, and issues verified entitlement token.
+ * 1. BACKEND PAYMENT VERIFICATION — DISABLED (compliance audit §3).
+ * Payments are OFF permanently: no payment gateway is integrated, so this
+ * route only ever answers 503. The old verification body (field checks,
+ * BDT 10 enforcement, transaction dedupe, ENT_LIFETIME minting) was dead
+ * code behind the 503 return and is removed — it must never accept a
+ * payment again. Re-enable only as part of a real gateway integration.
+ * There is deliberately no env flag that can re-enable it.
  */
-app.post('/api/payments/verify', (req: Request, res: Response) => {
-  try {
-    // Payments are currently disabled: no payment gateway is integrated yet,
-    // so the previous verification stub must never accept a payment again.
-    // Re-enable only as part of a real gateway integration. There is
-    // deliberately no env flag that can re-enable the stub.
-    return res.status(503).json({ success: false, error: 'Payments are currently disabled' });
-    const { studentId, rollNumber, provider, transactionId, amount } = req.body;
-
-    if (!studentId || !rollNumber || !provider || !transactionId) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Missing required payment verification fields (studentId, rollNumber, provider, transactionId).' 
-      });
-    }
-
-    // Enforce exact BDT 10 fee
-    const numericAmount = Number(amount);
-    if (numericAmount !== 10) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Invalid payment amount. Teacher Contact lifetime access fee must be exactly BDT 10.' 
-      });
-    }
-
-    const cleanTxnId = String(transactionId).trim().toUpperCase();
-
-    // Prevent duplicate transaction replay
-    if (verifiedTransactions.has(cleanTxnId)) {
-      appendSystemAudit('payment_replay_blocked', cleanTxnId, String(rollNumber), `Duplicate ${provider} transaction rejected.`);
-      return res.status(409).json({ 
-        success: false, 
-        error: 'This transaction ID has already been redeemed and verified.' 
-      });
-    }
-
-    verifiedTransactions.add(cleanTxnId);
-    appendSystemAudit('payment_verified', cleanTxnId, String(rollNumber), `BDT 10 via ${provider} (student ${studentId}).`);
-    saveAcademicStore(academicStore);
-
-    const now = new Date();
-    const paidAt = `${now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    const receiptToken = `ENT_LIFETIME_${provider}_${cleanTxnId}_${Date.now()}`;
-
-    const paymentRecord = {
-      transactionId: cleanTxnId,
-      provider,
-      amount: 10,
-      currency: 'BDT',
-      paidAt,
-      verifiedByBackend: true,
-      receiptToken
-    };
-
-    return res.status(200).json({
-      success: true,
-      verified: true,
-      message: 'Payment successfully verified by backend. Lifetime access unlocked permanently.',
-      paymentRecord
-    });
-  } catch (error) {
-    console.error('Payment verification error:', error);
-    return res.status(500).json({ success: false, error: 'Internal payment verification failure' });
-  }
+app.post('/api/payments/verify', (_req: Request, res: Response) => {
+  return res.status(503).json({ success: false, error: 'Payments are currently disabled' });
 });
 
 /**
@@ -1224,7 +1213,9 @@ app.post('/api/teachers/register', authRateLimiter, authIpRateLimiter, async (re
       teachingSubjects, 
       semestersTaught, 
       shift, 
-      pin 
+      pin,
+      consentAccepted,
+      consentVersion
     } = req.body;
 
     if (!name || !phone || !college || !department || !pin) {
@@ -1262,7 +1253,9 @@ app.post('/api/teachers/register', authRateLimiter, authIpRateLimiter, async (re
     const newTeacher: ServerTeacher = {
       id: teacherId,
       name: name.trim(),
-      email: email ? email.trim() : `${phone.replace(/\D/g, '')}@polytechnic.edu.bd`,
+      // No email supplied = null. Never fabricate an address from the
+      // phone number (compliance audit §5).
+      email: email && String(email).trim() ? String(email).trim() : null,
       phone: phone.trim(),
       college: college.trim(),
       department: department.trim(),
@@ -1277,7 +1270,8 @@ app.post('/api/teachers/register', authRateLimiter, authIpRateLimiter, async (re
       failedPinAttempts: 0,
       lockoutUntil: null,
       createdAt: new Date().toISOString(),
-      isRegisteredAccount: true
+      isRegisteredAccount: true,
+      ...parseConsentFields({ consentAccepted, consentVersion })
     };
 
     serverTeachers.set(teacherId, newTeacher);
@@ -2323,7 +2317,7 @@ app.post('/api/teachers/login', authRateLimiter, authIpRateLimiter, async (req: 
     // exactly as today — login only ever searched serverTeachers).
     const findTeacherInJsonStore = (): ServerTeacher | undefined => {
       for (const t of serverTeachers.values()) {
-        if (t.phone.toLowerCase() === cleanIdentifier || t.email.toLowerCase() === cleanIdentifier) {
+        if (t.phone.toLowerCase() === cleanIdentifier || (t.email ?? '').toLowerCase() === cleanIdentifier) {
           return t;
         }
       }
@@ -2408,7 +2402,7 @@ app.post('/api/teachers/login', authRateLimiter, authIpRateLimiter, async (req: 
       userId: targetTeacher.id,
       role: 'teacher',
       name: targetTeacher.name,
-      email: targetTeacher.email,
+      email: targetTeacher.email ?? '',
       college: targetTeacher.college,
       department: targetTeacher.department
     });
@@ -5038,6 +5032,26 @@ app.delete('/api/admin/results/batches/:batchId', requireSystemAdmin, (req: Requ
  * - Enforces Teacher vs Student RBAC on Assignment Posting, Student Submissions, and Submission Inspection
  */
 
+// Account data-deletion request (compliance audit §7).
+// Created by the account holder (public PIN-verified form or in-app) and
+// decided by a system admin. Approving hard-erases the account's personal
+// data (see hardEraseAccountData); the request row itself keeps only the
+// board roll + name snapshot the admin needs to audit the decision — the
+// PIN is never stored here.
+export interface AccountDeletionRequest {
+  id: string;
+  accountId: string;
+  accountType: 'student' | 'teacher';
+  boardRoll: string;
+  accountName: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: string;
+  source: 'public-form' | 'in-app';
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewNote?: string;
+}
+
 interface PersistentAcademicStore {
   students: EnrolledStudent[];
   teacherAccounts: ServerTeacher[];
@@ -5054,6 +5068,7 @@ interface PersistentAcademicStore {
   communityMemberships: CommunityMembershipRecord[];
   communityMessages: CommunityMessageRecord[];
   communityReports: CommunityReportRecord[];
+  accountDeletionRequests: AccountDeletionRequest[];
   deletedAccountIds: string[];
   adminAuditLogs: AdminAuditEntry[];
   jobs: JobCircular[];
@@ -5200,85 +5215,13 @@ export function migrateAndValidateRoutineRecord(raw: any): {
 }
 
 function buildInitialAcademicStore(): PersistentAcademicStore {
-  // Seed 2 realistic recorded attendance sessions in Oct 2026 for Semester 6 Morning A1
-  const seedCohortStudents = MOCK_ENROLLED_STUDENTS.filter(
-    s => s.semester === 6 && s.shift === 'Morning' && s.section === 'A1'
-  );
-
-  const initialSheets: AttendanceSheet[] = [
-    {
-      id: 'att_seed_2026_10_19_66662_p1',
-      college: 'Dhaka Polytechnic Institute',
-      collegeId: 'clg_dhaka',
-      department: 'Computer Science and Technology (CST)',
-      departmentId: 'tech_computer',
-      semester: 6,
-      shift: 'Morning',
-      section: 'A1',
-      date: '2026-10-19',
-      subjectCode: '66662',
-      subjectName: 'Microprocessor & Interfacing',
-      periodLabel: 'Period 1 (08:00 AM - 08:45 AM)',
-      teacherId: 'tch_02',
-      teacherName: 'Engr. Shamima Nasrin',
-      entries: seedCohortStudents.map((st, idx) => ({
-        studentId: st.id,
-        studentName: st.name,
-        boardRoll: st.boardRoll,
-        classRoll: st.classRoll,
-        regNumber: st.regNumber,
-        status: idx === 3 ? 'absent' : 'present'
-      })),
-      createdAt: '2026-10-19T08:45:00.000Z',
-      updatedAt: '2026-10-19T08:45:00.000Z',
-      auditTrail: [
-        {
-          action: 'created',
-          performedBy: 'Engr. Shamima Nasrin',
-          performedById: 'tch_02',
-          performedByRole: 'teacher',
-          timestamp: '2026-10-19T08:45:00.000Z',
-          summary: 'Created attendance sheet (4 Present, 1 Absent, 0 Not Marked)'
-        }
-      ]
-    },
-    {
-      id: 'att_seed_2026_10_21_66662_p1',
-      college: 'Dhaka Polytechnic Institute',
-      collegeId: 'clg_dhaka',
-      department: 'Computer Science and Technology (CST)',
-      departmentId: 'tech_computer',
-      semester: 6,
-      shift: 'Morning',
-      section: 'A1',
-      date: '2026-10-21',
-      subjectCode: '66662',
-      subjectName: 'Microprocessor & Interfacing',
-      periodLabel: 'Period 1 (08:00 AM - 08:45 AM)',
-      teacherId: 'tch_02',
-      teacherName: 'Engr. Shamima Nasrin',
-      entries: seedCohortStudents.map((st, idx) => ({
-        studentId: st.id,
-        studentName: st.name,
-        boardRoll: st.boardRoll,
-        classRoll: st.classRoll,
-        regNumber: st.regNumber,
-        status: idx === 4 ? 'not_marked' : 'present'
-      })),
-      createdAt: '2026-10-21T08:45:00.000Z',
-      updatedAt: '2026-10-21T08:45:00.000Z',
-      auditTrail: [
-        {
-          action: 'created',
-          performedBy: 'Engr. Shamima Nasrin',
-          performedById: 'tch_02',
-          performedByRole: 'teacher',
-          timestamp: '2026-10-21T08:45:00.000Z',
-          summary: 'Created attendance sheet (4 Present, 0 Absent, 1 Not Marked)'
-        }
-      ]
-    }
-  ];
+  // No seeded attendance sheets (compliance audit §6).
+  // The previous two entries were invented Oct 2026 sessions for Semester
+  // 6 Morning A1 naming a real teacher and five (now removed) seed
+  // students, presented as genuine recorded attendance. Attendance now
+  // starts empty and is filled only by real teacher-recorded sheets.
+  // The wiring stays: attendanceSheets below still takes initialSheets.
+  const initialSheets: AttendanceSheet[] = [];
 
   const initialRoutines = INITIAL_ROUTINE.map(r => migrateAndValidateRoutineRecord(r).record);
 
@@ -5301,6 +5244,7 @@ function buildInitialAcademicStore(): PersistentAcademicStore {
     communityMemberships: [],
     communityMessages: [],
     communityReports: [],
+    accountDeletionRequests: [],
     deletedAccountIds: [],
     adminAuditLogs: [],
     // No seeded jobs: the old INITIAL_JOBS sample listings (job_01..job_06)
@@ -5407,6 +5351,13 @@ function loadAcademicStore(): PersistentAcademicStore {
         communityMemberships: Array.isArray(parsed.communityMemberships) ? parsed.communityMemberships : [],
         communityMessages: Array.isArray(parsed.communityMessages) ? parsed.communityMessages : [],
         communityReports: Array.isArray(parsed.communityReports) ? parsed.communityReports : [],
+        accountDeletionRequests: Array.isArray(parsed.accountDeletionRequests)
+          ? (parsed.accountDeletionRequests as AccountDeletionRequest[]).filter(
+              (r): r is AccountDeletionRequest =>
+                !!r && typeof r.id === 'string' && typeof r.accountId === 'string' &&
+                (r.status === 'pending' || r.status === 'approved' || r.status === 'rejected')
+            )
+          : [],
         deletedAccountIds: loadedDeletedAccountIds,
         adminAuditLogs: Array.isArray(parsed.adminAuditLogs) ? parsed.adminAuditLogs : [],
         jobs: loadedJobs,
@@ -5712,6 +5663,9 @@ app.post('/api/students/register', authRateLimiter, authIpRateLimiter, async (re
     }
     existingByRoll.isRegisteredAccount = true;
     setStudentPin(existingByRoll, pin);
+    // Consent is JSON-store only (no consent columns exist in Supabase) —
+    // see parseConsentFields.
+    Object.assign(existingByRoll, parseConsentFields(body));
     // Phase 4 write route 3: dual-write the re-registration (account
     // type / verification status / new PIN) to Postgres FIRST. A
     // Postgres failure only logs a warning — the JSON write below
@@ -5752,6 +5706,9 @@ app.post('/api/students/register', authRateLimiter, authIpRateLimiter, async (re
     isRegisteredAccount: true
   };
   setStudentPin(account, pin);
+  // Consent is JSON-store only (no consent columns exist in Supabase) —
+  // see parseConsentFields.
+  Object.assign(account, parseConsentFields(body));
   // Phase 4 write route 3: dual-write the new student to Postgres FIRST.
   // One board roll = one account, on the Postgres path too: a registered
   // Postgres row for this roll blocks the registration, and `board_roll`
@@ -5780,6 +5737,541 @@ app.post('/api/students/register', authRateLimiter, authIpRateLimiter, async (re
     message: role === 'class_captain' ? 'Account created; captain approval is pending.' : 'Student account created.',
     account: sanitizeStudent(account)
   });
+});
+
+// ============================================================================
+// ACCOUNT DATA-DELETION REQUESTS (compliance audit §7).
+//
+// Retention rule: an account's data is kept while the account exists and
+// is erased when the account is deleted (approved Q3 decision). The
+// account holder asks for deletion — either through the public form
+// (board roll + PIN, verified server-side) or in-app (own session) —
+// and a system admin approves or rejects it. Approval HARD-ERASES the
+// account's personal data from the JSON store and from Supabase, and
+// ANONYMISES the academic records that must be kept (attendance entries,
+// saved marks, submissions, captain records): rows stay, identifiers go.
+// The request row itself keeps only the board roll + name snapshot the
+// admin needs to audit the decision; the PIN is never stored here, and
+// audit entries for a deletion use the literal target name 'deleted' so
+// the name is not copied into the audit log as well.
+// ============================================================================
+
+const DELETED_ACCOUNT_LABEL = 'deleted';
+
+interface AccountErasureSummary {
+  accountRemoved: boolean;
+  attendanceEntriesAnonymised: number;
+  calculatorRecordsAnonymised: number;
+  submissionsAnonymised: number;
+  captainRecordsAnonymised: number;
+  notesAnonymised: number;
+  assignmentsAnonymised: number;
+  membershipsRemoved: number;
+  messagesAnonymised: number;
+  communitiesAnonymised: number;
+  noticesAnonymised: number;
+  reportsAnonymised: number;
+  teacherContactsRemoved: number;
+  endorsementsRemoved: number;
+  sessionsInvalidated: number;
+}
+
+function emptyErasureSummary(): AccountErasureSummary {
+  return {
+    accountRemoved: false,
+    attendanceEntriesAnonymised: 0,
+    calculatorRecordsAnonymised: 0,
+    submissionsAnonymised: 0,
+    captainRecordsAnonymised: 0,
+    notesAnonymised: 0,
+    assignmentsAnonymised: 0,
+    membershipsRemoved: 0,
+    messagesAnonymised: 0,
+    communitiesAnonymised: 0,
+    noticesAnonymised: 0,
+    reportsAnonymised: 0,
+    teacherContactsRemoved: 0,
+    endorsementsRemoved: 0,
+    sessionsInvalidated: 0
+  };
+}
+
+function queueDeletionRequest(
+  accountId: string,
+  accountType: 'student' | 'teacher',
+  boardRoll: string,
+  accountName: string,
+  source: 'public-form' | 'in-app'
+): { request: AccountDeletionRequest; created: boolean } {
+  const existing = academicStore.accountDeletionRequests.find(
+    r => r.accountId === accountId && r.status === 'pending'
+  );
+  if (existing) return { request: existing, created: false };
+  const request: AccountDeletionRequest = {
+    id: `delreq_${crypto.randomUUID()}`,
+    accountId,
+    accountType,
+    boardRoll,
+    accountName,
+    status: 'pending',
+    requestedAt: new Date().toISOString(),
+    source
+  };
+  academicStore.accountDeletionRequests.unshift(request);
+  saveAcademicStore(academicStore);
+  return { request, created: true };
+}
+
+/**
+ * Hard-erase one account's personal data from the in-memory JSON store
+ * (the caller persists with saveAcademicStore). Removes the account row
+ * itself (name, board roll, reg number, phone, email, PIN hash + salt,
+ * consent fields) and anonymises every academic / community record that
+ * references it, keeping the rows but with identifiers nulled or
+ * replaced by 'deleted'. Returns a count summary for the admin response.
+ */
+function hardEraseAccountData(
+  accountId: string,
+  accountType: 'student' | 'teacher',
+  boardRoll: string
+): AccountErasureSummary {
+  const summary = emptyErasureSummary();
+
+  // The account row itself — the personal data.
+  if (accountType === 'student') {
+    const idx = academicStore.students.findIndex(s => s.id === accountId);
+    if (idx >= 0) {
+      academicStore.students.splice(idx, 1);
+      summary.accountRemoved = true;
+    }
+  } else {
+    if (serverTeachers.delete(accountId) || legacyUnregisteredTeachers.delete(accountId)) {
+      summary.accountRemoved = true;
+    }
+  }
+  // Block the erased id from ever authenticating or re-registering under
+  // the same id again (a new registration gets a new id).
+  deletedAccountIds.add(accountId);
+
+  // Sessions + login-failure state for this account.
+  for (const [token, session] of serverSessions) {
+    if (session.userId === accountId) {
+      serverSessions.delete(token);
+      summary.sessionsInvalidated += 1;
+    }
+  }
+  studentLoginFailures.delete(accountId);
+  if (boardRoll) studentLoginFailures.delete(boardRoll);
+
+  // Attendance: keep the sheet, anonymise the person's entries (and a
+  // deleted teacher's name/id as the recording teacher).
+  for (const sheet of academicStore.attendanceSheets) {
+    for (const entry of sheet.entries) {
+      if (entry.studentId === accountId) {
+        entry.studentId = DELETED_ACCOUNT_LABEL;
+        entry.studentName = DELETED_ACCOUNT_LABEL;
+        entry.boardRoll = '';
+        entry.classRoll = '';
+        entry.regNumber = '';
+        summary.attendanceEntriesAnonymised += 1;
+      }
+    }
+    if (accountType === 'teacher' && sheet.teacherId === accountId) {
+      sheet.teacherId = DELETED_ACCOUNT_LABEL;
+      sheet.teacherName = DELETED_ACCOUNT_LABEL;
+    }
+    for (const audit of sheet.auditTrail) {
+      if (audit.performedById === accountId) {
+        audit.performedBy = DELETED_ACCOUNT_LABEL;
+        audit.performedById = DELETED_ACCOUNT_LABEL;
+      }
+    }
+  }
+
+  // Saved marks (semester calculator records): keep the marks, drop the owner.
+  for (const record of academicStore.savedSemesterCalculatorRecords) {
+    if (record.ownerUserId === accountId) {
+      record.ownerUserId = DELETED_ACCOUNT_LABEL;
+      record.ownerName = DELETED_ACCOUNT_LABEL;
+      delete record.boardRoll;
+      summary.calculatorRecordsAnonymised += 1;
+    }
+  }
+
+  // Assignment submissions: keep the submission, drop the student.
+  for (const submission of academicStore.assignmentSubmissions) {
+    if (submission.studentId === accountId) {
+      submission.studentId = DELETED_ACCOUNT_LABEL;
+      submission.studentName = DELETED_ACCOUNT_LABEL;
+      submission.boardRoll = '';
+      submission.classRoll = '';
+      submission.regNumber = '';
+      summary.submissionsAnonymised += 1;
+    }
+  }
+
+  // Captain records: keep the application row, drop the applicant's
+  // personal data (and a deleted teacher's endorsement identity).
+  for (const captain of academicStore.captainRecords) {
+    if (captain.studentId === accountId) {
+      captain.studentId = DELETED_ACCOUNT_LABEL;
+      captain.studentName = DELETED_ACCOUNT_LABEL;
+      delete captain.boardRoll;
+      delete captain.regNumber;
+      delete captain.phone;
+      summary.captainRecordsAnonymised += 1;
+    }
+    if (
+      accountType === 'teacher' &&
+      captain.teacherEndorsement &&
+      typeof captain.teacherEndorsement === 'object' &&
+      (captain.teacherEndorsement as { teacherId?: string }).teacherId === accountId
+    ) {
+      const endorsement = captain.teacherEndorsement as { teacherId?: string; teacherName?: string };
+      endorsement.teacherId = DELETED_ACCOUNT_LABEL;
+      endorsement.teacherName = DELETED_ACCOUNT_LABEL;
+      summary.captainRecordsAnonymised += 1;
+    }
+  }
+
+  // Teacher endorsements registry: drop entries made by a deleted teacher.
+  if (accountType === 'teacher') {
+    for (const [applicationId, endorsement] of Object.entries(academicStore.pendingTeacherEndorsements)) {
+      if (endorsement.teacherId === accountId) {
+        delete academicStore.pendingTeacherEndorsements[applicationId];
+        summary.endorsementsRemoved += 1;
+      }
+    }
+  }
+
+  // Notes / assignments authored by the account: keep the content, drop the author.
+  for (const note of academicStore.notes) {
+    if (note.uploadedById === accountId) {
+      note.uploadedBy = DELETED_ACCOUNT_LABEL;
+      note.uploadedById = DELETED_ACCOUNT_LABEL;
+      summary.notesAnonymised += 1;
+    }
+  }
+  for (const assignment of academicStore.assignments) {
+    if (assignment.assignedById === accountId) {
+      assignment.assignedBy = DELETED_ACCOUNT_LABEL;
+      assignment.assignedById = DELETED_ACCOUNT_LABEL;
+      summary.assignmentsAnonymised += 1;
+    }
+  }
+
+  // Communities: remove the membership, anonymise authorship / messages.
+  // The community itself stays for its other members.
+  const membershipsBefore = academicStore.communityMemberships.length;
+  academicStore.communityMemberships = academicStore.communityMemberships.filter(
+    m => m.user_id !== accountId
+  );
+  summary.membershipsRemoved = membershipsBefore - academicStore.communityMemberships.length;
+  for (const community of academicStore.communities) {
+    if (community.created_by === accountId) {
+      community.created_by = DELETED_ACCOUNT_LABEL;
+      community.created_by_name = DELETED_ACCOUNT_LABEL;
+      summary.communitiesAnonymised += 1;
+    }
+    community.moderators = community.moderators.filter(id => id !== accountId);
+  }
+  for (const message of academicStore.communityMessages) {
+    if (message.sender_id === accountId) {
+      message.sender_id = DELETED_ACCOUNT_LABEL;
+      message.sender_name = DELETED_ACCOUNT_LABEL;
+      summary.messagesAnonymised += 1;
+    }
+  }
+  for (const report of academicStore.communityReports) {
+    if (report.reported_by_id === accountId) {
+      report.reported_by_id = DELETED_ACCOUNT_LABEL;
+      report.reported_by_name = DELETED_ACCOUNT_LABEL;
+      summary.reportsAnonymised += 1;
+    }
+    if (report.reported_user_id === accountId) {
+      report.reported_user_id = DELETED_ACCOUNT_LABEL;
+      summary.reportsAnonymised += 1;
+    }
+  }
+
+  // Campus notices + their reports: keep the notice, drop the publisher.
+  for (const notice of academicStore.campusNotices) {
+    if (notice.publisherId === accountId) {
+      notice.publisherId = DELETED_ACCOUNT_LABEL;
+      notice.publisherName = DELETED_ACCOUNT_LABEL;
+      summary.noticesAnonymised += 1;
+    }
+  }
+  for (const report of academicStore.campusNoticeReports) {
+    if (report.reportedById === accountId) {
+      report.reportedById = DELETED_ACCOUNT_LABEL;
+      report.reportedByName = DELETED_ACCOUNT_LABEL;
+      summary.reportsAnonymised += 1;
+    }
+  }
+
+  // Teacher directory contacts for a deleted teacher (in-memory store).
+  if (accountType === 'teacher') {
+    for (const [contactId, contact] of serverTeacherContacts) {
+      if (contact.teacherId === accountId) {
+        serverTeacherContacts.delete(contactId);
+        summary.teacherContactsRemoved += 1;
+      }
+    }
+  }
+
+  return summary;
+}
+
+/**
+ * Mirror the erasure in Supabase (best-effort, never fails the approval:
+ * the JSON store is the source of truth and the admin response must not
+ * turn into a 500 because Postgres is briefly unreachable). Deletes the
+ * account row, removes memberships, and anonymises messages, community
+ * authorship, captain records and attendance entries that reference it.
+ */
+async function eraseAccountFromSupabase(
+  accountId: string,
+  accountType: 'student' | 'teacher'
+): Promise<{
+  attempted: boolean;
+  accountRowDeleted: boolean;
+  membershipsRemoved: number;
+  messagesAnonymised: number;
+  communitiesAnonymised: number;
+  captainRecordsAnonymised: number;
+  attendanceSheetsAnonymised: number;
+}> {
+  const result = {
+    attempted: false,
+    accountRowDeleted: false,
+    membershipsRemoved: 0,
+    messagesAnonymised: 0,
+    communitiesAnonymised: 0,
+    captainRecordsAnonymised: 0,
+    attendanceSheetsAnonymised: 0
+  };
+  if (!isSupabaseConfigured()) return result;
+  result.attempted = true;
+  try {
+    result.accountRowDeleted =
+      accountType === 'student'
+        ? await deleteStudentById(accountId)
+        : await deleteTeacherById(accountId);
+  } catch (err) {
+    console.warn('[AccountDeletion] Supabase account-row delete failed, continuing with JSON erasure:', err);
+  }
+  try {
+    result.membershipsRemoved = await deleteMembershipsByUserId(accountId);
+  } catch (err) {
+    console.warn('[AccountDeletion] Supabase membership delete failed:', err);
+  }
+  try {
+    result.messagesAnonymised = await anonymizeCommunityMessagesBySenderId(accountId);
+  } catch (err) {
+    console.warn('[AccountDeletion] Supabase message anonymisation failed:', err);
+  }
+  try {
+    result.communitiesAnonymised = await anonymizeCommunitiesByCreator(accountId);
+  } catch (err) {
+    console.warn('[AccountDeletion] Supabase community anonymisation failed:', err);
+  }
+  if (accountType === 'student') {
+    try {
+      result.captainRecordsAnonymised = await anonymizeCaptainRecordsByStudentId(accountId);
+    } catch (err) {
+      console.warn('[AccountDeletion] Supabase captain-record anonymisation failed:', err);
+    }
+  }
+  try {
+    const sheets = await listAttendanceSheets({});
+    for (const sheet of sheets) {
+      let touched = false;
+      const entries = sheet.entries.map(entry => {
+        if (accountType === 'student' && entry.studentId === accountId) {
+          touched = true;
+          return { ...entry, studentId: DELETED_ACCOUNT_LABEL, studentName: DELETED_ACCOUNT_LABEL, boardRoll: '', classRoll: '', regNumber: '' };
+        }
+        return entry;
+      });
+      const teacherTouched = accountType === 'teacher' && sheet.teacherId === accountId;
+      if (touched || teacherTouched) {
+        const updated: AttendanceSheet = {
+          ...sheet,
+          entries,
+          teacherId: teacherTouched ? DELETED_ACCOUNT_LABEL : sheet.teacherId,
+          teacherName: teacherTouched ? DELETED_ACCOUNT_LABEL : sheet.teacherName,
+          updatedAt: new Date().toISOString()
+        };
+        const row = toAttendanceSheetRow(updated);
+        const { id: _dropId, created_at: _dropCreatedAt, ...patch } = row;
+        await updateAttendanceSheetById(sheet.id, patch);
+        result.attendanceSheetsAnonymised += 1;
+      }
+    }
+  } catch (err) {
+    console.warn('[AccountDeletion] Supabase attendance anonymisation failed:', err);
+  }
+  return result;
+}
+
+/**
+ * Public deletion form: board roll + PIN, verified server-side against the
+ * stored hash. A wrong PIN (or an unknown roll) answers 401 and creates
+ * no request — and never reveals whether the roll exists. Rate-limited
+ * like the other auth endpoints (5 attempts / 15 min per IP + roll).
+ */
+app.post('/api/account/deletion-request', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
+  try {
+    const boardRoll = String(req.body?.boardRoll || '').trim();
+    const pin = String(req.body?.pin || '').trim();
+    if (!boardRoll || !pin) {
+      return res.status(400).json({ success: false, error: 'Board roll and PIN are required.' });
+    }
+    const student = academicStore.students.find(s => s.boardRoll === boardRoll);
+    if (!student || student.isRegisteredAccount !== true || deletedAccountIds.has(student.id)) {
+      return res.status(401).json({ success: false, error: 'Invalid board roll or PIN.' });
+    }
+    if (!verifyStudentPin(pin, student)) {
+      return res.status(401).json({ success: false, error: 'Invalid board roll or PIN.' });
+    }
+    const { request, created } = queueDeletionRequest(
+      student.id, 'student', student.boardRoll, student.name, 'public-form'
+    );
+    return res.status(created ? 201 : 200).json({
+      success: true,
+      requestId: request.id,
+      alreadyPending: !created
+    });
+  } catch (error) {
+    console.error('Public deletion request error:', error);
+    return res.status(500).json({ success: false, error: 'Could not create the deletion request.' });
+  }
+});
+
+/**
+ * In-app deletion request for the session's own account. Teachers use
+ * this (the public form is keyed by board roll, which teachers do not
+ * have); system_admin accounts cannot delete themselves this way.
+ */
+app.post('/api/me/deletion-request', requireAuth, (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { session: ServerSession }).session;
+    if (session.role === 'system_admin') {
+      return res.status(400).json({ success: false, error: 'Administrator accounts cannot be deleted through this endpoint.' });
+    }
+    const accountType: 'student' | 'teacher' = session.role === 'teacher' ? 'teacher' : 'student';
+    const account = accountType === 'teacher'
+      ? serverTeachers.get(session.userId)
+      : academicStore.students.find(s => s.id === session.userId);
+    if (!account) {
+      return res.status(404).json({ success: false, error: 'Account not found.' });
+    }
+    // Teachers have no board roll; the request keeps the field blank and
+    // the admin list identifies them by name.
+    const boardRoll = accountType === 'student'
+      ? (account as EnrolledStudent).boardRoll
+      : '';
+    const { request, created } = queueDeletionRequest(
+      account.id, accountType, boardRoll, account.name, 'in-app'
+    );
+    return res.status(created ? 201 : 200).json({
+      success: true,
+      requestId: request.id,
+      alreadyPending: !created
+    });
+  } catch (error) {
+    console.error('In-app deletion request error:', error);
+    return res.status(500).json({ success: false, error: 'Could not create the deletion request.' });
+  }
+});
+
+/**
+ * Admin: list all deletion requests, newest first, with the account's
+ * board roll and name snapshot.
+ */
+app.get('/api/admin/deletion-requests', requireSystemAdmin, (_req: Request, res: Response) => {
+  const requests = [...academicStore.accountDeletionRequests].sort(
+    (a, b) => b.requestedAt.localeCompare(a.requestedAt)
+  );
+  return res.status(200).json({ success: true, requests });
+});
+
+/**
+ * Admin: approve a deletion request — hard-erase the account's personal
+ * data (JSON store + Supabase) and anonymise its academic records.
+ */
+app.post('/api/admin/deletion-requests/:id/approve', requireSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const request = academicStore.accountDeletionRequests.find(r => r.id === req.params.id);
+    if (!request) {
+      return res.status(404).json({ success: false, error: 'Deletion request not found.' });
+    }
+    if (request.status !== 'pending') {
+      return res.status(409).json({ success: false, error: `This deletion request has already been ${request.status}.` });
+    }
+    const admin = (req as unknown as { adminSession: ServerSession }).adminSession;
+    const note = typeof req.body?.note === 'string' && req.body.note.trim() ? req.body.note.trim() : undefined;
+    const anonymised = hardEraseAccountData(request.accountId, request.accountType, request.boardRoll);
+    const supabase = await eraseAccountFromSupabase(request.accountId, request.accountType);
+    request.status = 'approved';
+    request.reviewedAt = new Date().toISOString();
+    request.reviewedBy = admin.userId;
+    if (note) request.reviewNote = note;
+    appendSystemAudit(
+      'account_deletion_approved',
+      request.accountId,
+      DELETED_ACCOUNT_LABEL,
+      `Account data deletion approved (${request.accountType}, board roll ${request.boardRoll || 'n/a'}): personal data erased, ` +
+        `${anonymised.attendanceEntriesAnonymised} attendance entries, ${anonymised.calculatorRecordsAnonymised} marks records, ` +
+        `${anonymised.submissionsAnonymised} submissions anonymised, ${anonymised.membershipsRemoved} memberships removed.`,
+      admin.userId
+    );
+    saveAcademicStore(academicStore);
+    return res.status(200).json({
+      success: true,
+      request,
+      anonymised,
+      supabase
+    });
+  } catch (error) {
+    console.error('Deletion approval error:', error);
+    return res.status(500).json({ success: false, error: 'Could not approve the deletion request.' });
+  }
+});
+
+/**
+ * Admin: reject a deletion request. The account is untouched; only the
+ * request is marked rejected (with an optional note).
+ */
+app.post('/api/admin/deletion-requests/:id/reject', requireSystemAdmin, (req: Request, res: Response) => {
+  try {
+    const request = academicStore.accountDeletionRequests.find(r => r.id === req.params.id);
+    if (!request) {
+      return res.status(404).json({ success: false, error: 'Deletion request not found.' });
+    }
+    if (request.status !== 'pending') {
+      return res.status(409).json({ success: false, error: `This deletion request has already been ${request.status}.` });
+    }
+    const admin = (req as unknown as { adminSession: ServerSession }).adminSession;
+    const note = typeof req.body?.note === 'string' && req.body.note.trim() ? req.body.note.trim() : undefined;
+    request.status = 'rejected';
+    request.reviewedAt = new Date().toISOString();
+    request.reviewedBy = admin.userId;
+    if (note) request.reviewNote = note;
+    appendSystemAudit(
+      'account_deletion_rejected',
+      request.accountId,
+      DELETED_ACCOUNT_LABEL,
+      `Account data deletion request rejected (${request.accountType}, board roll ${request.boardRoll || 'n/a'}).`,
+      admin.userId
+    );
+    saveAcademicStore(academicStore);
+    return res.status(200).json({ success: true, request });
+  } catch (error) {
+    console.error('Deletion rejection error:', error);
+    return res.status(500).json({ success: false, error: 'Could not reject the deletion request.' });
+  }
 });
 
 /**
@@ -13095,7 +13587,7 @@ function getAdminManagedAccounts(captainRecords: CaptainRecord[] = academicStore
     accounts.set(teacher.id, {
       id: teacher.id,
       name: teacher.name,
-      email: teacher.email,
+      email: teacher.email ?? undefined,
       phone: teacher.phone,
       role: 'teacher',
       department: teacher.department,

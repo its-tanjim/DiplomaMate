@@ -34,6 +34,7 @@ import { DEPARTMENTS, MOCK_ENROLLED_STUDENTS, POLYTECHNIC_COLLEGES, normalizeCol
 import { SearchableCollegeSelect } from '../common/SearchableCollegeSelect';
 import { SearchableDepartmentSelect } from '../common/SearchableDepartmentSelect';
 import { TeacherAttendanceSection } from './TeacherAttendanceSection';
+import { Modal } from '../common/Modal';
 
 export const TeacherDashboardScreen: React.FC = () => {
   const { 
@@ -247,12 +248,12 @@ export const TeacherDashboardScreen: React.FC = () => {
               <span className="text-slate-400">·</span>
               {isFacultyVerified ? (
                 <span className="inline-flex items-center gap-1 bg-green-500/20 text-green-300 border border-green-400/30 text-[11px] font-semibold px-2 py-0.5 rounded-full">
-                  <ShieldCheck className="w-3 h-3 text-green-300" />
+                  <ShieldCheck aria-hidden="true" className="w-3 h-3 text-green-300" />
                   Verified Faculty
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 bg-amber-500/20 text-amber-300 border border-amber-400/30 text-[11px] font-semibold px-2 py-0.5 rounded-full">
-                  <AlertTriangle className="w-3 h-3 text-amber-300" />
+                  <AlertTriangle aria-hidden="true" className="w-3 h-3 text-amber-300" />
                   Pending Admin Approval
                 </span>
               )}
@@ -272,11 +273,11 @@ export const TeacherDashboardScreen: React.FC = () => {
 
             <div className="flex flex-wrap items-center gap-3 text-[11px] text-blue-200/80 mt-2 font-mono">
               <span className="flex items-center gap-1">
-                <Phone className="w-3 h-3" />
+                <Phone aria-hidden="true" className="w-3 h-3" />
                 {userProfile.phone}
               </span>
               <span className="flex items-center gap-1">
-                <Mail className="w-3 h-3" />
+                <Mail aria-hidden="true" className="w-3 h-3" />
                 {userProfile.email}
               </span>
             </div>
@@ -289,14 +290,14 @@ export const TeacherDashboardScreen: React.FC = () => {
                 onClick={() => setActiveScreen('teacher_setup')}
                 className="text-[11px] font-semibold bg-teal-500/20 hover:bg-teal-500/30 text-teal-200 px-2.5 py-1.5 rounded-xl border border-teal-400/30 transition-all flex items-center gap-1.5 cursor-pointer"
               >
-                <GraduationCap className="w-3.5 h-3.5 text-teal-300" />
+                <GraduationCap aria-hidden="true" className="w-3.5 h-3.5 text-teal-300" />
                 <span>Profile & Contact Setup</span>
               </button>
               <button
                 onClick={() => setShowPinModal(true)}
                 className="text-[11px] font-semibold bg-surface/10 hover:bg-surface/20 text-white px-2.5 py-1.5 rounded-xl border border-white/20 transition-all flex items-center gap-1.5 cursor-pointer"
               >
-                <Key className="w-3.5 h-3.5 text-amber-300" />
+                <Key aria-hidden="true" className="w-3.5 h-3.5 text-amber-300" />
                 <span>PIN Settings</span>
               </button>
             </div>
@@ -304,7 +305,7 @@ export const TeacherDashboardScreen: React.FC = () => {
               onClick={logout}
               className="text-xs text-blue-200 hover:text-white flex items-center gap-1 cursor-pointer"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Sign Out</span>
             </button>
           </div>
@@ -313,7 +314,7 @@ export const TeacherDashboardScreen: React.FC = () => {
         {/* Verification Warning if Pending */}
         {!isFacultyVerified && (
           <div className="mt-3 p-2.5 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0" />
+            <AlertTriangle aria-hidden="true" className="w-4 h-4 text-amber-300 shrink-0" />
             <span>
               Your teacher registration is currently pending review by your college administrator. Class Captain verification and official approvals are locked until verified.
             </span>
@@ -334,7 +335,7 @@ export const TeacherDashboardScreen: React.FC = () => {
         >
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <CheckSquare className="w-5 h-5" />
+              <CheckSquare aria-hidden="true" className="w-5 h-5" />
             </div>
             <div>
               <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md mb-1">
@@ -345,7 +346,7 @@ export const TeacherDashboardScreen: React.FC = () => {
               </h2>
             </div>
           </div>
-          <ChevronRight className="w-4 h-4 text-blue-600 shrink-0 mt-1" />
+          <ChevronRight aria-hidden="true" className="w-4 h-4 text-blue-600 shrink-0 mt-1" />
         </button>
 
         <button
@@ -355,7 +356,7 @@ export const TeacherDashboardScreen: React.FC = () => {
         >
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-brand-teal text-white flex items-center justify-center shrink-0 shadow-xs">
-              <FileText className="w-5 h-5" />
+              <FileText aria-hidden="true" className="w-5 h-5" />
             </div>
             <div>
               <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-teal-800 bg-teal-100/80 px-2 py-0.5 rounded-md mb-1">
@@ -366,7 +367,7 @@ export const TeacherDashboardScreen: React.FC = () => {
               </h2>
             </div>
           </div>
-          <ChevronRight className="w-4 h-4 text-teal-600 shrink-0 mt-1" />
+          <ChevronRight aria-hidden="true" className="w-4 h-4 text-teal-600 shrink-0 mt-1" />
         </button>
 
         <button
@@ -376,7 +377,7 @@ export const TeacherDashboardScreen: React.FC = () => {
         >
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center shrink-0 shadow-xs">
-              <Users className="w-5 h-5" />
+              <Users aria-hidden="true" className="w-5 h-5" />
             </div>
             <div>
               <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md mb-1">
@@ -387,7 +388,7 @@ export const TeacherDashboardScreen: React.FC = () => {
               </h2>
             </div>
           </div>
-          <ChevronRight className="w-4 h-4 text-brand-blue shrink-0 mt-1" />
+          <ChevronRight aria-hidden="true" className="w-4 h-4 text-brand-blue shrink-0 mt-1" />
         </button>
       </div>
 
@@ -401,7 +402,7 @@ export const TeacherDashboardScreen: React.FC = () => {
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <CheckSquare className="w-3.5 h-3.5" />
+          <CheckSquare aria-hidden="true" className="w-3.5 h-3.5" />
           <span>Attendance</span>
         </button>
 
@@ -413,7 +414,7 @@ export const TeacherDashboardScreen: React.FC = () => {
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <ShieldCheck className="w-3.5 h-3.5" />
+          <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5" />
           <span>Captain Approvals</span>
           {pendingApplications.length > 0 && (
             <span className="bg-amber-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
@@ -430,7 +431,7 @@ export const TeacherDashboardScreen: React.FC = () => {
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Users className="w-3.5 h-3.5" />
+          <Users aria-hidden="true" className="w-3.5 h-3.5" />
           <span>Student Roster ({cohortStudents.length})</span>
         </button>
 
@@ -442,7 +443,7 @@ export const TeacherDashboardScreen: React.FC = () => {
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <BookOpen className="w-3.5 h-3.5" />
+          <BookOpen aria-hidden="true" className="w-3.5 h-3.5" />
           <span>Faculty Actions</span>
         </button>
       </div>
@@ -453,7 +454,7 @@ export const TeacherDashboardScreen: React.FC = () => {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-bold text-text-primary flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-blue-600" />
+                <Calendar aria-hidden="true" className="w-4 h-4 text-blue-600" />
                 <span>1. Select Semester (1st to 8th Semester)</span>
               </label>
               <span className="text-[11px] font-medium text-slate-500">
@@ -568,7 +569,7 @@ export const TeacherDashboardScreen: React.FC = () => {
       {activeTab === 'attendance' && (
         !isFacultyVerified ? (
           <div className="bg-surface rounded-2xl border border-amber-200 p-8 text-center space-y-2 shadow-xs">
-            <Lock className="w-10 h-10 text-amber-500 mx-auto" />
+            <Lock aria-hidden="true" className="w-10 h-10 text-amber-500 mx-auto" />
             <h3 className="text-sm font-bold text-text-primary">
               Faculty Verification Required for Attendance Management
             </h3>
@@ -611,7 +612,7 @@ export const TeacherDashboardScreen: React.FC = () => {
 
           {cohortApplications.length === 0 ? (
             <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
-              <ShieldCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <ShieldCheck aria-hidden="true" className="w-10 h-10 text-slate-300 mx-auto mb-2" />
               <h3 className="text-sm font-bold text-text-primary">No Captain Applications for this Section</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
                 No students in Semester {selectedSemester} (Shift {selectedShift}, Sec {selectedSection}) have submitted Class Captain applications.
@@ -653,7 +654,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                         onClick={() => setSelectedFormApp(app)}
                         className="px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200 flex items-center gap-1 cursor-pointer shrink-0"
                       >
-                        <Eye className="w-3.5 h-3.5 text-blue-600" />
+                        <Eye aria-hidden="true" className="w-3.5 h-3.5 text-blue-600" />
                         <span>View Form</span>
                       </button>
                     ) : (
@@ -668,7 +669,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                     <div className="bg-teal-50 border border-teal-200/80 rounded-xl p-2.5 text-xs text-teal-900 space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="font-bold flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
+                          <CheckCircle2 aria-hidden="true" className="w-3.5 h-3.5 text-teal-600" />
                           Endorsed by {app.teacherEndorsement.teacherName}
                         </span>
                         <span className="text-[10px] text-teal-700">{app.teacherEndorsement.endorsedAt}</span>
@@ -699,7 +700,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                         }}
                         className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 transition-colors flex items-center gap-1 cursor-pointer"
                       >
-                        <XCircle className="w-3.5 h-3.5" />
+                        <XCircle aria-hidden="true" className="w-3.5 h-3.5" />
                         <span>Reject</span>
                       </button>
 
@@ -718,7 +719,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                         }`}
                         title={!isFacultyVerified ? 'Requires Administrator Verification First' : 'Endorse with PIN'}
                       >
-                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5" />
                         <span>Verify & Approve (PIN)</span>
                       </button>
                     </div>
@@ -736,7 +737,7 @@ export const TeacherDashboardScreen: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
-                <Lock className="w-4 h-4 text-blue-600" />
+                <Lock aria-hidden="true" className="w-4 h-4 text-blue-600" />
                 <span>Confidential Student Directory (RBAC)</span>
               </h2>
               <p className="text-[11px] text-slate-500">
@@ -746,7 +747,7 @@ export const TeacherDashboardScreen: React.FC = () => {
 
             {/* Search */}
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+              <Search aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
               <input
                 type="text"
                 placeholder="Search name or roll..."
@@ -798,7 +799,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                         <td className="py-2 px-3">
                           {st.accountType === 'class_captain' ? (
                             <span className="inline-flex items-center gap-1 bg-teal-100 text-teal-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                              <ShieldCheck className="w-3 h-3" />
+                              <ShieldCheck aria-hidden="true" className="w-3 h-3" />
                               Class Captain
                             </span>
                           ) : (
@@ -820,7 +821,7 @@ export const TeacherDashboardScreen: React.FC = () => {
         <div className="space-y-3">
           <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
             <h2 className="text-sm font-bold text-text-primary flex items-center gap-2">
-              <Megaphone className="w-4 h-4 text-blue-600" />
+              <Megaphone aria-hidden="true" className="w-4 h-4 text-blue-600" />
               <span>Academic Management & Announcements</span>
             </h2>
 
@@ -831,7 +832,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                 className="p-3.5 rounded-xl border border-teal-200 bg-teal-50/60 hover:bg-teal-100/70 text-left transition-colors cursor-pointer"
               >
                 <div className="w-7 h-7 rounded-lg bg-brand-teal text-white flex items-center justify-center mb-2 shadow-xs">
-                  <Layers className="w-4 h-4" />
+                  <Layers aria-hidden="true" className="w-4 h-4" />
                 </div>
                 <h3 className="text-xs font-bold text-text-primary">BTEB Results & Group Analytics</h3>
               </button>
@@ -842,7 +843,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                 className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/60 hover:bg-blue-100/70 text-left transition-colors cursor-pointer"
               >
                 <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center mb-2 shadow-xs">
-                  <Megaphone className="w-4 h-4" />
+                  <Megaphone aria-hidden="true" className="w-4 h-4" />
                 </div>
                 <h3 className="text-xs font-bold text-text-primary">Post Official Notice</h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">Broadcast urgent class schedule update</p>
@@ -854,7 +855,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                 className="p-3.5 rounded-xl border border-slate-200 hover:border-blue-300 bg-surface text-left transition-colors cursor-pointer"
               >
                 <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center mb-2">
-                  <Calendar className="w-4 h-4" />
+                  <Calendar aria-hidden="true" className="w-4 h-4" />
                 </div>
                 <h3 className="text-xs font-bold text-text-primary">Class Timetable</h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">Review and adjust period schedules</p>
@@ -866,7 +867,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                 className="p-3.5 rounded-xl border border-slate-200 hover:border-blue-300 bg-surface text-left transition-colors cursor-pointer"
               >
                 <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center mb-2">
-                  <FileText className="w-4 h-4" />
+                  <FileText aria-hidden="true" className="w-4 h-4" />
                 </div>
                 <h3 className="text-xs font-bold text-text-primary">Study Notes & Labs</h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">Publish lecture slides and job sheets</p>
@@ -878,7 +879,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                 className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/60 hover:bg-blue-100/70 text-left transition-colors cursor-pointer"
               >
                 <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center mb-2 shadow-xs">
-                  <BookOpen className="w-4 h-4" />
+                  <BookOpen aria-hidden="true" className="w-4 h-4" />
                 </div>
                 <h3 className="text-xs font-bold text-text-primary">Book List & BTEB Subject Catalog</h3>
                 <p className="text-[11px] text-slate-600 mt-0.5">
@@ -892,7 +893,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                 className="p-3.5 rounded-xl border border-purple-200 bg-purple-50/60 hover:bg-purple-100/70 text-left transition-colors cursor-pointer"
               >
                 <div className="w-7 h-7 rounded-lg bg-purple-600 text-white flex items-center justify-center mb-2 shadow-xs">
-                  <Award className="w-4 h-4" />
+                  <Award aria-hidden="true" className="w-4 h-4" />
                 </div>
                 <h3 className="text-xs font-bold text-text-primary">Semester GPA / CGPA Calculator</h3>
               </button>
@@ -903,11 +904,16 @@ export const TeacherDashboardScreen: React.FC = () => {
 
       {/* MODAL 1: VIEW UPLOADED SIGNED VERIFICATION FORM */}
       {selectedFormApp && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+        <Modal
+          onClose={() => setSelectedFormApp(null)}
+          labelledBy="teacher-form-app-title"
+          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
+          overlayClassName="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div>
-                <h3 className="text-sm font-bold text-text-primary">
+                <h3 id="teacher-form-app-title" className="text-sm font-bold text-text-primary">
                   Verification Form Document
                 </h3>
                 <p className="text-xs text-slate-500">
@@ -917,14 +923,14 @@ export const TeacherDashboardScreen: React.FC = () => {
               <button
                 onClick={() => setSelectedFormApp(null)}
                 className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
 
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 text-center space-y-3">
               <div className="w-16 h-16 rounded-2xl bg-blue-100 text-blue-700 mx-auto flex items-center justify-center">
-                <FileText className="w-8 h-8" />
+                <FileText aria-hidden="true" className="w-8 h-8" />
               </div>
               <div>
                 <h4 className="text-xs font-bold text-text-primary">
@@ -957,23 +963,27 @@ export const TeacherDashboardScreen: React.FC = () => {
                 Close Document
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL 2: ENDORSE / REJECT WITH SECURITY PIN */}
       {actionApp && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+        <Modal
+          onClose={() => setActionApp(null)}
+          labelledBy="teacher-action-app-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
+          overlayClassName="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-2">
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${
                   actionApp.action === 'approve' ? 'bg-teal-100 text-teal-700' : 'bg-rose-100 text-rose-700'
                 }`}>
-                  {actionApp.action === 'approve' ? <ShieldCheck className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                  {actionApp.action === 'approve' ? <ShieldCheck aria-hidden="true" className="w-4 h-4" /> : <XCircle aria-hidden="true" className="w-4 h-4" />}
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">
+                  <h3 id="teacher-action-app-title" className="text-sm font-bold text-text-primary">
                     {actionApp.action === 'approve' ? 'Verify & Endorse Class Captain' : 'Reject Captain Application'}
                   </h3>
                   <p className="text-xs text-slate-500">
@@ -984,7 +994,7 @@ export const TeacherDashboardScreen: React.FC = () => {
               <button
                 onClick={() => setActionApp(null)}
                 className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -1046,28 +1056,32 @@ export const TeacherDashboardScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL 3: FACULTY PIN CHANGE */}
       {showPinModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+        <Modal
+          onClose={() => setShowPinModal(false)}
+          labelledBy="teacher-pin-title"
+          panelClassName="bg-surface rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
+          overlayClassName="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
-                  <Key className="w-4 h-4" />
+                  <Key aria-hidden="true" className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">Faculty Security PIN</h3>
+                  <h3 id="teacher-pin-title" className="text-sm font-bold text-text-primary">Faculty Security PIN</h3>
                   <p className="text-[11px] text-slate-500">Update your confidential PIN</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowPinModal(false)}
                 className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -1133,28 +1147,32 @@ export const TeacherDashboardScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL 4: POST OFFICIAL FACULTY NOTICE */}
       {showNoticeModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+        <Modal
+          onClose={() => setShowNoticeModal(false)}
+          labelledBy="teacher-notice-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
+          overlayClassName="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
-                  <Megaphone className="w-4 h-4" />
+                  <Megaphone aria-hidden="true" className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">Broadcast Faculty Notice</h3>
+                  <h3 id="teacher-notice-title" className="text-sm font-bold text-text-primary">Broadcast Faculty Notice</h3>
                   <p className="text-[11px] text-slate-500">Official Department Notice to students</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowNoticeModal(false)}
                 className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -1200,8 +1218,7 @@ export const TeacherDashboardScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -50,6 +50,7 @@ import {
 import { TECHNOLOGIES_DIRECTORY } from '../../data/directoryData';
 import { AdminManagementScreen } from './AdminManagementScreen';
 import { LiquidFillLoader } from '../LiquidFillLoader';
+import { Modal } from '../common/Modal';
 
 export const AdminPortalScreen: React.FC = () => {
   const { 
@@ -621,7 +622,7 @@ export const AdminPortalScreen: React.FC = () => {
     return (
       <div className="bg-surface rounded-2xl border border-rose-200 p-6 sm:p-8 text-center shadow-sm space-y-4 my-4">
         <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center mx-auto">
-          <Lock className="w-6 h-6" />
+          <Lock aria-hidden="true" className="w-6 h-6" />
         </div>
         <div className="max-w-md mx-auto space-y-1.5">
           <span className="text-[10px] font-mono uppercase tracking-wider font-bold text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-md border border-rose-200">
@@ -645,7 +646,7 @@ export const AdminPortalScreen: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveScreen('admin_login')}
-            className="px-4 py-2.5 rounded-xl bg-text-primary hover:bg-blue-950 text-white text-xs font-bold shadow-xs cursor-pointer"
+            className="px-4 py-2.5 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
           >
             System Administrator Sign In →
           </button>
@@ -663,12 +664,13 @@ export const AdminPortalScreen: React.FC = () => {
             <button
               onClick={() => setActiveScreen('home')}
               className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+              aria-label="Back"
               title="Back"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft aria-hidden="true" className="w-5 h-5" />
             </button>
             <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
-              <ShieldCheck className="w-4 h-4" />
+              <ShieldCheck aria-hidden="true" className="w-4 h-4" />
             </div>
             <div>
               <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
@@ -705,7 +707,7 @@ export const AdminPortalScreen: React.FC = () => {
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Users className="w-3.5 h-3.5 shrink-0" />
+            <Users aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
             <span>Management</span>
           </button>
           <button
@@ -717,7 +719,7 @@ export const AdminPortalScreen: React.FC = () => {
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+            <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
             <span>Captains ({applications.length})</span>
           </button>
 
@@ -730,7 +732,7 @@ export const AdminPortalScreen: React.FC = () => {
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <GraduationCap className="w-3.5 h-3.5 shrink-0" />
+            <GraduationCap aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
             <span>Faculty ({teachersList.length})</span>
           </button>
 
@@ -743,7 +745,7 @@ export const AdminPortalScreen: React.FC = () => {
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Database className="w-3.5 h-3.5 shrink-0" />
+            <Database aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
             <span>BTEB Results ({resultBatches.length})</span>
           </button>
 
@@ -756,7 +758,7 @@ export const AdminPortalScreen: React.FC = () => {
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <BookOpen className="w-3.5 h-3.5 shrink-0" />
+            <BookOpen aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
             <span>Subject Catalog ({catalogRecords.length})</span>
           </button>
         </div>
@@ -767,7 +769,7 @@ export const AdminPortalScreen: React.FC = () => {
         {(activePortalTab === 'captains' || activePortalTab === 'teachers') && (
           <div className="flex flex-col sm:flex-row gap-2 mt-3 pt-3 border-t border-slate-100">
             <div className="relative flex-1">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              <Search aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
                 placeholder={activePortalTab === 'captains' ? "Search student name, roll number, or department..." : "Search teacher name, department, or phone..."}
@@ -784,7 +786,7 @@ export const AdminPortalScreen: React.FC = () => {
                   onClick={() => setStatusFilter(tab)}
                   className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
                     statusFilter === tab
-                      ? 'bg-text-primary text-white shadow-xs'
+                      ? 'bg-brand-blue text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
@@ -801,7 +803,7 @@ export const AdminPortalScreen: React.FC = () => {
         <>
           {/* Quota Advisory Note */}
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <AlertTriangle aria-hidden="true" className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold">Strict BTEB Regulation Quota:</span> A maximum of <strong>two verified Class Captains</strong> is permitted per college, department, semester, shift, and section. Approvals are blocked automatically once quota is reached.
             </div>
@@ -811,7 +813,7 @@ export const AdminPortalScreen: React.FC = () => {
           <div className="space-y-3">
             {filteredApps.length === 0 ? (
               <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center text-slate-500 shadow-xs">
-                <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <FileText aria-hidden="true" className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                 <p className="text-sm font-semibold">No applications found matching criteria.</p>
               </div>
             ) : (
@@ -884,7 +886,7 @@ export const AdminPortalScreen: React.FC = () => {
                       <div className="p-2.5 rounded-xl bg-teal-50/70 border border-teal-200/60 text-xs text-teal-900 space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="font-bold flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
+                            <CheckCircle2 aria-hidden="true" className="w-3.5 h-3.5 text-teal-600" />
                             Guide Teacher Endorsement: {app.teacherEndorsement.teacherName} ({app.teacherEndorsement.teacherDesignation})
                           </span>
                           <span className="text-[10px] text-teal-700">{app.teacherEndorsement.endorsedAt}</span>
@@ -895,7 +897,7 @@ export const AdminPortalScreen: React.FC = () => {
                       </div>
                     ) : (
                       <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500 flex items-center gap-2">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        <AlertTriangle aria-hidden="true" className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                         <span>Awaiting digital endorsement from authorized department guide teacher.</span>
                       </div>
                     )}
@@ -915,12 +917,12 @@ export const AdminPortalScreen: React.FC = () => {
                           onClick={() => setSelectedAppForDoc(app)}
                           className="text-xs font-semibold text-brand-blue hover:text-blue-700 flex items-center gap-1 py-1 cursor-pointer"
                         >
-                          <Eye className="w-3.5 h-3.5" />
+                          <Eye aria-hidden="true" className="w-3.5 h-3.5" />
                           <span>Review Signed Form</span>
                         </button>
                       ) : (
                         <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1 py-1">
-                          <Send className="w-3.5 h-3.5 text-teal-600" />
+                          <Send aria-hidden="true" className="w-3.5 h-3.5 text-teal-600" />
                           <span>Direct request — no form attached</span>
                         </span>
                       )}
@@ -957,7 +959,7 @@ export const AdminPortalScreen: React.FC = () => {
                             }}
                             className="px-2.5 py-1 rounded-lg border border-slate-200 hover:border-red-300 text-slate-600 hover:text-red-700 text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
                           >
-                            <Ban className="w-3 h-3 text-red-500" />
+                            <Ban aria-hidden="true" className="w-3 h-3 text-red-500" />
                             <span>Revoke Approval</span>
                           </button>
                         )}
@@ -975,7 +977,7 @@ export const AdminPortalScreen: React.FC = () => {
       {activePortalTab === 'teachers' && (
         <div className="space-y-3">
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-950 flex items-start gap-2">
-            <GraduationCap className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+            <GraduationCap aria-hidden="true" className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold">Faculty Authorization Protocol:</span> Only verified institutional faculty members can approve Class Captains for their designated semester and shift cohorts. Review identity, teaching assignments, and status below.
             </div>
@@ -984,7 +986,7 @@ export const AdminPortalScreen: React.FC = () => {
           <div className="space-y-3">
             {filteredTeachers.length === 0 ? (
               <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center text-slate-500 shadow-xs">
-                <GraduationCap className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <GraduationCap aria-hidden="true" className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                 <p className="text-sm font-semibold">No teachers found matching criteria.</p>
               </div>
             ) : (
@@ -1016,7 +1018,7 @@ export const AdminPortalScreen: React.FC = () => {
                           </span>
                           {isLockedOut && (
                             <span className="bg-rose-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                              <Lock className="w-3 h-3" />
+                              <Lock aria-hidden="true" className="w-3 h-3" />
                               PIN Locked
                             </span>
                           )}
@@ -1068,7 +1070,7 @@ export const AdminPortalScreen: React.FC = () => {
                             onClick={() => handleResetLockout(teacher.id)}
                             className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
                           >
-                            <Unlock className="w-3.5 h-3.5" />
+                            <Unlock aria-hidden="true" className="w-3.5 h-3.5" />
                             <span>Reset PIN Lockout</span>
                           </button>
                         )}
@@ -1139,7 +1141,7 @@ export const AdminPortalScreen: React.FC = () => {
           {/* Security & Data Integrity Banner */}
           <div className="bg-teal-50 border border-teal-200 rounded-2xl p-3.5 text-xs text-teal-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div className="flex items-start gap-2.5">
-              <Database className="w-4 h-4 text-brand-teal shrink-0 mt-0.5" />
+              <Database aria-hidden="true" className="w-4 h-4 text-brand-teal shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold">Official BTEB Result Extraction & Publishing Pipeline: </span>
               </div>
@@ -1156,7 +1158,7 @@ export const AdminPortalScreen: React.FC = () => {
           {/* Step 1: Configure Batch Metadata & Source Content */}
           <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-4">
             <h2 className="text-sm font-bold text-text-primary flex items-center gap-2">
-              <Upload className="w-4 h-4 text-brand-blue" />
+              <Upload aria-hidden="true" className="w-4 h-4 text-brand-blue" />
               <span>1. Configure Examination Batch & Upload Official BTEB Dataset</span>
             </h2>
 
@@ -1295,7 +1297,7 @@ export const AdminPortalScreen: React.FC = () => {
 
             {previewError && (
               <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <AlertTriangle aria-hidden="true" className="w-4 h-4 shrink-0" />
                 <span>{previewError}</span>
               </div>
             )}
@@ -1318,7 +1320,7 @@ export const AdminPortalScreen: React.FC = () => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                 <div>
                   <h3 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-brand-teal" />
+                    <CheckCircle2 aria-hidden="true" className="w-4 h-4 text-brand-teal" />
                     <span>2. Validation Dry-Run Summary (Ready to Publish)</span>
                   </h3>
                 </div>
@@ -1437,7 +1439,7 @@ export const AdminPortalScreen: React.FC = () => {
                 onClick={fetchResultBatches}
                 className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>Refresh</span>
               </button>
             </div>
@@ -1464,7 +1466,7 @@ export const AdminPortalScreen: React.FC = () => {
                       onClick={() => setDeleteConfirmBatch(b)}
                       className="px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold flex items-center gap-1 self-start sm:self-center cursor-pointer"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 aria-hidden="true" className="w-3.5 h-3.5" />
                       <span>Remove Batch</span>
                     </button>
                   </div>
@@ -1511,7 +1513,7 @@ export const AdminPortalScreen: React.FC = () => {
         <div className="space-y-4">
           {/* Starter Dataset & Provisional Notice */}
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-950 flex items-start gap-2.5">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <AlertTriangle aria-hidden="true" className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div className="space-y-1">
               <div className="font-bold">
                 Central Subject Catalog Governance & Protection Policy
@@ -1549,7 +1551,7 @@ export const AdminPortalScreen: React.FC = () => {
                   Load Full Starter JSON
                 </button>
                 <label className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1">
-                  <Upload className="w-3.5 h-3.5" />
+                  <Upload aria-hidden="true" className="w-3.5 h-3.5" />
                   <span>Upload .JSON</span>
                   <input
                     type="file"
@@ -1586,7 +1588,7 @@ export const AdminPortalScreen: React.FC = () => {
                 type="button"
                 onClick={handlePreviewCatalogImport}
                 disabled={isPreviewingCatalog}
-                className="px-4 py-2 rounded-xl bg-text-primary hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
               >
                 {isPreviewingCatalog ? 'Validating Catalog JSON...' : '1. Run Pre-Import Validation Preview'}
               </button>
@@ -1596,7 +1598,7 @@ export const AdminPortalScreen: React.FC = () => {
                 onClick={() => setShowAddCatalogModal(true)}
                 className="px-3 py-2 rounded-xl bg-brand-teal hover:bg-teal-700 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>Add Single Subject</span>
               </button>
             </div>
@@ -1657,7 +1659,7 @@ export const AdminPortalScreen: React.FC = () => {
                 {catalogPreview.summary.syntaxWarnings && catalogPreview.summary.syntaxWarnings.length > 0 && (
                   <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-950 space-y-1">
                     <div className="font-bold flex items-center gap-1.5">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <AlertTriangle aria-hidden="true" className="w-4 h-4 text-amber-600 shrink-0" />
                       <span>JSON Syntax Warning Detected ({catalogPreview.summary.syntaxWarnings.length}):</span>
                     </div>
                     <ul className="list-disc list-inside text-[11px] font-mono space-y-0.5">
@@ -1694,7 +1696,7 @@ export const AdminPortalScreen: React.FC = () => {
                 {catalogPreview.summary.duplicateCodes.length > 0 && (
                   <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
                     <div className="font-bold flex items-center gap-1.5">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <AlertTriangle aria-hidden="true" className="w-4 h-4 text-amber-600 shrink-0" />
                       <span>
                         Duplicate Subject Codes Detected ({catalogPreview.summary.duplicateCodes.length} — both entries preserved without silent deletion):
                       </span>
@@ -1713,7 +1715,7 @@ export const AdminPortalScreen: React.FC = () => {
                 {catalogPreview.summary.protectedVerifiedConflicts.length > 0 && (
                   <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-950 space-y-1">
                     <div className="font-bold flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                      <ShieldCheck aria-hidden="true" className="w-4 h-4 text-blue-600 shrink-0" />
                       <span>
                         Verified Record Overwrite Protection ({catalogPreview.summary.protectedVerifiedConflicts.length} protected):
                       </span>
@@ -1786,7 +1788,7 @@ export const AdminPortalScreen: React.FC = () => {
                 onClick={fetchCatalogRecords}
                 className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer self-start sm:self-auto"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>Refresh Catalog</span>
               </button>
             </div>
@@ -1910,7 +1912,7 @@ export const AdminPortalScreen: React.FC = () => {
                         onClick={() => setEditingCatalogRecord(rec)}
                         className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer"
                       >
-                        <Edit3 className="w-3 h-3" />
+                        <Edit3 aria-hidden="true" className="w-3 h-3" />
                         <span>Edit</span>
                       </button>
                       <button
@@ -1936,15 +1938,20 @@ export const AdminPortalScreen: React.FC = () => {
 
       {/* MODAL: ADD SINGLE CATALOG SUBJECT */}
       {showAddCatalogModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3 max-h-[90vh] overflow-y-auto">
+        <Modal
+          onClose={() => setShowAddCatalogModal(false)}
+          labelledBy="admin-add-catalog-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3 max-h-[90vh] overflow-y-auto"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="font-bold text-sm text-text-primary">Add Subject to Central Catalog</h3>
+              <h3 id="admin-add-catalog-title" className="font-bold text-sm text-text-primary">Add Subject to Central Catalog</h3>
               <button
                 type="button"
                 onClick={() => setShowAddCatalogModal(false)}
                 className="text-slate-400 hover:text-slate-600"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -2086,15 +2093,18 @@ export const AdminPortalScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL: EDIT CATALOG RECORD */}
       {editingCatalogRecord && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3">
-            <h3 className="font-bold text-sm text-text-primary">
+        <Modal
+          onClose={() => setEditingCatalogRecord(null)}
+          labelledBy="admin-edit-catalog-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+            <h3 id="admin-edit-catalog-title" className="font-bold text-sm text-text-primary">
               Edit Catalog Subject ({editingCatalogRecord.subject_code})
             </h3>
             <div className="space-y-2 text-xs">
@@ -2174,15 +2184,18 @@ export const AdminPortalScreen: React.FC = () => {
                 Save Changes
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* CONFIRM DELETE RESULT BATCH MODAL */}
       {deleteConfirmBatch && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3">
-            <h3 className="font-bold text-base text-text-primary">
+        <Modal
+          onClose={() => setDeleteConfirmBatch(null)}
+          labelledBy="admin-delete-batch-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+            <h3 id="admin-delete-batch-title" className="font-bold text-base text-text-primary">
               Remove Published BTEB Result Batch?
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed">
@@ -2204,14 +2217,18 @@ export const AdminPortalScreen: React.FC = () => {
                 Confirm Delete
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL: VIEW SIGNED VERIFICATION FORM */}
       {selectedAppForDoc && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+        <Modal
+          onClose={() => setSelectedAppForDoc(null)}
+          labelledBy="admin-doc-title"
+          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <p className="text-xs text-slate-500">
@@ -2221,14 +2238,14 @@ export const AdminPortalScreen: React.FC = () => {
               <button
                 onClick={() => setSelectedAppForDoc(null)}
                 className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
 
             <div className="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col items-center text-center">
-              <FileText className="w-16 h-16 text-brand-blue mb-2" />
-              <h4 className="text-xs font-bold text-text-primary">
+              <FileText aria-hidden="true" className="w-16 h-16 text-brand-blue mb-2" />
+              <h4 id="admin-doc-title" className="text-xs font-bold text-text-primary">
                 {selectedAppForDoc.verificationFormName || 'BTEB_CR_Form_Signed.pdf'}
               </h4>
 
@@ -2247,15 +2264,18 @@ export const AdminPortalScreen: React.FC = () => {
                 Close
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* CONFIRM CAPTAIN ACTION MODAL */}
       {actionModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
-            <h3 className="font-bold text-base text-text-primary">
+        <Modal
+          onClose={() => { setActionModal(null); setActionReason(''); }}
+          labelledBy="admin-captain-action-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+            <h3 id="admin-captain-action-title" className="font-bold text-base text-text-primary">
               {actionModal.action === 'approve' && 'Confirm Class Captain Approval'}
               {actionModal.action === 'reject' && 'Reject Class Captain Application'}
               {actionModal.action === 'revoke' && 'Revoke Class Captain Approval'}
@@ -2304,15 +2324,18 @@ export const AdminPortalScreen: React.FC = () => {
                 {isProcessing ? 'Processing...' : 'Confirm Action'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* CONFIRM TEACHER ACTION MODAL */}
       {teacherActionModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
-            <h3 className="font-bold text-base text-text-primary">
+        <Modal
+          onClose={() => setTeacherActionModal(null)}
+          labelledBy="admin-teacher-action-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+            <h3 id="admin-teacher-action-title" className="font-bold text-base text-text-primary">
               {teacherActionModal.action === 'approve' ? 'Approve Faculty Verification' : 'Reject / Revoke Faculty Authorization'}
             </h3>
 
@@ -2352,8 +2375,7 @@ export const AdminPortalScreen: React.FC = () => {
                 {isProcessing ? 'Saving...' : teacherActionModal.action === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

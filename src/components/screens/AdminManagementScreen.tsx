@@ -24,6 +24,7 @@ import {
   Users,
   X
 } from 'lucide-react';
+import { Modal } from '../common/Modal';
 
 type ApprovalStatus = 'Pending' | 'Approved' | 'Rejected';
 type ManagedRole = 'student' | 'class_captain' | 'teacher';
@@ -73,6 +74,18 @@ type CommunityDraft = {
   visibility: 'public' | 'private';
   image_url: string;
 };
+type DeletionRequest = {
+  id: string;
+  accountId?: string;
+  boardRoll?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  status?: string;
+  requestedAt?: string;
+  createdAt?: string;
+  reason?: string;
+};
 type ManagementPayload = {
   stats: AdminStats;
   accounts: AdminAccount[];
@@ -119,6 +132,8 @@ export const AdminManagementScreen: React.FC = () => {
   const [roleFilter, setRoleFilter] = useState<'All' | ManagedRole>('All');
   const [statusFilter, setStatusFilter] = useState<'All' | ApprovalStatus>('All');
   const [selectedAccount, setSelectedAccount] = useState<AdminAccount | null>(null);
+  const [deletionRequests, setDeletionRequests] = useState<DeletionRequest[]>([]);
+  const [deletionError, setDeletionError] = useState('');
   const [communityModal, setCommunityModal] = useState<CommunityDraft | null>(null);
   const [membersCommunity, setMembersCommunity] = useState<AcademicCommunity | null>(null);
   const [memberToAdd, setMemberToAdd] = useState('');
@@ -164,8 +179,64 @@ export const AdminManagementScreen: React.FC = () => {
     }
   };
 
+  // Account-deletion requests (compliance §5): the server worker owns
+  // GET /api/admin/deletion-requests and the approve/reject endpoints.
+  // Loaded separately from loadManagement so an unavailable endpoint
+  // (server not deployed yet) cannot break the management screen.
+  const loadDeletionRequests = async () => {
+    setDeletionError('');
+    try {
+      const data = await request('/api/admin/deletion-requests');
+      const list = (data.requests || data.deletionRequests || []) as DeletionRequest[];
+      setDeletionRequests(list.filter(item => (item.status || 'pending') === 'pending'));
+    } catch (loadError) {
+      setDeletionRequests([]);
+      setDeletionError('Deletion requests could not be loaded (the server endpoint may not be deployed yet).');
+    }
+  };
+
+  const decideDeletionRequest = async (req: DeletionRequest, decision: 'approve' | 'reject') => {
+    const who = `${req.name || 'this account'}${req.boardRoll ? ` (board roll ${req.boardRoll})` : ''}`;
+    if (decision === 'approve') {
+      if (!window.confirm(`Approve the deletion request for ${who}? This permanently hard-erases the account and its personal data — name, roll, registration number, phone, email and PIN data are deleted and cannot be recovered. Academic records that must be kept (attendance, marks) are anonymised instead of deleted.`)) return;
+    } else {
+      const note = window.prompt(`Reject the deletion request for ${who}? Add a short note for the record (optional).`, '');
+      if (note === null) return;
+      setSaving(true);
+      setError('');
+      try {
+        const data = await request(`/api/admin/deletion-requests/${encodeURIComponent(req.id)}/reject`, {
+          method: 'POST',
+          body: JSON.stringify({ note: note.trim() })
+        });
+        notifySuccess(data.message || 'Deletion request rejected.');
+        await loadDeletionRequests();
+      } catch (actionError) {
+        setError(actionError instanceof Error ? actionError.message : 'Could not reject deletion request.');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const data = await request(`/api/admin/deletion-requests/${encodeURIComponent(req.id)}/approve`, { method: 'POST' });
+      notifySuccess(data.message || 'Account permanently deleted.');
+      await loadDeletionRequests();
+      await loadManagement();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not approve deletion request.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   useEffect(() => {
-    if (isServerVerifiedAdmin) void loadManagement();
+    if (isServerVerifiedAdmin) {
+      void loadManagement();
+      void loadDeletionRequests();
+    }
   }, [isServerVerifiedAdmin, authToken]);
 
   const filteredAccounts = useMemo(() => (payload?.accounts || []).filter(account => {
@@ -431,14 +502,14 @@ export const AdminManagementScreen: React.FC = () => {
     <section className="space-y-4">
       {error && (
         <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
-          <button type="button" className="ml-auto" onClick={() => setError('')} aria-label="Dismiss error"><X className="h-4 w-4" /></button>
+          <button type="button" className="ml-auto" onClick={() => setError('')} aria-label="Dismiss error"><X aria-hidden="true" className="h-4 w-4" /></button>
         </div>
       )}
       {success && (
         <div role="status" className="flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800">
-          <CheckCircle2 className="h-4 w-4" />{success}
+          <CheckCircle2 aria-hidden="true" className="h-4 w-4" />{success}
         </div>
       )}
 
@@ -470,7 +541,7 @@ export const AdminManagementScreen: React.FC = () => {
                   <h2 className="text-lg font-bold text-text-primary">Admin Dashboard</h2>
                 </div>
                 <button type="button" onClick={() => void loadManagement()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                  <RefreshCw className="h-3.5 w-3.5" />Refresh
+                  <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />Refresh
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -485,7 +556,7 @@ export const AdminManagementScreen: React.FC = () => {
                 ] as const).map(([label, count, Icon, colorClass]) => (
                   <div key={String(label)} className="rounded-2xl border border-slate-200 bg-surface p-4 shadow-sm">
                     <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${colorClass}`}>
-                      <Icon className="h-4 w-4" />
+                      <Icon aria-hidden="true" className="h-4 w-4" />
                     </div>
                     <div className="text-2xl font-bold text-text-primary">{count}</div>
                     <div className="mt-1 text-xs font-medium text-slate-500">{label}</div>
@@ -493,7 +564,7 @@ export const AdminManagementScreen: React.FC = () => {
                 ))}
               </div>
               <div className="rounded-2xl border border-slate-200 bg-surface p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-bold text-text-primary"><Activity className="h-4 w-4 text-teal-600" />Recent admin actions</div>
+                <div className="mb-3 flex items-center gap-2 text-sm font-bold text-text-primary"><Activity aria-hidden="true" className="h-4 w-4 text-teal-600" />Recent admin actions</div>
                 {(payload?.auditLogs || []).slice(0, 5).length ? (
                   <div className="divide-y divide-slate-100">
                     {(payload?.auditLogs || []).slice(0, 5).map(log => (
@@ -546,10 +617,43 @@ export const AdminManagementScreen: React.FC = () => {
 
           {section === 'accounts' && (
             <div className="space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-surface p-4 shadow-sm">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-text-primary">Deletion Requests</h2>
+                    <p className="mt-0.5 text-xs text-slate-500">Users asking for their account to be deleted. Approving permanently hard-erases the account and its personal data; rejecting keeps the account.</p>
+                  </div>
+                  <button type="button" onClick={() => void loadDeletionRequests()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                    <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />Refresh
+                  </button>
+                </div>
+                {deletionError && <p className="mt-3 text-xs text-amber-700">{deletionError}</p>}
+                <div className="mt-3 grid gap-2">
+                  {deletionRequests.map(req => (
+                    <article key={req.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="truncate text-sm font-bold text-text-primary">{req.name || 'Unknown account'}</h3>
+                          {req.boardRoll && <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">Roll {req.boardRoll}</span>}
+                        </div>
+                        <p className="mt-1 truncate text-xs text-slate-500">
+                          Requested {req.requestedAt || req.createdAt ? new Date(String(req.requestedAt || req.createdAt)).toLocaleString() : 'date unknown'}
+                          {req.reason ? ` · ${req.reason}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button type="button" onClick={() => void decideDeletionRequest(req, 'reject')} disabled={saving} className="rounded-xl border border-slate-200 bg-surface px-4 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">Reject</button>
+                        <button type="button" onClick={() => void decideDeletionRequest(req, 'approve')} disabled={saving} className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50">Approve</button>
+                      </div>
+                    </article>
+                  ))}
+                  {!deletionRequests.length && !deletionError && <p className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500">No pending deletion requests.</p>}
+                </div>
+              </div>
               <div className="rounded-2xl border border-slate-200 bg-surface p-3 shadow-sm">
                 <div className="flex flex-col gap-2 md:flex-row">
                   <div className="relative min-w-0 flex-1">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <Search aria-hidden="true" className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                     <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name, roll, department, semester..."
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs outline-none focus:border-blue-400" />
                   </div>
@@ -572,7 +676,7 @@ export const AdminManagementScreen: React.FC = () => {
                       </div>
                       <p className="mt-1 truncate text-xs text-slate-500">{account.roll ? `Roll ${account.roll} · ` : ''}{account.department || account.email || account.phone || account.id}{account.semester ? ` · Sem ${account.semester}` : ''}</p>
                     </div>
-                    <button type="button" onClick={() => void viewAccount(account)} className="shrink-0 rounded-xl bg-text-primary px-4 py-2 text-xs font-bold text-white hover:bg-blue-950">View details</button>
+                    <button type="button" onClick={() => void viewAccount(account)} className="shrink-0 rounded-xl bg-brand-blue px-4 py-2 text-xs font-bold text-white hover:bg-blue-700">View details</button>
                   </article>
                 ))}
                 {!filteredAccounts.length && <div className="rounded-2xl border border-dashed border-slate-300 bg-surface p-8 text-center text-xs text-slate-500">No accounts match these filters.</div>}
@@ -584,11 +688,11 @@ export const AdminManagementScreen: React.FC = () => {
             <div className="space-y-3">
               <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                 <div><h2 className="text-lg font-bold text-text-primary">Community management</h2></div>
-                <button type="button" onClick={() => { setError(''); setCommunityModal(emptyDraft()); }} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-text-primary px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-950"><Plus className="h-4 w-4" />Create community</button>
+                <button type="button" onClick={() => { setError(''); setCommunityModal(emptyDraft()); }} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand-blue px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700"><Plus aria-hidden="true" className="h-4 w-4" />Create community</button>
               </div>
               {(payload?.communities || []).map(community => (
                 <article key={community.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-surface p-4 shadow-sm sm:flex-row sm:items-center">
-                  {community.image_url ? <img src={community.image_url} alt="" className="h-12 w-12 rounded-xl object-cover" /> : <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-lg">{community.avatar_emoji || '👥'}</div>}
+                  {community.image_url ? <img src={community.image_url} alt={community.name} className="h-12 w-12 rounded-xl object-cover" /> : <div aria-hidden="true" className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-lg">{community.avatar_emoji || '👥'}</div>}
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-sm font-bold text-text-primary">{community.name}</h3>
                       <span className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${community.deleted_at ? 'border-rose-200 bg-rose-50 text-rose-700' : community.is_active ? 'border-teal-200 bg-teal-50 text-teal-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>{community.deleted_at ? 'Deleted' : community.is_active ? 'Active' : 'Inactive'}</span>
@@ -609,7 +713,7 @@ export const AdminManagementScreen: React.FC = () => {
                       image_url: community.image_url || ''
                     })} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold disabled:opacity-40">Edit</button>
                     <button type="button" onClick={() => setMembersCommunity(community)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">Members</button>
-                    {!community.deleted_at && <button type="button" onClick={() => void deleteCommunity(community)} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700"><Trash2 className="inline h-3.5 w-3.5" /> Delete</button>}
+                    {!community.deleted_at && <button type="button" onClick={() => void deleteCommunity(community)} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700"><Trash2 aria-hidden="true" className="inline h-3.5 w-3.5" /> Delete</button>}
                   </div>
                 </article>
               ))}
@@ -632,9 +736,14 @@ export const AdminManagementScreen: React.FC = () => {
       )}
 
       {selectedAccount && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3" role="dialog" aria-modal="true" aria-label="Account details">
-          <div className="my-auto w-full max-w-xl rounded-2xl bg-surface shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 p-4"><div><h2 className="font-bold text-text-primary">Account details</h2><p className="text-xs text-slate-500">{roleLabel[selectedAccount.role]} · {selectedAccount.id}</p></div><button type="button" onClick={() => setSelectedAccount(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-4 w-4" /></button></div>
+        <Modal
+          onClose={() => setSelectedAccount(null)}
+          labelledBy="admin-account-details-title"
+          panelClassName="my-auto w-full max-w-xl rounded-2xl bg-surface shadow-2xl"
+          overlayClassName="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
+          showCloseButton={false}
+        >
+            <div className="flex items-center justify-between border-b border-slate-100 p-4"><div><h2 id="admin-account-details-title" className="font-bold text-text-primary">Account details</h2><p className="text-xs text-slate-500">{roleLabel[selectedAccount.role]} · {selectedAccount.id}</p></div><button type="button" onClick={() => setSelectedAccount(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X aria-hidden="true" className="h-4 w-4" /></button></div>
             <div className="max-h-[65vh] space-y-3 overflow-y-auto p-4">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {Object.entries({
@@ -667,14 +776,20 @@ export const AdminManagementScreen: React.FC = () => {
                 <button type="button" onClick={() => void decideAccount('approve')} disabled={saving || accountDetailsLoading || !selectedAccount.details} className="rounded-xl bg-teal-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{accountDetailsLoading ? 'Loading...' : saving ? 'Saving...' : 'Approve'}</button>
               </>}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {communityModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3" role="dialog" aria-modal="true" aria-label="Edit community">
-          <form onSubmit={saveCommunity} className="my-auto max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl">
-            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-surface p-4"><div><h2 className="font-bold text-text-primary">{communityModal.id ? 'Edit community' : 'Create community'}</h2></div><button type="button" onClick={() => setCommunityModal(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-4 w-4" /></button></div>
+        <Modal
+          onClose={() => setCommunityModal(null)}
+          labelledBy="admin-community-modal-title"
+          panelClassName="my-auto max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl"
+          overlayClassName="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
+          panelAsForm
+          onSubmit={saveCommunity}
+          showCloseButton={false}
+        >
+            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-surface p-4"><div><h2 id="admin-community-modal-title" className="font-bold text-text-primary">{communityModal.id ? 'Edit community' : 'Create community'}</h2></div><button type="button" onClick={() => setCommunityModal(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X aria-hidden="true" className="h-4 w-4" /></button></div>
             <div className="grid gap-3 p-4 sm:grid-cols-2">
               <label className="space-y-1 text-xs font-semibold text-slate-700 sm:col-span-2">Name<input required maxLength={120} value={communityModal.name} onChange={event => setCommunityModal({ ...communityModal, name: event.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal" /></label>
               <label className="space-y-1 text-xs font-semibold text-slate-700 sm:col-span-2">Description<textarea maxLength={2000} rows={3} value={communityModal.description} onChange={event => setCommunityModal({ ...communityModal, description: event.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal" /></label>
@@ -684,18 +799,22 @@ export const AdminManagementScreen: React.FC = () => {
               <label className="space-y-1 text-xs font-semibold text-slate-700">Shift<select value={communityModal.shift} onChange={event => setCommunityModal({ ...communityModal, shift: event.target.value as CommunityDraft['shift'] })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal"><option>Both</option><option>Morning</option><option>Day</option></select></label>
               <label className="space-y-1 text-xs font-semibold text-slate-700">Section<select value={communityModal.section} onChange={event => setCommunityModal({ ...communityModal, section: event.target.value as CommunityDraft['section'] })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal"><option>All</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select></label>
               <label className="space-y-1 text-xs font-semibold text-slate-700">Visibility<select value={communityModal.visibility} onChange={event => setCommunityModal({ ...communityModal, visibility: event.target.value as CommunityDraft['visibility'] })} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal"><option value="public">Public</option><option value="private">Private</option></select></label>
-              <label className="space-y-1 text-xs font-semibold text-slate-700 sm:col-span-2">Image URL or upload<input value={communityModal.image_url.startsWith('data:') ? 'Image uploaded' : communityModal.image_url} onChange={event => setCommunityModal({ ...communityModal, image_url: event.target.value })} placeholder="https://..." className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal" /><span className="flex items-center gap-2 pt-1"><ImagePlus className="h-4 w-4" /><input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadCommunityImage} className="text-[11px] font-normal" />Photos are compressed automatically</span></label>
+              <label className="space-y-1 text-xs font-semibold text-slate-700 sm:col-span-2">Image URL or upload<input value={communityModal.image_url.startsWith('data:') ? 'Image uploaded' : communityModal.image_url} onChange={event => setCommunityModal({ ...communityModal, image_url: event.target.value })} placeholder="https://..." className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal" /><span className="flex items-center gap-2 pt-1"><ImagePlus aria-hidden="true" className="h-4 w-4" /><input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadCommunityImage} className="text-[11px] font-normal" />Photos are compressed automatically</span></label>
             </div>
-            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 p-4 sm:flex-row sm:justify-end"><button type="button" onClick={() => setCommunityModal(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold">Cancel</button><button type="submit" disabled={saving} className="rounded-xl bg-text-primary px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{saving ? 'Saving...' : communityModal.id ? 'Save changes' : 'Create community'}</button></div>
-          </form>
-        </div>
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 p-4 sm:flex-row sm:justify-end"><button type="button" onClick={() => setCommunityModal(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold">Cancel</button><button type="submit" disabled={saving} className="rounded-xl bg-brand-blue px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving...' : communityModal.id ? 'Save changes' : 'Create community'}</button></div>
+        </Modal>
       )}
 
       {membersCommunity && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3" role="dialog" aria-modal="true" aria-label="Community members">
-          <div className="my-auto max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl">
-            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-surface p-4"><div><h2 className="font-bold text-text-primary">Members · {membersCommunity.name}</h2><p className="text-xs text-slate-500">{activeCommunityMembers.length} membership records</p></div><button type="button" onClick={() => setMembersCommunity(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-4 w-4" /></button></div>
-            <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row"><select value={memberToAdd} onChange={event => setMemberToAdd(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs"><option value="">Select an account to add</option>{addableAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · {roleLabel[account.role]}</option>)}</select><button type="button" onClick={() => void addMember()} disabled={!memberToAdd || saving} className="rounded-xl bg-text-primary px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Add member</button></div>
+        <Modal
+          onClose={() => setMembersCommunity(null)}
+          labelledBy="admin-members-title"
+          panelClassName="my-auto max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl"
+          overlayClassName="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
+          showCloseButton={false}
+        >
+            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-surface p-4"><div><h2 id="admin-members-title" className="font-bold text-text-primary">Members · {membersCommunity.name}</h2><p className="text-xs text-slate-500">{activeCommunityMembers.length} membership records</p></div><button type="button" onClick={() => setMembersCommunity(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X aria-hidden="true" className="h-4 w-4" /></button></div>
+            <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row"><select value={memberToAdd} onChange={event => setMemberToAdd(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs"><option value="">Select an account to add</option>{addableAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · {roleLabel[account.role]}</option>)}</select><button type="button" onClick={() => void addMember()} disabled={!memberToAdd || saving} className="rounded-xl bg-brand-blue px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">Add member</button></div>
             <div className="divide-y divide-slate-100">
               {activeCommunityMembers.map(membership => (
                 <div key={membership.id} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center">
@@ -706,8 +825,7 @@ export const AdminManagementScreen: React.FC = () => {
               ))}
               {!activeCommunityMembers.length && <p className="p-6 text-center text-xs text-slate-500">No members.</p>}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </section>
   );

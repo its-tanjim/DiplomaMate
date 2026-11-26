@@ -28,7 +28,11 @@
   --color-blue-300: #8fbcff;
   --color-blue-400: #6ea6ff;
   --color-blue-500: #5190ff;
-  --color-blue-600: var(--dm-brand-blue);
+  /* WCAG AA: #3880FF with white/small text is 3.68:1 — -600 shades are the
+     small-text / button-fill blue (#2B6FE0, 4.72:1). #3880FF stays the brand
+     blue for large headings, accents and non-text. Dark-mode text shades are
+     restored in the contrast-fix block at the end of this file. */
+  --color-blue-600: #2b6fe0;
   --color-blue-700: #2b6fe0;
   --color-blue-800: #2459b3;
   --color-blue-900: #1d478f;
@@ -39,7 +43,7 @@
   --color-teal-300: #8fbcff;
   --color-teal-400: #6ea6ff;
   --color-teal-500: #5190ff;
-  --color-teal-600: var(--dm-brand-blue);
+  --color-teal-600: #2b6fe0;
   --color-teal-700: #2b6fe0;
   --color-teal-800: #2459b3;
   --color-teal-900: #1d478f;
@@ -51,8 +55,11 @@
   --color-amber-300: #ffb96e;
   --color-amber-400: #ffa945;
   --color-amber-500: var(--dm-brand-orange);
-  --color-amber-600: #de7d10;
-  --color-amber-700: #b96a0c;
+  /* WCAG AA: amber-600 #DE7D10 (2.98:1) and amber-700 #B96A0C (4.05:1 on
+     white, 3.77:1 on amber-50) fail — both now use amber-800 #96560A
+     (5.78:1 on white, 5.32:1 on amber-50). #F7931E stays the brand orange. */
+  --color-amber-600: #96560a;
+  --color-amber-700: #96560a;
   --color-amber-800: #96560a;
   --color-amber-900: #7a4708;
   --color-amber-950: #5c3606;
@@ -74,8 +81,11 @@
   --color-green-300: #5fe07a;
   --color-green-400: #2bd44a;
   --color-green-500: #00d615;
-  --color-green-600: var(--dm-success-green);
-  --color-green-700: #00940f;
+  /* WCAG AA: white on #00D615 is 1.98:1. Green button fills and green text
+     now use #00770C (5.76:1 white-on-fill / on white). #00D615 stays as the
+     --success / --dm-success-green token for dots, accents and non-text. */
+  --color-green-600: #00770c;
+  --color-green-700: #00770c;
   --color-green-800: #00770c;
   --color-green-900: #005f0a;
   --color-green-950: #004708;
@@ -86,7 +96,10 @@
   --color-rose-300: #ff8a8a;
   --color-rose-400: #ff6161;
   --color-rose-500: #ff3939;
-  --color-rose-600: #e62e2e;
+  /* WCAG AA: rose-600 #E62E2E is 4.38:1 on white — now #DC2626 (4.83:1).
+     #FF3939 stays on rose-500 for icons/borders; error text is fixed by the
+     .text-rose-500 override in the contrast-fix block below. */
+  --color-rose-600: #dc2626;
   --color-rose-700: #bf2424;
   --color-rose-800: #991d1d;
   --color-rose-900: #7a1717;
@@ -107,7 +120,7 @@
   --color-slate-950: var(--dm-text-primary);
   /* Sky / pink / purple / violet are used as blue aliases — map to #3880FF family */
   --color-sky-50: #ebf3ff;
-  --color-sky-600: var(--dm-brand-blue);
+  --color-sky-600: #2b6fe0;
   --color-sky-700: #2b6fe0;
   --color-pink-50: #ebf3ff;
   --color-pink-100: #d6e6ff;
@@ -115,7 +128,7 @@
   --color-pink-700: #2b6fe0;
   --color-purple-50: #ebf3ff;
   --color-purple-100: #d6e6ff;
-  --color-purple-600: var(--dm-brand-blue);
+  --color-purple-600: #2b6fe0;
   --color-purple-700: #2b6fe0;
   --color-violet-50: #ebf3ff;
   --color-violet-700: #2b6fe0;
@@ -131,10 +144,15 @@
     --secondary-light: #ffa945;
     --text-primary: #292929;
     --text-secondary: #626262;
-    --text-muted: #8f8f8f;
+    /* WCAG AA: #8F8F8F on white is 3.23:1 — muted text/placeholders now use
+       #6B6B6B (5.33:1 on white, 4.89:1 on subtle #F5F5F5). #8F8F8F stays for
+       decorative use and for dark-theme muted text (5.15:1+ on dark). */
+    --text-muted: #6b6b6b;
     --border: #d3d3d3;
     --background: #ffffff;
-    --error: #ff3939;
+    /* WCAG AA: #FF3939 error text on white is 3.56:1 — error text now uses
+       #DC2626 (4.83:1). #FF3939 stays on rose-500 for icons/borders. */
+    --error: #dc2626;
     --success: #00d615;
 
     /* App variables mapped onto the tokens */
@@ -150,7 +168,7 @@
     --dm-border: #d3d3d3;
     --dm-text-primary: #292929;
     --dm-text-secondary: #626262;
-    --dm-text-muted: #8f8f8f;
+    --dm-text-muted: #6b6b6b;
     --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
 
@@ -273,7 +291,9 @@
   .dm-primary-action {
     min-height: 48px;
     border-radius: 0.875rem;
-    background-color: var(--dm-brand-blue);
+    /* WCAG AA: white 12–14px labels on #3880FF are 3.68:1 — fill is #2B6FE0
+       (4.72:1). #3880FF stays for large/bold headings and accents. */
+    background-color: #2b6fe0;
     color: #ffffff;
     transition: background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
   }
@@ -281,6 +301,21 @@
   .dm-primary-action:hover:not(:disabled) {
     background-color: #2b6fe0;
     box-shadow: 0 8px 20px -12px rgb(56 128 255 / 0.65);
+  }
+
+  /* Orange action: white text on #F7931E is 2.30:1 — orange fills use dark
+     #292929 text instead (6.34:1). #F7931E token unchanged. */
+  .dm-secondary-action {
+    min-height: 48px;
+    border-radius: 0.875rem;
+    background-color: var(--dm-brand-orange);
+    color: #292929;
+    transition: background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  }
+
+  .dm-secondary-action:hover:not(:disabled) {
+    background-color: #ffa945;
+    box-shadow: 0 8px 20px -12px rgb(247 147 30 / 0.65);
   }
 
   .dm-header :focus-visible {
@@ -400,3 +435,126 @@
 .dm-splash-subtitle {
   animation: dm-fade-up 0.6s ease-out 0.4s both;
 }
+
+/* ==========================================================================
+   WCAG AA contrast fixes (compliance audit §9)
+   --------------------------------------------------------------------------
+   These rules are intentionally UNLAYERED so they beat Tailwind's layered
+   utilities. @theme inline inlines token values into utilities, so there are
+   no --color-* runtime variables to override per theme — dark-mode text
+   shades are restored here with [data-theme="dark"] utility overrides.
+   Order matters: the badge-chip rules at the bottom must stay last — they
+   share specificity (0,2,0) with the dark-mode text restores, and the chip
+   (dark text on a light tint) must win over the dark-surface text colour.
+   ========================================================================== */
+
+/* --- Dark-mode text restores -------------------------------------------
+   The -600/-700 tokens above were darkened for light-mode AA. On dark
+   surfaces (#121212/#1E1E1E) those dark shades fail, so dark-mode text uses
+   the bright shades again. Fills are unaffected: bg-* utilities carry the
+   inlined darkened token value in both themes, and white text on those
+   fills passes (blue #2B6FE0 4.72:1, green #00770C 5.76:1,
+   amber #96560A 5.78:1, rose #DC2626 4.83:1). */
+[data-theme="dark"] .text-blue-600,
+[data-theme="dark"] .text-teal-600,
+[data-theme="dark"] .text-sky-600,
+[data-theme="dark"] .text-purple-600 {
+  color: #5190ff;
+}
+[data-theme="dark"] .text-green-600 {
+  color: #00d615;
+}
+[data-theme="dark"] .text-green-700 {
+  color: #5fe07a;
+}
+[data-theme="dark"] .text-blue-700,
+[data-theme="dark"] .text-teal-700 {
+  color: #8fbcff;
+}
+[data-theme="dark"] .text-rose-700 {
+  color: #ff8a8a;
+}
+[data-theme="dark"] .text-amber-600 {
+  color: #ffa945;
+}
+[data-theme="dark"] .text-amber-700 {
+  color: #ffb96e;
+}
+
+/* --- Error text ---------------------------------------------------------
+   #FF3939 error text on white is 3.56:1 — light-theme error text uses
+   #DC2626 (4.83:1). Dark mode keeps #FF3939: on dark surfaces it is
+   4.68:1, while #DC2626 would drop to 3.80:1. #FF3939 stays for
+   icons/borders via the rose-500 token. */
+.text-rose-500 {
+  color: #dc2626;
+}
+[data-theme="dark"] .text-rose-500 {
+  color: #ff3939;
+}
+
+/* --- Fills with white text that token changes do not cover --------------
+   Brand-blue fills (buttons + the Home hero card): white small text on
+   #3880FF is 3.68:1 (light) / on #5190FF 3.10:1 (dark) — use #2B6FE0
+   (4.72:1). The .dm-header gradient and non-text brand-blue use are
+   untouched. */
+.bg-brand-blue.text-white,
+.bg-brand-teal.text-white {
+  background-color: #2b6fe0;
+}
+/* White text on #5190FF (primary-light) fills is 3.10:1 — use #2B6FE0. */
+.bg-teal-500.text-white,
+.bg-blue-500.text-white {
+  background-color: #2b6fe0;
+}
+/* White text on orange #F7931E fills is 2.30:1 — use dark #292929 text
+   (6.34:1) instead. (bg-amber-600 fills are already fixed by the token
+   change to #96560A, where white text passes at 5.78:1.) */
+.bg-amber-500.text-white,
+.bg-orange-500.text-white,
+.bg-orange-600.text-white {
+  color: #292929;
+}
+
+/* --- Badge / chip text --------------------------------------------------
+   -700 shades on -50/-100 tints fail AA (blue 4.22:1, amber 3.77:1, green
+   3.70:1, rose-600 4.25:1 on rose-50). Chip text moves to -800 shades.
+   The tints themselves stay light in dark mode too (see note below), so
+   these rules apply in both themes. */
+.bg-blue-50.text-blue-700,
+.bg-blue-100.text-blue-700,
+.bg-blue-50.text-blue-600,
+.bg-teal-50.text-teal-700,
+.bg-teal-100.text-teal-700,
+.bg-teal-50.text-teal-600,
+.bg-sky-50.text-sky-600,
+.bg-pink-50.text-pink-700,
+.bg-pink-100.text-pink-700 {
+  color: #2459b3;
+}
+.bg-green-50.text-green-700,
+.bg-green-100.text-green-700,
+.bg-green-50.text-green-600 {
+  color: #00770c;
+}
+.bg-amber-50.text-amber-700,
+.bg-amber-100.text-amber-700,
+.bg-amber-50.text-amber-600 {
+  color: #96560a;
+}
+.bg-rose-50.text-rose-600 {
+  color: #991d1d;
+}
+.bg-rose-50.text-rose-700,
+.bg-rose-100.text-rose-700 {
+  color: #bf2424;
+}
+
+/* --- Dark-theme tints: intentionally NOT flipped -------------------------
+   The -50 tints (blue-50 #EBF3FF, amber-50, green-50, rose-50) are fixed
+   light hex and stay light in dark mode. Flipping them dark would require
+   flipping every badge text on them to a light shade in dark mode too —
+   a second full matrix of overrides that risks unreadable chips if any
+   combo is missed. Current state is contrast-passing (light chip + dark
+   -800 text: 5.3–7.25:1) and the only failing dark pair (#5190FF text on
+   blue-50, 2.77:1) is fixed by the badge rules above. */

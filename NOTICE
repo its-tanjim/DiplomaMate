@@ -1,0 +1,62 @@
+DiplomaMate — Third-Party Notices
+===================================
+
+This file lists the third-party fonts, icons and data used by DiplomaMate
+and their licences, as far as they are known. Anything whose author or
+source could not be confirmed in the repository is marked as such below.
+
+Fonts
+-----
+- Plus Jakarta Sans (400, 500, 600, 700, 800), loaded at runtime from
+  Google Fonts.
+  Licence: SIL Open Font License 1.1 (SIL OFL 1.1).
+  Copyright: © 2020 The Plus Jakarta Sans Project Authors (Tokotype /
+  Gumpita Rahayu).
+- JetBrains Mono (400, 500), loaded at runtime from Google Fonts.
+  Licence: SIL Open Font License 1.1 (SIL OFL 1.1).
+  Copyright: © 2020 The JetBrains Mono Project Authors (JetBrains /
+  Philipp Nurullin & Konstantin Bulenkov).
+
+Bangla font note: no Bangla-specific font is declared anywhere in the
+app. Bangla UI text renders via the system fallback font on the device.
+
+Icons
+-----
+- Lucide (lucide-react), the app's only icon library.
+  Licence: ISC License.
+  Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2023
+  as part of Feather (MIT). All other copyright (c) for Lucide are held
+  by Lucide Contributors 2025.
+
+Logo and app icons — author/source unconfirmed
+----------------------------------------------
+- public/diploma-mate-logo.png (app logo, favicon, splash and header
+  image), and the PWA icons public/icon-192.png and public/icon-512.png
+  derived from it: author/source unconfirmed — [PLACEHOLDER].
+  Who made the logo (designed by the owner? AI-generated? stock?) is not
+  stated anywhere in the repository, so no licence can be claimed for it
+  here.
+
+BTEB curriculum data — source unconfirmed
+------------------------------------------
+- public/assets/aistudio/ — 15 BTEB Regulation 2022 department curriculum
+  JSON files (Architecture, Automobile, Chemical, Civil, Computer Science
+  & Technology, Construction, Electrical, Electro-medical, Electronics,
+  Environmental, Food, Mechanical, Power, Refrigeration,
+  Telecommunication): author/source unconfirmed — [PLACEHOLDER].
+  The content is BTEB curriculum facts (subject codes, names, credits,
+  marks); the folder name suggests an AI Studio upload/conversion, but no
+  source, author or licence is stated in the repository.
+
+User-uploaded content
+---------------------
+- Images and files uploaded by users (community covers, message
+  attachments, note previews, routine scans) belong to the users who
+  uploaded them. DiplomaMate performs no licence check on uploads; the
+  uploader is responsible for having the right to share them (see the
+  Terms of Service).
+
+Project licence
+---------------
+- DiplomaMate itself has no licence yet: see LICENSE
+  ("License: [PLACEHOLDER — to be chosen by the owner]").

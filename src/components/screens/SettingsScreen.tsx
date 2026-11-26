@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { useTheme } from '../../context/ThemeContext';
 import { 
   Settings as SettingsIcon, 
@@ -22,7 +23,10 @@ import {
   CheckCircle2,
   FolderDown,
   GraduationCap,
-  Globe
+  Globe,
+  FileText,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import { LanguageSwitcher } from '../LanguageSwitcher';
 import { Shift, Section, AccountType } from '../../types';
@@ -43,13 +47,36 @@ export const SettingsScreen: React.FC = () => {
     accountType, 
     setAccountType,
     resetAllData,
+    requestAccountDeletion,
     showToast,
     setActiveScreen
   } = useApp();
   const { theme, setTheme } = useTheme();
+  const { lang } = useLanguage();
 
   const platformInfo = nativeService.getPlatformInfo();
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteQueued, setDeleteQueued] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleDeleteAccount = async () => {
+    setDeleteError('');
+    setDeleteSubmitting(true);
+    try {
+      const res = await requestAccountDeletion();
+      if (!res.success) {
+        setDeleteError(res.message);
+        return;
+      }
+      setDeleteQueued(true);
+      setShowDeleteConfirm(false);
+      showToast(res.message);
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
 
   // Manual update check (Android app only — the web version updates itself
   // through the Render deploy). Opens the new APK download when one exists.
@@ -139,6 +166,115 @@ export const SettingsScreen: React.FC = () => {
         </div>
 
         <LanguageSwitcher />
+      </div>
+
+      {/* Legal — Privacy Policy & Terms of Service */}
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+          <div className="w-7 h-7 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
+            <FileText className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-text-primary">{lang === 'bn' ? 'আইনি' : 'Legal'}</h2>
+            <p className="text-[11px] text-slate-500">{lang === 'bn' ? 'গোপনীয়তা নীতি ও সেবার শর্তাবলি' : 'Privacy Policy & Terms of Service'}</p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setActiveScreen('privacy_policy')}
+          className="w-full flex items-center justify-between py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-text-primary transition-colors cursor-pointer"
+        >
+          <span>{lang === 'bn' ? 'গোপনীয়তা নীতি' : 'Privacy Policy'}</span>
+          <ChevronRight className="w-4 h-4 text-slate-400" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveScreen('terms')}
+          className="w-full flex items-center justify-between py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-text-primary transition-colors cursor-pointer"
+        >
+          <span>{lang === 'bn' ? 'সেবার শর্তাবলি' : 'Terms of Service'}</span>
+          <ChevronRight className="w-4 h-4 text-slate-400" />
+        </button>
+      </div>
+
+      {/* Delete my account */}
+      <div className="bg-surface rounded-2xl border border-rose-200 p-4 shadow-xs space-y-3">
+        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+          <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+            <Trash2 className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-text-primary">{lang === 'bn' ? 'আমার অ্যাকাউন্ট মুছে ফেলুন' : 'Delete my account'}</h2>
+          </div>
+        </div>
+
+        {deleteQueued ? (
+          <div className="p-3 rounded-xl bg-teal-50 border border-teal-200 text-teal-900 flex items-start gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-teal-600 mt-px" />
+            <p className="text-xs leading-relaxed">
+              {lang === 'bn'
+                ? 'আপনার অ্যাকাউন্ট মুছে ফেলার অনুরোধ সারিতে গেছে। একজন অ্যাডমিন এটি প্রক্রিয়া করবেন এবং আপনার ব্যক্তিগত ডেটা পুরোপুরি মুছে ফেলা হবে। শুধু নামবিহীন একাডেমিক রেকর্ড রাখা হবে।'
+                : 'Your account deletion request has been queued. An admin will process it and your personal data will be hard-erased. Only anonymised academic records will be kept.'}
+            </p>
+          </div>
+        ) : (
+          <>
+            <p className="text-[11px] leading-relaxed text-slate-600">
+              {lang === 'bn'
+                ? 'মুছে ফেলা হলে আপনার ব্যক্তিগত ডেটা — নাম, বোর্ড রোল, রেজিস্ট্রেশন নম্বর, ফোন নম্বর, ইমেইল ঠিকানা, PIN হ্যাশ ও প্রোফাইল — পুরোপুরি মুছে ফেলা হয়। শুধু নামবিহীন একাডেমিক রেকর্ড রাখা হয়। মুছে ফেলা স্থায়ী।'
+                : 'When deleted, your personal data — name, board roll, registration number, phone number, email address, PIN hash and profile — is hard-erased. Only anonymised academic records are kept. Deletion is permanent.'}
+            </p>
+            {deleteError && (
+              <div role="alert" className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+            {showDeleteConfirm ? (
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-rose-700">
+                  {lang === 'bn' ? 'আপনি কি নিশ্চিত যে আপনার অ্যাকাউন্ট মুছে ফেলতে চান? এটি পূর্বাবস্থায় ফেরানো যাবে না।' : 'Are you sure you want to delete your account? This cannot be undone.'}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteAccount()}
+                    disabled={deleteSubmitting}
+                    className="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {deleteSubmitting
+                      ? (lang === 'bn' ? 'পাঠানো হচ্ছে…' : 'Sending…')
+                      : (lang === 'bn' ? 'হ্যাঁ, মুছে ফেলার অনুরোধ করুন' : 'Yes, request deletion')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 py-2 px-3 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full py-2 px-3 rounded-xl border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{lang === 'bn' ? 'আমার অ্যাকাউন্ট মুছে ফেলুন' : 'Delete my account'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setActiveScreen('delete_account')}
+              className="w-full text-center text-[11px] font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
+            >
+              {lang === 'bn' ? 'অথবা সাইন ইন ছাড়া মুছে ফেলার পাতাটি খুলুন' : 'Or open the public deletion page (no sign-in needed)'}
+            </button>
+          </>
+        )}
       </div>
 
       {/* Account Type Card (Strict Role Separation) */}
@@ -396,10 +532,11 @@ export const SettingsScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* Reset Data Option */}
-      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs flex items-center justify-between">
+      {/* Reset Local Demo Content — this device only; does NOT delete your account */}
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-xs font-bold text-text-primary">Reset Local Demo Data</h3>
+          <h3 className="text-xs font-bold text-text-primary">Reset local demo content (this device only — does not delete your account)</h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">Only clears demo content stored on this device. Your server account is untouched — to delete your account, use “Delete my account” above.</p>
         </div>
         <button
           onClick={resetAllData}

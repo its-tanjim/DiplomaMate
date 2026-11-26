@@ -60,8 +60,8 @@ export const TeacherProfileSetupScreen: React.FC = () => {
   );
 
   // Office & Contact info
-  const [room, setRoom] = useState('Faculty Lounge, Academic Bldg 2');
-  const [consultingHours, setConsultingHours] = useState('Sun & Wed: 11:00 AM - 01:00 PM');
+  const [room, setRoom] = useState('');
+  const [consultingHours, setConsultingHours] = useState('');
 
   // Error validation
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -147,7 +147,7 @@ export const TeacherProfileSetupScreen: React.FC = () => {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-teal-50 text-brand-teal flex items-center justify-center font-bold">
-              <UserCheck className="w-5 h-5" />
+              <UserCheck aria-hidden="true" className="w-5 h-5" />
             </div>
             <div>
               <h1 className="text-base sm:text-lg font-bold text-text-primary">
@@ -159,12 +159,12 @@ export const TeacherProfileSetupScreen: React.FC = () => {
           {/* Verification Status Badge */}
           {isVerified ? (
             <span className="bg-green-50 text-green-700 border border-green-200 text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0">
-              <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+              <CheckCircle2 aria-hidden="true" className="w-3.5 h-3.5 text-green-600" />
               <span>Verified Faculty</span>
             </span>
           ) : (
             <span className="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+              <AlertTriangle aria-hidden="true" className="w-3.5 h-3.5 text-amber-600" />
               <span>Pending Admin Review</span>
             </span>
           )}
@@ -172,7 +172,7 @@ export const TeacherProfileSetupScreen: React.FC = () => {
 
         {!isVerified && (
           <div className="mt-3 p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-xs text-amber-900 flex items-start gap-2">
-            <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <Info aria-hidden="true" className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <span>
               Your profile is registered with <strong>Pending</strong> status. An Academic Administrator will verify your credentials before Class Captain verification privileges activate.
             </span>
@@ -185,7 +185,7 @@ export const TeacherProfileSetupScreen: React.FC = () => {
         {/* Section 1: Basic Information */}
         <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
           <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-100">
-            <UserCheck className="w-4 h-4 text-blue-600" />
+            <UserCheck aria-hidden="true" className="w-4 h-4 text-blue-600" />
             <span>Personal & Contact Credentials</span>
           </h2>
 
@@ -209,7 +209,7 @@ export const TeacherProfileSetupScreen: React.FC = () => {
                 Official Phone Number <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <Phone className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                <Phone aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
                 <input
                   type="text"
                   value={phone}
@@ -226,7 +226,7 @@ export const TeacherProfileSetupScreen: React.FC = () => {
                 Official Email (Optional)
               </label>
               <div className="relative">
-                <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                <Mail aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
                 <input
                   type="email"
                   value={email}
@@ -262,7 +262,7 @@ export const TeacherProfileSetupScreen: React.FC = () => {
         {/* Section 2: Institution & Department Selectors */}
         <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
           <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-100">
-            <Building2 className="w-4 h-4 text-blue-600" />
+            <Building2 aria-hidden="true" className="w-4 h-4 text-blue-600" />
             <span>Institutional Assignment</span>
           </h2>
 
@@ -314,7 +314,7 @@ export const TeacherProfileSetupScreen: React.FC = () => {
                 Room / Faculty Lab
               </label>
               <div className="relative">
-                <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                <MapPin aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
                 <input
                   type="text"
                   value={room}
@@ -331,7 +331,7 @@ export const TeacherProfileSetupScreen: React.FC = () => {
               Consulting & Counseling Hours
             </label>
             <div className="relative">
-              <Clock className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+              <Clock aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
               <input
                 type="text"
                 value={consultingHours}
@@ -346,7 +346,7 @@ export const TeacherProfileSetupScreen: React.FC = () => {
         {/* Section 3: Semesters Taught & Curriculum Subjects */}
         <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
           <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-100">
-            <BookOpen className="w-4 h-4 text-teal-600" />
+            <BookOpen aria-hidden="true" className="w-4 h-4 text-teal-600" />
             <span>Semesters & Teaching Subjects</span>
           </h2>
 
@@ -396,7 +396,7 @@ export const TeacherProfileSetupScreen: React.FC = () => {
         <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-green-600" />
+              <ShieldCheck aria-hidden="true" className="w-4 h-4 text-green-600" />
               <h2 className="text-xs font-bold text-text-primary uppercase tracking-wider">
                 Guide Teacher Authorization
               </h2>
@@ -487,7 +487,7 @@ export const TeacherProfileSetupScreen: React.FC = () => {
             ) : (
               <>
                 <span>Complete Profile & Open Dashboard</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight aria-hidden="true" className="w-4 h-4" />
               </>
             )}
           </button>

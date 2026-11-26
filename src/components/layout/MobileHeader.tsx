@@ -20,7 +20,7 @@ export const MobileHeader: React.FC = () => {
         {/* Brand Zone */}
         <button 
           onClick={() => setActiveScreen('home')}
-          className="flex items-center gap-2.5 text-left focus:outline-none group"
+          className="flex items-center gap-2.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white rounded-lg group"
         >
           <img
             src="/diploma-mate-logo.png"
@@ -38,11 +38,11 @@ export const MobileHeader: React.FC = () => {
 
         {/* Center: Shift & Section Badge */}
         {accountType !== 'system_admin' && (
-          <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-blue-100 bg-white/10 px-3 py-1 rounded-md border border-white/15">
+          <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-white bg-white/10 px-3 py-1 rounded-md border border-white/15">
             <span className="text-white font-semibold">{userProfile.shift} Shift</span>
-            <span className="text-blue-200">·</span>
+            <span className="text-white/70">·</span>
             <span>Sec {userProfile.section}</span>
-            <span className="text-blue-200">·</span>
+            <span className="text-white/70">·</span>
             <span>Sem {userProfile.semester}</span>
           </div>
         )}
@@ -56,7 +56,7 @@ export const MobileHeader: React.FC = () => {
               title="System Administrator Account"
               className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-100" />
+              <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5 text-white" />
               <span>System Admin</span>
             </button>
           ) : accountType === 'teacher' ? (
@@ -65,7 +65,7 @@ export const MobileHeader: React.FC = () => {
               title="Teacher Account"
               className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
             >
-              <GraduationCap className="w-3.5 h-3.5 text-blue-100" />
+              <GraduationCap aria-hidden="true" className="w-3.5 h-3.5 text-white" />
               <span>Teacher</span>
             </button>
           ) : accountType === 'class_captain' ? (
@@ -74,7 +74,7 @@ export const MobileHeader: React.FC = () => {
               title="Class Captain Account"
               className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-100" />
+              <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5 text-white" />
               <span>Class Captain</span>
             </button>
           ) : (
@@ -83,7 +83,7 @@ export const MobileHeader: React.FC = () => {
               title="Student Account"
               className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
             >
-              <UserCheck className="w-3.5 h-3.5 text-blue-100" />
+              <UserCheck aria-hidden="true" className="w-3.5 h-3.5 text-white" />
               <span>Student</span>
             </button>
           )}
@@ -99,7 +99,7 @@ export const MobileHeader: React.FC = () => {
             }`}
             title="Academic Community Hub & Peer Discussions"
           >
-            <Users className="w-3.5 h-3.5" />
+            <Users aria-hidden="true" className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Community</span>
           </button>
 
@@ -114,7 +114,7 @@ export const MobileHeader: React.FC = () => {
             }`}
             title="Book List & Central Subject Catalog"
           >
-            <BookOpen className="w-4 h-4" />
+            <BookOpen aria-hidden="true" className="w-4 h-4" />
             <span className="hidden sm:inline">Book List</span>
           </button>
 
@@ -124,7 +124,7 @@ export const MobileHeader: React.FC = () => {
             className={`min-h-10 min-w-9 p-2 rounded-xl text-white hover:text-white hover:bg-white/15 transition-colors relative flex items-center justify-center ${activeScreen === 'reminders' ? 'bg-white text-brand-navy' : ''}`}
             aria-label="View Reminders"
           >
-            <Bell className="w-4 h-4" />
+            <Bell aria-hidden="true" className="w-4 h-4" />
             {pendingRemindersCount > 0 && (
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-500" />
             )}

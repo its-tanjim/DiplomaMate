@@ -101,7 +101,10 @@ export const strings: Record<Language, StringTable> = {
     'home.joinChat': 'Join / Chat',
     'home.academicCommunity': 'Academic Community',
     'home.academicCommunityDesc': 'Study groups, lecture PDFs, lab videos & announcements',
-    'home.cohortVerified': 'Cohort Verified',
+    // Badge text removed 2026-11-26 (compliance §6 item 5): no cohort
+    // verification exists. Kept as an empty string so t() does not fall
+    // back to rendering the key itself in older renders.
+    'home.cohortVerified': '',
     'home.peerFacultyHub': 'Peer & Faculty Hub',
     'home.manage': 'Manage',
     'home.remindersDesc': 'Midterms, class tests & BTEB form fill-up alerts',
@@ -203,7 +206,7 @@ export const strings: Record<Language, StringTable> = {
     'welcome.captainRegistrationTitle': 'Class Captain Registration:',
     'welcome.adminSignIn': 'System Administrator Sign In →',
     'welcome.onboardingWelcome': 'Welcome,',
-    'welcome.profileVerifiedFor': 'Your academic profile is verified for:',
+    'welcome.profileVerifiedFor': 'Your profile:',
     'welcome.recommendedCommunities': 'Recommended Academic Communities',
     'welcome.findingGroups': 'Finding your cohort study groups...',
     'welcome.noGroupsYet': 'No active groups created yet for your cohort',
@@ -344,7 +347,7 @@ export const strings: Record<Language, StringTable> = {
     'home.joinChat': 'যোগ দিন / চ্যাট',
     'home.academicCommunity': 'একাডেমিক কমিউনিটি',
     'home.academicCommunityDesc': 'স্টাডি গ্রুপ, লেকচার পিডিএফ, ল্যাব ভিডিও ও ঘোষণা',
-    'home.cohortVerified': 'কোহর্ট যাচাইকৃত',
+    'home.cohortVerified': '',
     'home.peerFacultyHub': 'সহপাঠী ও শিক্ষক হাব',
     'home.manage': 'পরিচালনা করুন',
     'home.remindersDesc': 'মিডটার্ম, ক্লাস টেস্ট ও বিটিইবি ফরম পূরণের সতর্কতা',
@@ -446,7 +449,7 @@ export const strings: Record<Language, StringTable> = {
     'welcome.captainRegistrationTitle': 'ক্লাস ক্যাপ্টেন রেজিস্ট্রেশন:',
     'welcome.adminSignIn': 'সিস্টেম অ্যাডমিনিস্ট্রেটর সাইন ইন →',
     'welcome.onboardingWelcome': 'স্বাগতম,',
-    'welcome.profileVerifiedFor': 'আপনার একাডেমিক প্রোফাইল যাচাই করা হয়েছে:',
+    'welcome.profileVerifiedFor': 'আপনার প্রোফাইল:',
     'welcome.recommendedCommunities': 'প্রস্তাবিত একাডেমিক কমিউনিটি',
     'welcome.findingGroups': 'আপনার কোহর্ট স্টাডি গ্রুপ খোঁজা হচ্ছে...',
     'welcome.noGroupsYet': 'আপনার কোহর্টের জন্য এখনো কোনো সক্রিয় গ্রুপ তৈরি হয়নি',

@@ -24,6 +24,9 @@ import { TeacherProfileSetupScreen } from './components/screens/TeacherProfileSe
 import { BTEBResultsScreen } from './components/screens/BTEBResultsScreen';
 import { BookListScreen } from './components/screens/BookListScreen';
 import { CommunityScreen } from './components/screens/CommunityScreen';
+import { PrivacyPolicyScreen } from './components/screens/PrivacyPolicyScreen';
+import { TermsScreen } from './components/screens/TermsScreen';
+import { DeleteAccountScreen } from './components/screens/DeleteAccountScreen';
 import { CheckCircle2 } from 'lucide-react';
 import { nativeService } from './services/nativeService';
 import { AppUpdateBanner } from './components/AppUpdateBanner';
@@ -86,10 +89,18 @@ const AppContent: React.FC = () => {
   }, []);
 
   // Support direct URL navigation to /admin/login, /admin, /book-list, /community, /notices, or /jobs
+  // — and to the public legal pages /privacy, /terms and /delete-account
+  // (no sign-in required for any of the three).
   React.useEffect(() => {
     const path = window.location.pathname.toLowerCase();
     if (path === '/admin/login') {
       setActiveScreen('admin_login');
+    } else if (path === '/privacy') {
+      setActiveScreen('privacy_policy');
+    } else if (path === '/terms') {
+      setActiveScreen('terms');
+    } else if (path === '/delete-account') {
+      setActiveScreen('delete_account');
     } else if (path === '/admin' || path === '/admin/results-import') {
       setActiveScreen('admin_portal');
     } else if (path === '/book-list' || path === '/books') {
@@ -137,6 +148,34 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // Public legal pages — privacy, terms and account deletion need no
+  // sign-in, so they render before the welcome gate below.
+  const isPublicLegalScreen =
+    activeScreen === 'privacy_policy' || activeScreen === 'terms' || activeScreen === 'delete_account';
+  if (isPublicLegalScreen) {
+    return (
+      <div className="min-h-screen bg-app-bg">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:bg-white focus:text-slate-900 focus:px-3 focus:py-2 focus:rounded-lg focus:text-sm focus:font-semibold"
+        >
+          Skip to main content
+        </a>
+        <main id="main-content">
+          {activeScreen === 'privacy_policy' && <PrivacyPolicyScreen />}
+          {activeScreen === 'terms' && <TermsScreen />}
+          {activeScreen === 'delete_account' && <DeleteAccountScreen />}
+        </main>
+        {toastMessage && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-text-primary text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-150">
+            <CheckCircle2 className="w-4 h-4 text-teal-400" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // If not signed in or currently on welcome screen, show WelcomeScreen
   // (Unless user navigated directly to admin_portal to verify 403 guard)
   if ((!isLoggedIn || activeScreen === 'welcome') && activeScreen !== 'admin_portal') {
@@ -157,6 +196,14 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-app-bg text-text-primary flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
+      {/* Skip link — visually hidden until focused (keyboard users) */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:bg-white focus:text-slate-900 focus:px-3 focus:py-2 focus:rounded-lg focus:text-sm focus:font-semibold"
+      >
+        Skip to main content
+      </a>
+
       {/* Top Mobile Bar */}
       <MobileHeader />
 
@@ -164,7 +211,7 @@ const AppContent: React.FC = () => {
       <AppUpdateBanner />
 
       {/* Main Content Viewport */}
-      <main className={`dm-app-content flex-1 ${isWideScreen ? 'max-w-6xl' : 'max-w-4xl'} mx-auto w-full px-4 sm:px-6 lg:px-8 pt-5`}>
+      <main id="main-content" className={`dm-app-content flex-1 ${isWideScreen ? 'max-w-6xl' : 'max-w-4xl'} mx-auto w-full px-4 sm:px-6 lg:px-8 pt-5`}>
         {activeScreen === 'home' && (
           accountType === 'system_admin' && isServerVerifiedAdmin ? (
             <AdminPortalScreen />

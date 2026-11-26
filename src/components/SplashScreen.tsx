@@ -17,6 +17,13 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onDone }) => {
       onClick={onDone}
       role="button"
       aria-label="DiplomaMate — tap to continue"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onDone();
+        }
+      }}
     >
       <div className="dm-splash-scene">
         <div className="dm-splash-logo">

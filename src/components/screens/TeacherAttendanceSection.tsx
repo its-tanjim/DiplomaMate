@@ -36,6 +36,7 @@ import { SearchableDepartmentSelect } from '../common/SearchableDepartmentSelect
 import { CatalogSubjectSelect } from '../common/CatalogSubjectSelect';
 import { ShiftScheduleConfigModal } from '../common/ShiftScheduleConfigModal';
 import { formatPeriodOptionLabel } from '../../data/shiftScheduleUtils';
+import { Modal } from '../common/Modal';
 
 interface TeacherAttendanceSectionProps {
   selectedCollege: string;
@@ -731,7 +732,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
           <div>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
-                <CheckSquare className="w-4 h-4" />
+                <CheckSquare aria-hidden="true" className="w-4 h-4" />
               </div>
               <div>
                 <h2 className="text-sm sm:text-base font-bold text-text-primary">
@@ -899,7 +900,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 className="text-[10px] font-bold text-blue-700 hover:text-blue-900 flex items-center gap-0.5 cursor-pointer"
                 title="Configure Shift & Period Timings"
               >
-                <Sliders className="w-3 h-3" />
+                <Sliders aria-hidden="true" className="w-3 h-3" />
                 <span>Timings</span>
               </button>
             </div>
@@ -956,7 +957,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
           {existingSheet ? (
             <div className="bg-teal-50 border border-teal-200 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                <CheckCircle2 aria-hidden="true" className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold text-teal-950">
                     Recorded Attendance Sheet Loaded ({existingSheet.date} · {existingSheet.periodLabel})
@@ -972,14 +973,14 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 onClick={() => setShowAuditModal(true)}
                 className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-teal-100 text-teal-800 border border-teal-200 font-semibold flex items-center gap-1 self-start sm:self-auto shrink-0 cursor-pointer"
               >
-                <History className="w-3.5 h-3.5" />
+                <History aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>Audit Log ({existingSheet.auditTrail?.length || 1})</span>
               </button>
             </div>
           ) : (
             <div className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
               <div className="flex items-center gap-2 text-blue-900">
-                <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+                <Calendar aria-hidden="true" className="w-4 h-4 text-blue-600 shrink-0" />
                 <span>
                   New Attendance Sheet for <strong>{attendanceDate}</strong> ·{' '}
                   <strong>{selectedSubjectObj.code} ({selectedSubjectObj.name})</strong> · {selectedPeriodLabel}. All students start as <strong>Not Marked</strong>.
@@ -1001,15 +1002,16 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
             >
               <div className="flex items-center gap-2">
                 {saveFeedback.type === 'success' ? (
-                  <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                  <CheckCircle2 aria-hidden="true" className="w-4 h-4 text-green-600 shrink-0" />
                 ) : (
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <AlertTriangle aria-hidden="true" className="w-4 h-4 text-amber-600 shrink-0" />
                 )}
                 <span className="font-semibold">{saveFeedback.message}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setSaveFeedback(null)}
+                aria-label="Dismiss"
                 className="text-slate-400 hover:text-slate-700 font-bold px-1"
               >
                 ✕
@@ -1069,7 +1071,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
             {/* Action Toolbar */}
             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
               <div className="relative flex-1 min-w-[180px] max-w-xs">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                <Search aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                 <input
                   type="text"
                   value={searchFilter}
@@ -1089,7 +1091,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   }}
                   className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <Upload className="w-3.5 h-3.5" />
+                  <Upload aria-hidden="true" className="w-3.5 h-3.5" />
                   <span>Upload Student List (Image/PDF)</span>
                 </button>
 
@@ -1100,7 +1102,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   disabled={sheetEntries.length === 0}
                   className="px-3 py-1.5 rounded-xl bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  <CheckSquare className="w-3.5 h-3.5" />
+                  <CheckSquare aria-hidden="true" className="w-3.5 h-3.5" />
                   <span>Select All Present</span>
                 </button>
 
@@ -1121,12 +1123,12 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
           <div className="bg-surface rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
             {isLoadingRoster ? (
               <div className="p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                <RefreshCw aria-hidden="true" className="w-4 h-4 animate-spin text-blue-600" />
                 <span>Loading class roster & attendance sheet...</span>
               </div>
             ) : filteredDailyRecords.length === 0 ? (
               <div className="p-8 text-center space-y-2">
-                <Users className="w-9 h-9 text-slate-300 mx-auto" />
+                <Users aria-hidden="true" className="w-9 h-9 text-slate-300 mx-auto" />
                 <h3 className="text-sm font-bold text-text-primary">
                   No Students Found for This Cohort
                 </h3>
@@ -1138,7 +1140,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   onClick={() => setShowOcrModal(true)}
                   className="mt-2 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-xs hover:bg-blue-700 cursor-pointer"
                 >
-                  <Upload className="w-3.5 h-3.5" />
+                  <Upload aria-hidden="true" className="w-3.5 h-3.5" />
                   <span>Upload Student List from Image / PDF</span>
                 </button>
               </div>
@@ -1197,7 +1199,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                                   : 'bg-surface border-slate-300 text-transparent hover:border-green-500'
                               }`}
                             >
-                              <Check className="w-4 h-4 stroke-[3]" />
+                              <Check aria-hidden="true" className="w-4 h-4 stroke-[3]" />
                             </button>
                           </td>
 
@@ -1270,7 +1272,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                     onClick={() => handleSaveAttendanceSheet(Boolean(existingSheet))}
                     className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    <CheckCircle2 className="w-4 h-4" />
+                    <CheckCircle2 aria-hidden="true" className="w-4 h-4" />
                     <span>
                       {isSavingSheet
                         ? 'Saving...'
@@ -1357,7 +1359,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   onClick={handleExportMonthlyCsv}
                   className="px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold flex items-center gap-1 cursor-pointer"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download aria-hidden="true" className="w-3.5 h-3.5" />
                   <span>Export CSV</span>
                 </button>
 
@@ -1366,7 +1368,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                   onClick={() => window.print()}
                   className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
                 >
-                  <Printer className="w-3.5 h-3.5" />
+                  <Printer aria-hidden="true" className="w-3.5 h-3.5" />
                   <span>Print</span>
                 </button>
               </div>
@@ -1429,7 +1431,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
           <div className="bg-surface rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
             {isLoadingMonthly ? (
               <div className="p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                <RefreshCw aria-hidden="true" className="w-4 h-4 animate-spin text-blue-600" />
                 <span>Compiling monthly attendance matrix...</span>
               </div>
             ) : !monthlyData || monthlyData.studentRows.length === 0 ? (
@@ -1641,14 +1643,18 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
       {/* MODAL 1: EXPLICIT CONFIRMATION FOR "SELECT ALL PRESENT"                */}
       {/* ===================================================================== */}
       {showSelectAllConfirm && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl border border-slate-200">
+        <Modal
+          onClose={() => setShowSelectAllConfirm(false)}
+          labelledBy="attendance-select-all-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl border border-slate-200"
+          overlayClassName="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-green-100 text-green-700 flex items-center justify-center shrink-0">
-                <CheckSquare className="w-5 h-5" />
+                <CheckSquare aria-hidden="true" className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-text-primary">
+                <h3 id="attendance-select-all-title" className="text-sm font-bold text-text-primary">
                   Confirm Mark All Students Present
                 </h3>
                 <p className="text-xs text-slate-500">
@@ -1677,23 +1683,27 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 Yes, Mark All Present
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ===================================================================== */}
       {/* MODAL 2: UPLOAD STUDENT LIST FROM IMAGE / PDF (OCR PREVIEW & EDIT)     */}
       {/* ===================================================================== */}
       {showOcrModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-surface rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl border border-slate-200 my-8 max-h-[90vh] overflow-y-auto">
+        <Modal
+          onClose={() => setShowOcrModal(false)}
+          labelledBy="attendance-ocr-title"
+          panelClassName="bg-surface rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl border border-slate-200 my-8 max-h-[90vh] overflow-y-auto"
+          overlayClassName="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
-                  <Sparkles className="w-4 h-4" />
+                  <Sparkles aria-hidden="true" className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">
+                  <h3 id="attendance-ocr-title" className="text-sm font-bold text-text-primary">
                     Upload Student Roster from Image or PDF (OCR)
                   </h3>
                   <p className="text-[11px] text-slate-500">
@@ -1705,7 +1715,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 type="button"
                 onClick={() => setShowOcrModal(false)}
                 className="text-slate-400 hover:text-slate-700 font-bold text-lg p-1 cursor-pointer"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -1750,7 +1760,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 disabled={isExtractingOcr}
                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>{isExtractingOcr ? 'Extracting Student List...' : 'Extract & Preview Student List'}</span>
               </button>
 
@@ -1759,14 +1769,14 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 onClick={handleAddBlankOcrRow}
                 className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1 cursor-pointer"
               >
-                <UserPlus className="w-3.5 h-3.5" />
+                <UserPlus aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>Add Row Manually</span>
               </button>
             </div>
 
             {ocrError && (
               <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <AlertTriangle aria-hidden="true" className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold block">OCR Extraction Notice</span>
                   <span>{ocrError}</span>
@@ -1912,9 +1922,10 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                                 type="button"
                                 onClick={() => handleRemoveOcrCandidate(c.tempId)}
                                 className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                                aria-label="Remove row"
                                 title="Remove row"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 aria-hidden="true" className="w-3.5 h-3.5" />
                               </button>
                             </td>
                           </tr>
@@ -1948,20 +1959,24 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 </div>
               </div>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ===================================================================== */}
       {/* MODAL 3: ATTENDANCE SHEET AUDIT LOG                                    */}
       {/* ===================================================================== */}
       {showAuditModal && existingSheet && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl border border-slate-200">
+        <Modal
+          onClose={() => setShowAuditModal(false)}
+          labelledBy="attendance-audit-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl border border-slate-200"
+          overlayClassName="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-2">
-                <History className="w-4 h-4 text-blue-600" />
-                <h3 className="text-sm font-bold text-text-primary">
+                <History aria-hidden="true" className="w-4 h-4 text-blue-600" />
+                <h3 id="attendance-audit-title" className="text-sm font-bold text-text-primary">
                   Attendance Audit Trail
                 </h3>
               </div>
@@ -1969,7 +1984,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 type="button"
                 onClick={() => setShowAuditModal(false)}
                 className="text-slate-400 hover:text-slate-700 font-bold"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -2000,8 +2015,7 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
                 Close
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Configurable Shift & Period Schedule Modal */}

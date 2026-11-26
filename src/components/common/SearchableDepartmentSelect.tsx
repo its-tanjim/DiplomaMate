@@ -112,7 +112,7 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
       {label && (
         <label className="block text-xs font-semibold text-text-primary mb-1.5 flex items-center justify-between">
           <span className="flex items-center gap-1.5">
-            <Cpu className="w-3.5 h-3.5 text-teal-600" />
+            <Cpu aria-hidden="true" className="w-3.5 h-3.5 text-teal-600" />
             <span>{label}</span>
             {required && <span className="text-rose-500">*</span>}
           </span>
@@ -121,6 +121,19 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
 
       {/* Main trigger button */}
       <div
+        role="combobox"
+        aria-expanded={isOpen}
+        aria-label={label || 'Select department / technology'}
+        tabIndex={disabled ? -1 : 0}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          if ((e.target as HTMLElement).closest('button')) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setIsOpen(prev => !prev);
+            setTimeout(() => inputRef.current?.focus(), 50);
+          }
+        }}
         className={`w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border rounded-xl flex items-center justify-between cursor-pointer transition-all ${
           error ? 'border-rose-400 bg-rose-50/30' : isOpen ? 'border-teal-500 ring-2 ring-teal-500/20 bg-surface' : 'border-slate-200 hover:border-slate-300'
         } ${disabled ? 'opacity-60 cursor-not-allowed bg-slate-100' : ''}`}
@@ -132,7 +145,7 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
         }}
       >
         <div className="flex items-center gap-2 flex-1 min-w-0 pr-1">
-          <Search className="w-4 h-4 text-slate-400 shrink-0" />
+          <Search aria-hidden="true" className="w-4 h-4 text-slate-400 shrink-0" />
           {selectedTech ? (
             <div className="flex items-center gap-1.5 truncate">
               <span className="bg-teal-50 text-teal-700 text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-teal-200 shrink-0">
@@ -153,12 +166,13 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
               type="button"
               onClick={handleClear}
               className="p-1 text-slate-400 hover:text-slate-600 rounded-md transition-colors"
+              aria-label="Clear selection"
               title="Clear selection"
             >
-              <X className="w-3.5 h-3.5" />
+              <X aria-hidden="true" className="w-3.5 h-3.5" />
             </button>
           )}
-          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          <ChevronDown aria-hidden="true" className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
         </div>
       </div>
 
@@ -172,7 +186,7 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
           {/* Autocomplete Search input inside dropdown */}
           <div className="p-2 border-b border-slate-100 bg-slate-50">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+              <Search aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
               <input
                 ref={inputRef}
                 type="text"
@@ -231,7 +245,7 @@ export const SearchableDepartmentSelect: React.FC<SearchableDepartmentSelectProp
                     </div>
 
                     {isSelected && (
-                      <Check className="w-4 h-4 text-teal-600 shrink-0" />
+                      <Check aria-hidden="true" className="w-4 h-4 text-teal-600 shrink-0" />
                     )}
                   </li>
                 );

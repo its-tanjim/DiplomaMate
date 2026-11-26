@@ -120,19 +120,20 @@ export const CaptainVerificationScreen: React.FC = () => {
             <button
               onClick={() => setActiveScreen('profile')}
               className="p-1 rounded-lg hover:bg-slate-100 text-slate-500"
+              aria-label="Back to profile"
               title="Back to profile"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft aria-hidden="true" className="w-5 h-5" />
             </button>
             <div className="w-8 h-8 rounded-lg bg-teal-50 text-brand-teal flex items-center justify-center font-bold">
-              <ShieldCheck className="w-4 h-4" />
+              <ShieldCheck aria-hidden="true" className="w-4 h-4" />
             </div>
             <div>
               <h1 className="text-base sm:text-lg font-bold text-text-primary">
                 Class Captain Verification
               </h1>
               <p className="text-xs text-slate-500">
-                Official accreditation for Section {userProfile.section} Representative
+                Class Captain Verification
               </p>
             </div>
           </div>
@@ -142,7 +143,7 @@ export const CaptainVerificationScreen: React.FC = () => {
             className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1"
           >
             <span>Admin Review</span>
-            <ChevronRight className="w-3.5 h-3.5" />
+            <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
           </button>
         </div>
 
@@ -156,7 +157,7 @@ export const CaptainVerificationScreen: React.FC = () => {
                 : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <Send className="w-3.5 h-3.5" />
+            <Send aria-hidden="true" className="w-3.5 h-3.5" />
             <span>1. Apply Directly</span>
           </button>
 
@@ -168,7 +169,7 @@ export const CaptainVerificationScreen: React.FC = () => {
                 : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <Key className="w-3.5 h-3.5" />
+            <Key aria-hidden="true" className="w-3.5 h-3.5" />
             <span>2. Teacher PIN Sign-off</span>
           </button>
 
@@ -180,7 +181,7 @@ export const CaptainVerificationScreen: React.FC = () => {
                 : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <Clock className="w-3.5 h-3.5" />
+            <Clock aria-hidden="true" className="w-3.5 h-3.5" />
             <span>3. Status ({myApplication ? myApplication.status : 'None'})</span>
           </button>
         </div>
@@ -188,7 +189,7 @@ export const CaptainVerificationScreen: React.FC = () => {
 
       {/* Quota Banner */}
       <div className="bg-blue-50/80 border border-blue-200/80 rounded-2xl p-3.5 flex items-start gap-3">
-        <Building2 className="w-5 h-5 text-brand-blue shrink-0 mt-0.5" />
+        <Building2 aria-hidden="true" className="w-5 h-5 text-brand-blue shrink-0 mt-0.5" />
         <div className="text-xs text-blue-900 leading-relaxed">
           <span className="font-bold">Quota Governance Rule: </span>
           Each department section ({userProfile.department}, Sem {userProfile.semester}, {userProfile.shift} Shift, Sec {userProfile.section}) is limited to 
@@ -205,7 +206,7 @@ export const CaptainVerificationScreen: React.FC = () => {
           <div className="bg-surface rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
             <div className="flex items-start gap-3 border-b border-slate-100 pb-3">
               <div className="w-10 h-10 rounded-xl bg-teal-50 text-brand-teal flex items-center justify-center shrink-0">
-                <Send className="w-5 h-5" />
+                <Send aria-hidden="true" className="w-5 h-5" />
               </div>
               <div>
                 <h2 className="text-sm font-bold text-text-primary">
@@ -254,7 +255,7 @@ export const CaptainVerificationScreen: React.FC = () => {
             </div>
             {applyError && (
               <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-1.5">
-                <XCircle className="w-4 h-4 shrink-0 text-red-600" />
+                <XCircle aria-hidden="true" className="w-4 h-4 shrink-0 text-red-600" />
                 <span>{applyError}</span>
               </div>
             )}
@@ -262,7 +263,7 @@ export const CaptainVerificationScreen: React.FC = () => {
             {myApplication?.status === 'Pending' ? (
               <div className="space-y-2.5">
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
-                  <Clock className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                  <Clock aria-hidden="true" className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
                   <div>
                     <span className="font-semibold">Request already sent. </span>
                   </div>
@@ -277,7 +278,7 @@ export const CaptainVerificationScreen: React.FC = () => {
               </div>
             ) : myApplication?.status === 'Approved' ? (
               <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl text-xs text-teal-900 flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0 text-teal-600 mt-0.5" />
+                <CheckCircle2 aria-hidden="true" className="w-4 h-4 shrink-0 text-teal-600 mt-0.5" />
                 <div>
                   <span className="font-semibold">You are already a verified Class Captain. </span>
                   No new request needed.
@@ -294,7 +295,7 @@ export const CaptainVerificationScreen: React.FC = () => {
                     : 'bg-brand-blue hover:bg-blue-700 cursor-pointer'
                 }`}
               >
-                <Send className="w-4 h-4" />
+                <Send aria-hidden="true" className="w-4 h-4" />
                 <span>{isSubmitting ? 'Sending Request...' : 'Send Approval Request to Guide Teacher & Admin'}</span>
               </button>
             )}
@@ -307,7 +308,7 @@ export const CaptainVerificationScreen: React.FC = () => {
         <div className="bg-surface rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
           <div className="flex items-start gap-3 border-b border-slate-100 pb-3">
             <div className="w-10 h-10 rounded-xl bg-teal-50 text-brand-teal flex items-center justify-center shrink-0">
-              <Key className="w-5 h-5" />
+              <Key aria-hidden="true" className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-text-primary">
@@ -372,7 +373,7 @@ export const CaptainVerificationScreen: React.FC = () => {
 
             {teacherError && (
               <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-1.5">
-                <XCircle className="w-4 h-4 shrink-0 text-red-600" />
+                <XCircle aria-hidden="true" className="w-4 h-4 shrink-0 text-red-600" />
                 <span>{teacherError}</span>
               </div>
             )}
@@ -382,7 +383,7 @@ export const CaptainVerificationScreen: React.FC = () => {
               disabled={isEndorsing}
               className="w-full py-2.5 rounded-xl bg-brand-teal hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
-              <ShieldCheck className="w-4 h-4" />
+              <ShieldCheck aria-hidden="true" className="w-4 h-4" />
               <span>{isEndorsing ? 'Verifying PIN & Endorsing...' : 'Endorse & Approve Student as Class Captain'}</span>
             </button>
           </form>
@@ -411,9 +412,9 @@ export const CaptainVerificationScreen: React.FC = () => {
                     ? 'bg-red-100 text-red-700'
                     : 'bg-amber-100 text-amber-700'
                 }`}>
-                  {myApplication.status === 'Approved' && <CheckCircle2 className="w-3.5 h-3.5" />}
-                  {myApplication.status === 'Rejected' && <XCircle className="w-3.5 h-3.5" />}
-                  {myApplication.status === 'Pending' && <Clock className="w-3.5 h-3.5" />}
+                  {myApplication.status === 'Approved' && <CheckCircle2 aria-hidden="true" className="w-3.5 h-3.5" />}
+                  {myApplication.status === 'Rejected' && <XCircle aria-hidden="true" className="w-3.5 h-3.5" />}
+                  {myApplication.status === 'Pending' && <Clock aria-hidden="true" className="w-3.5 h-3.5" />}
                   <span>{myApplication.status}</span>
                 </span>
               </div>
@@ -437,7 +438,7 @@ export const CaptainVerificationScreen: React.FC = () => {
               {myApplication.verificationFormName && (
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-slate-500" />
+                    <FileText aria-hidden="true" className="w-4 h-4 text-slate-500" />
                     <span className="font-medium text-text-primary truncate max-w-[200px]">
                       {myApplication.verificationFormName}
                     </span>
@@ -450,7 +451,7 @@ export const CaptainVerificationScreen: React.FC = () => {
               {myApplication.teacherEndorsement ? (
                 <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl text-xs space-y-1">
                   <div className="font-bold text-brand-teal flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <CheckCircle2 aria-hidden="true" className="w-3.5 h-3.5" />
                     <span>Endorsed by Teacher: {myApplication.teacherEndorsement.teacherName}</span>
                   </div>
                   <div className="text-slate-600">
@@ -464,7 +465,7 @@ export const CaptainVerificationScreen: React.FC = () => {
                 </div>
               ) : (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
-                  <Clock className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                  <Clock aria-hidden="true" className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
                   <div>
                     <span className="font-semibold">Awaiting Teacher PIN Sign-off: </span>
                   </div>
@@ -481,7 +482,7 @@ export const CaptainVerificationScreen: React.FC = () => {
             </div>
           ) : (
             <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
-              <ShieldCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <ShieldCheck aria-hidden="true" className="w-10 h-10 text-slate-300 mx-auto mb-2" />
               <h3 className="text-sm font-bold text-text-primary">No Application Found</h3>
             </div>
           )}

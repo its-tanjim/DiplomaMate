@@ -42,7 +42,6 @@ import {
   BtebSemesterSummaryItem,
   BtebFailedSubjectDetail
 } from '../../types';
-import { MOCK_ENROLLED_STUDENTS } from '../../data/mockData';
 
 type MainViewMode = 'search' | 'statement' | 'result-zone' | 'official-bteb';
 type WorkspaceTab = 'individual' | 'group' | 'batches';
@@ -512,17 +511,21 @@ export const BTEBResultsScreen: React.FC = () => {
     }
   };
 
+  // Group-search suggestions come only from real data. The previous
+  // hardcoded roll list (and the invented seed roster) was removed in the
+  // 2026-11-26 compliance pass: no gazette roll list is available on the
+  // client, so only the signed-in user's own board roll is pre-filled.
+  // Any other rolls must be typed in manually.
   const handleLoadSectionRosterRolls = () => {
-    const verifiedGazetteRolls = ['542880', '542891', '542915', '750102', '750104'];
-    const rosterRolls = MOCK_ENROLLED_STUDENTS.map(s => s.boardRoll);
-    const combined = Array.from(new Set([...verifiedGazetteRolls, ...rosterRolls]));
-    if (userProfile.boardRoll && !combined.includes(userProfile.boardRoll)) {
-      combined.unshift(userProfile.boardRoll);
-    }
+    const combined = userProfile.boardRoll ? [userProfile.boardRoll] : [];
     setGroupRollInput(combined.join(', '));
     setGroupSemester('all');
     setGroupRegulation('all');
-    showToast(`Loaded ${combined.length} section & verified gazette rolls into Group Search`);
+    showToast(
+      combined.length
+        ? 'Loaded your own board roll into Group Search — add other rolls manually'
+        : 'No imported gazette rolls available — enter rolls manually'
+    );
   };
 
   // Trigger print / save PDF
@@ -583,7 +586,7 @@ export const BTEBResultsScreen: React.FC = () => {
               className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center font-bold text-xs gap-1.5 cursor-pointer"
               title="Return to Result Search"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft aria-hidden="true" className="w-4 h-4" />
               <span>Back to Search</span>
             </button>
 
@@ -601,7 +604,7 @@ export const BTEBResultsScreen: React.FC = () => {
               className="allow-print px-3.5 py-2 rounded-xl bg-brand-blue hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
               title="Print result sheet or save as PDF"
             >
-              <Printer className="w-4 h-4" />
+              <Printer aria-hidden="true" className="w-4 h-4" />
               <span>Print / Save as PDF</span>
             </button>
 
@@ -626,8 +629,8 @@ export const BTEBResultsScreen: React.FC = () => {
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30 text-[11px] font-bold">
-                    <ShieldCheck className="w-3.5 h-3.5 text-teal-300" />
-                    BTEB Verified Result Statement
+                    <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5 text-teal-300" />
+                    Gazette Result Statement (admin-imported)
                   </span>
                   <span className="text-[11px] text-blue-200 font-mono">
                     {activeStatement.regulation} Probidhan
@@ -646,7 +649,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 {isCompleted ? (
                   <div className="inline-flex flex-col sm:items-end bg-green-500/20 border border-green-400/40 px-3.5 py-2 rounded-2xl">
                     <span className="text-[10px] font-extrabold uppercase text-green-300 tracking-wider flex items-center gap-1">
-                      <Award className="w-3.5 h-3.5" />
+                      <Award aria-hidden="true" className="w-3.5 h-3.5" />
                       Diploma Completed
                     </span>
                     <span className="text-xl font-black font-mono text-green-200">
@@ -656,7 +659,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 ) : isReferredPending ? (
                   <div className="inline-flex flex-col sm:items-end bg-amber-500/20 border border-amber-400/40 px-3.5 py-2 rounded-2xl">
                     <span className="text-[10px] font-extrabold uppercase text-amber-300 tracking-wider flex items-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <AlertTriangle aria-hidden="true" className="w-3.5 h-3.5" />
                       Referred Pending
                     </span>
                     <span className="text-sm font-extrabold text-amber-200 font-mono">
@@ -716,7 +719,7 @@ export const BTEBResultsScreen: React.FC = () => {
 
             {(activeStatement.regulationNote || statementSourceNotice) && (
               <div className="mt-3 p-2.5 rounded-xl bg-blue-50/80 border border-blue-200 text-xs text-blue-900 flex items-center gap-2">
-                <Info className="w-4 h-4 text-brand-blue shrink-0" />
+                <Info aria-hidden="true" className="w-4 h-4 text-brand-blue shrink-0" />
                 <span>
                   {activeStatement.regulationNote}
                   {activeStatement.regulationNote && statementSourceNotice ? ' · ' : ''}
@@ -730,7 +733,7 @@ export const BTEBResultsScreen: React.FC = () => {
           <div className="p-4 sm:p-6 border-b border-slate-100 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-bold uppercase tracking-wider text-text-primary flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-brand-blue" />
+                <Calendar aria-hidden="true" className="w-3.5 h-3.5 text-brand-blue" />
                 <span>1st through 8th Semester Progression Strip</span>
               </h2>
               <span className="text-[11px] text-slate-500 font-medium">
@@ -811,7 +814,7 @@ export const BTEBResultsScreen: React.FC = () => {
           {activeStatement.currentFailedSubjects.length > 0 && (
             <div className="m-4 sm:m-6 p-4 rounded-2xl bg-amber-50 border border-amber-200/90 space-y-3">
               <div className="flex items-start gap-2.5">
-                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <AlertTriangle aria-hidden="true" className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div>
                   <h3 className="text-xs sm:text-sm font-bold text-amber-950">
                     Action Required: {activeStatement.currentFailedSubjects.length} Referred Subject(s) Currently Uncleared
@@ -854,7 +857,7 @@ export const BTEBResultsScreen: React.FC = () => {
           {/* Detailed Semester-by-Semester Cards */}
           <div className="p-4 sm:p-6 space-y-4">
             <h2 className="text-xs font-bold uppercase tracking-wider text-text-primary flex items-center gap-1.5">
-              <GraduationCap className="w-4 h-4 text-brand-blue" />
+              <GraduationCap aria-hidden="true" className="w-4 h-4 text-brand-blue" />
               <span>Official Semester-Wise Examination Results</span>
             </h2>
 
@@ -901,7 +904,7 @@ export const BTEBResultsScreen: React.FC = () => {
                         <div className="flex items-center gap-3">
                           {isPass ? (
                             <div className="bg-surface px-3.5 py-2 rounded-xl border border-green-200 shadow-2xs flex items-center gap-2">
-                              <CheckCircle2 className="w-4 h-4 text-green-600" />
+                              <CheckCircle2 aria-hidden="true" className="w-4 h-4 text-green-600" />
                               <div>
                                 <span className="text-[10px] font-bold uppercase text-green-700 block">
                                   Semester GPA
@@ -913,7 +916,7 @@ export const BTEBResultsScreen: React.FC = () => {
                             </div>
                           ) : isRef ? (
                             <div className="bg-surface px-3.5 py-2 rounded-xl border border-amber-300 shadow-2xs flex items-center gap-2">
-                              <AlertTriangle className="w-4 h-4 text-amber-600" />
+                              <AlertTriangle aria-hidden="true" className="w-4 h-4 text-amber-600" />
                               <div>
                                 <span className="text-[10px] font-bold uppercase text-amber-700 block">
                                   Result Status
@@ -1034,7 +1037,7 @@ export const BTEBResultsScreen: React.FC = () => {
           <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-green-600" />
+                <ShieldCheck aria-hidden="true" className="w-4 h-4 text-green-600" />
                 <span className="font-bold text-text-primary">
                   Data Source: {activeStatement.dataSourceLabel}
                 </span>
@@ -1056,7 +1059,7 @@ export const BTEBResultsScreen: React.FC = () => {
             onClick={() => setViewMode('search')}
             className="px-4 py-2.5 rounded-xl border border-slate-200 bg-surface hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft aria-hidden="true" className="w-4 h-4" />
             <span>Search Another Roll</span>
           </button>
 
@@ -1074,7 +1077,7 @@ export const BTEBResultsScreen: React.FC = () => {
               onClick={handlePrintOrSavePdf}
               className="allow-print px-4 py-2.5 rounded-xl bg-brand-blue hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
             >
-              <Printer className="w-4 h-4" />
+              <Printer aria-hidden="true" className="w-4 h-4" />
               <span>Print / Save as PDF</span>
             </button>
           </div>
@@ -1101,7 +1104,7 @@ export const BTEBResultsScreen: React.FC = () => {
               className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center font-bold text-xs gap-1.5 cursor-pointer"
               title="Return to Result Search"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft aria-hidden="true" className="w-4 h-4" />
               <span>Back to Search</span>
             </button>
             <span className="text-xs font-semibold text-slate-500 hidden sm:inline">
@@ -1115,7 +1118,7 @@ export const BTEBResultsScreen: React.FC = () => {
               className="px-3 py-2 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
               title="Open BTEB's official result portal instead"
             >
-              <ShieldCheck className="w-3.5 h-3.5" />
+              <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Open Official BTEB</span>
             </button>
             <button
@@ -1123,7 +1126,7 @@ export const BTEBResultsScreen: React.FC = () => {
               onClick={openBtebResultsZone}
               className="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
+              <ExternalLink aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Open in Browser</span>
             </button>
           </div>
@@ -1135,7 +1138,7 @@ export const BTEBResultsScreen: React.FC = () => {
             check the exam name at the top of the result themselves. */}
         <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-xs space-y-1.5" role="alert">
           <p className="text-xs font-bold text-amber-950 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <AlertTriangle aria-hidden="true" className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <span>Diploma in Engineering result only — if this page shows HSC / BMT, SSC (Vocational) or any other exam, it is NOT your result.</span>
           </p>
           <p className="text-xs text-amber-900/90 leading-relaxed">
@@ -1150,7 +1153,7 @@ export const BTEBResultsScreen: React.FC = () => {
         <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4 shadow-xs space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-600 text-white text-[11px] font-extrabold tracking-wide">
-              <Award className="w-3.5 h-3.5" />
+              <Award aria-hidden="true" className="w-3.5 h-3.5" />
               BTEB RESULT ZONE
             </span>
             <span className="text-[11px] font-semibold text-teal-800">
@@ -1173,7 +1176,7 @@ export const BTEBResultsScreen: React.FC = () => {
               onClick={openOfficialBteb}
               className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-sm font-bold shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
-              <ShieldCheck className="w-4 h-4" />
+              <ShieldCheck aria-hidden="true" className="w-4 h-4" />
               <span>Not here either? Check Official BTEB Result →</span>
             </button>
           </div>
@@ -1193,7 +1196,7 @@ export const BTEBResultsScreen: React.FC = () => {
             </label>
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Hash className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <Hash aria-hidden="true" className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
                   type="text"
                   required
@@ -1208,7 +1211,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 type="submit"
                 className="dm-primary-action px-4 py-2.5 text-sm font-bold shadow-sm flex items-center justify-center gap-2 cursor-pointer shrink-0"
               >
-                <Search className="w-4 h-4" />
+                <Search aria-hidden="true" className="w-4 h-4" />
                 <span>View Result</span>
               </button>
             </div>
@@ -1256,7 +1259,7 @@ export const BTEBResultsScreen: React.FC = () => {
               onClick={openOfficialBteb}
               className="min-h-[44px] px-4 py-2 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
             >
-              <ShieldCheck className="w-3.5 h-3.5" />
+              <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Check on Official BTEB instead</span>
             </button>
             <button
@@ -1264,7 +1267,7 @@ export const BTEBResultsScreen: React.FC = () => {
               onClick={openBtebResultsZone}
               className="min-h-[44px] px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
+              <ExternalLink aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Open Result Zone in Browser</span>
             </button>
           </div>
@@ -1288,7 +1291,7 @@ export const BTEBResultsScreen: React.FC = () => {
               className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center font-bold text-xs gap-1.5 cursor-pointer"
               title="Return to Result Search"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft aria-hidden="true" className="w-4 h-4" />
               <span>Back to Search</span>
             </button>
             <span className="text-xs font-semibold text-slate-500 hidden sm:inline">
@@ -1300,7 +1303,7 @@ export const BTEBResultsScreen: React.FC = () => {
             onClick={openOfficialResultPortal}
             className="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
           >
-            <ExternalLink className="w-3.5 h-3.5" />
+            <ExternalLink aria-hidden="true" className="w-3.5 h-3.5" />
             <span>Open in Browser</span>
           </button>
         </div>
@@ -1309,7 +1312,7 @@ export const BTEBResultsScreen: React.FC = () => {
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-xs space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-950 text-white text-[11px] font-extrabold tracking-wide">
-              <ShieldCheck className="w-3.5 h-3.5" />
+              <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5" />
               BTEB OFFICIAL
             </span>
             <span className="text-[11px] font-semibold text-blue-900">
@@ -1394,14 +1397,15 @@ export const BTEBResultsScreen: React.FC = () => {
             <button
               onClick={() => setActiveScreen('home')}
               className="p-2 rounded-xl bg-surface/10 hover:bg-surface/20 text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0 cursor-pointer"
+              aria-label="Back to Home"
               title="Back to Home"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft aria-hidden="true" className="w-5 h-5" />
             </button>
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <span className="inline-flex items-center gap-1 bg-teal-500/20 text-teal-300 border border-teal-400/30 text-[11px] font-semibold px-2.5 py-0.5 rounded-md">
-                  <Award className="w-3.5 h-3.5 text-teal-300" />
+                  <Award aria-hidden="true" className="w-3.5 h-3.5 text-teal-300" />
                   BTEB Examination Hub
                 </span>
               </div>
@@ -1425,7 +1429,7 @@ export const BTEBResultsScreen: React.FC = () => {
                 onClick={() => setActiveScreen('admin_portal')}
                 className="text-[11px] font-semibold bg-surface/10 hover:bg-surface/20 text-white px-3 py-1.5 rounded-xl border border-white/15 transition-colors flex items-center gap-1.5 cursor-pointer"
               >
-                <Database className="w-3.5 h-3.5 text-teal-300" />
+                <Database aria-hidden="true" className="w-3.5 h-3.5 text-teal-300" />
                 <span>Admin Result Import</span>
               </button>
             )}
@@ -1444,7 +1448,7 @@ export const BTEBResultsScreen: React.FC = () => {
               : 'text-slate-600 hover:text-text-primary'
           }`}
         >
-          <Search className="w-3.5 h-3.5 shrink-0" />
+          <Search aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
           <span>My Result (Roll Search)</span>
         </button>
 
@@ -1457,7 +1461,7 @@ export const BTEBResultsScreen: React.FC = () => {
               : 'text-slate-600 hover:text-text-primary'
           }`}
         >
-          <Users className="w-3.5 h-3.5 shrink-0" />
+          <Users aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
           <span>Group Results</span>
         </button>
 
@@ -1470,7 +1474,7 @@ export const BTEBResultsScreen: React.FC = () => {
               : 'text-slate-600 hover:text-text-primary'
           }`}
         >
-          <Database className="w-3.5 h-3.5 shrink-0" />
+          <Database aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
           <span>Datasets ({batches.length})</span>
         </button>
       </div>
@@ -1483,7 +1487,7 @@ export const BTEBResultsScreen: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-text-primary flex items-center gap-2">
-                  <Search className="w-5 h-5 text-brand-blue" />
+                  <Search aria-hidden="true" className="w-5 h-5 text-brand-blue" />
                   <span>Search BTEB Board Result</span>
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -1518,7 +1522,7 @@ export const BTEBResultsScreen: React.FC = () => {
                   (HSC BMT, SSC Vocational) — those are never shown. */}
               <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-teal-50 border border-teal-200">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-600 text-white text-[11px] font-extrabold tracking-wide">
-                  <GraduationCap className="w-3.5 h-3.5" />
+                  <GraduationCap aria-hidden="true" className="w-3.5 h-3.5" />
                   {DIPLOMA_CURRICULUM_LABEL} ONLY
                 </span>
                 <span className="text-[11px] text-teal-900">
@@ -1549,7 +1553,7 @@ export const BTEBResultsScreen: React.FC = () => {
                   BTEB Board Roll Number *
                 </label>
                 <div className="relative">
-                  <Hash className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <Hash aria-hidden="true" className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                   <input
                     type="text"
                     required
@@ -1568,7 +1572,7 @@ export const BTEBResultsScreen: React.FC = () => {
               {/* Verified Sample Test Rolls for One-Click Verification */}
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
                 <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+                  <Sparkles aria-hidden="true" className="w-3.5 h-3.5 text-teal-600" />
                   <span>Verified Official Gazette Records for One-Click Inspection:</span>
                 </span>
                 <div className="flex flex-wrap gap-2">
@@ -1609,7 +1613,7 @@ export const BTEBResultsScreen: React.FC = () => {
               {/* Error Message Box */}
               {errorMessage && (
                 <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <AlertTriangle aria-hidden="true" className="w-4 h-4 shrink-0" />
                   <span>{errorMessage}</span>
                 </div>
               )}
@@ -1622,12 +1626,12 @@ export const BTEBResultsScreen: React.FC = () => {
               >
                 {searchStatus === 'loading' ? (
                   <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <RefreshCw aria-hidden="true" className="w-4 h-4 animate-spin" />
                     <span>Checking Imported Gazette Results...</span>
                   </>
                 ) : (
                   <>
-                    <Search className="w-4 h-4" />
+                    <Search aria-hidden="true" className="w-4 h-4" />
                     <span>View Result</span>
                   </>
                 )}
@@ -1638,7 +1642,7 @@ export const BTEBResultsScreen: React.FC = () => {
           {/* How the single View Result button works — one tap checks every source */}
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-xs space-y-2.5">
             <h2 className="text-xs font-bold text-text-primary flex items-center gap-1.5">
-              <Info className="w-4 h-4 text-brand-blue" />
+              <Info aria-hidden="true" className="w-4 h-4 text-brand-blue" />
               <span>How View Result works — 3 steps, inside the app</span>
             </h2>
             <ol className="text-xs text-slate-600 leading-relaxed space-y-1 list-decimal list-inside">
@@ -1664,7 +1668,7 @@ export const BTEBResultsScreen: React.FC = () => {
           {searchStatus === 'not_found' && (
             <div className="bg-surface rounded-2xl border border-slate-200 p-6 text-center shadow-xs space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
-                <Info className="w-6 h-6" />
+                <Info aria-hidden="true" className="w-6 h-6" />
               </div>
               <div className="space-y-1.5 max-w-md mx-auto">
                 <h3 className="text-base font-bold text-text-primary">
@@ -1717,7 +1721,7 @@ export const BTEBResultsScreen: React.FC = () => {
           {searchStatus === 'rate_limited' && (
             <div className="bg-surface rounded-2xl border border-amber-200 p-6 text-center shadow-xs space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
-                <Clock className="w-6 h-6" />
+                <Clock aria-hidden="true" className="w-6 h-6" />
               </div>
               <div className="space-y-1 max-w-md mx-auto">
                 <h3 className="text-sm font-bold text-amber-950">
@@ -1740,7 +1744,7 @@ export const BTEBResultsScreen: React.FC = () => {
           {['timeout', 'network_error', 'service_unavailable', 'external_unavailable'].includes(searchStatus) && (
             <div className="bg-surface rounded-2xl border border-rose-200 p-6 text-center shadow-xs space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center mx-auto">
-                <AlertTriangle className="w-6 h-6" />
+                <AlertTriangle aria-hidden="true" className="w-6 h-6" />
               </div>
               <div className="space-y-1 max-w-md mx-auto">
                 <h3 className="text-sm font-bold text-rose-950">
@@ -1765,7 +1769,7 @@ export const BTEBResultsScreen: React.FC = () => {
           {/* Data Transparency Information Card */}
           <div className="bg-surface rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-2 text-xs">
             <h3 className="font-bold text-text-primary flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-brand-teal" />
+              <ShieldCheck aria-hidden="true" className="w-4 h-4 text-brand-teal" />
               <span>How Results Are Retrieved and Protected</span>
             </h3>
             <p className="text-slate-600 leading-relaxed">
@@ -1785,7 +1789,7 @@ export const BTEBResultsScreen: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-bold text-text-primary flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-brand-teal" />
+                  <Users aria-hidden="true" className="w-4 h-4 text-brand-teal" />
                   <span>Multi-Roll & Range Group Results Search</span>
                 </h2>
               </div>
@@ -1886,7 +1890,7 @@ export const BTEBResultsScreen: React.FC = () => {
 
             {groupError && (
               <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <AlertTriangle aria-hidden="true" className="w-4 h-4 shrink-0" />
                 <span>{groupError}</span>
               </div>
             )}
@@ -1896,7 +1900,7 @@ export const BTEBResultsScreen: React.FC = () => {
               disabled={isSearchingGroup}
               className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-brand-teal hover:bg-teal-700 text-white text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
-              <BarChart3 className="w-4 h-4" />
+              <BarChart3 aria-hidden="true" className="w-4 h-4" />
               <span>{isSearchingGroup ? 'Analyzing Group Results...' : 'Analyze Group Results'}</span>
             </button>
           </form>
@@ -1917,7 +1921,7 @@ export const BTEBResultsScreen: React.FC = () => {
               <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
-                    <BarChart3 className="w-4 h-4 text-brand-teal" />
+                    <BarChart3 aria-hidden="true" className="w-4 h-4 text-brand-teal" />
                     <span>Group Analytics Summary</span>
                   </h3>
                   <span className="text-[11px] text-slate-500 font-mono">
@@ -2175,15 +2179,16 @@ export const BTEBResultsScreen: React.FC = () => {
                 type="button"
                 onClick={fetchBatches}
                 className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                aria-label="Refresh"
                 title="Refresh"
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw aria-hidden="true" className="w-4 h-4" />
               </button>
             </div>
 
             {batches.length === 0 ? (
               <div className="p-8 rounded-xl bg-slate-50 text-center space-y-2">
-                <Database className="w-8 h-8 text-slate-300 mx-auto" />
+                <Database aria-hidden="true" className="w-8 h-8 text-slate-300 mx-auto" />
                 <p className="text-xs text-slate-500">
                   No gazette batches imported yet. Results then come live from BTEB Result Zone (Diploma in Engineering only) or BTEB&apos;s official portal — ask an admin to import the official result sheet to search the gazette here.
                 </p>

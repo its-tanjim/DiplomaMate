@@ -26,6 +26,7 @@ import { SearchableCollegeSelect } from '../common/SearchableCollegeSelect';
 import { SearchableDepartmentSelect } from '../common/SearchableDepartmentSelect';
 import { CatalogSubjectSelect } from '../common/CatalogSubjectSelect';
 import { normalizeCollege, normalizeTechnology } from '../../data/directoryData';
+import { Modal } from '../common/Modal';
 
 export const TeachersContactsScreen: React.FC = () => {
   const { 
@@ -250,7 +251,7 @@ export const TeachersContactsScreen: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-teal-50 text-brand-teal flex items-center justify-center font-bold">
-                <Contact2 className="w-4 h-4" />
+                <Contact2 aria-hidden="true" className="w-4 h-4" />
               </div>
               <h1 className="text-base sm:text-lg font-bold text-text-primary">
                 Teachers' Contacts
@@ -268,7 +269,7 @@ export const TeachersContactsScreen: React.FC = () => {
               }}
               className="bg-brand-teal hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Add Teacher</span>
             </button>
           ) : isCaptain ? (
@@ -292,7 +293,7 @@ export const TeachersContactsScreen: React.FC = () => {
               }}
               className="bg-brand-teal hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Add Teacher (CR Scope)</span>
             </button>
           ) : isTeacher ? (
@@ -300,7 +301,7 @@ export const TeachersContactsScreen: React.FC = () => {
               onClick={() => setActiveScreen('teacher_setup')}
               className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
             >
-              <UserCheck className="w-3.5 h-3.5" />
+              <UserCheck aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Edit My Profile & Contact</span>
             </button>
           ) : (
@@ -312,7 +313,7 @@ export const TeachersContactsScreen: React.FC = () => {
 
         {/* Search Bar */}
         <div className="relative mt-3">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+          <Search aria-hidden="true" className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
             placeholder="Search teachers..."
@@ -333,7 +334,7 @@ export const TeachersContactsScreen: React.FC = () => {
 
         {filteredTeachers.length === 0 ? (
           <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
-            <Contact2 className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+            <Contact2 aria-hidden="true" className="w-10 h-10 text-slate-300 mx-auto mb-2" />
             <h3 className="text-sm font-bold text-text-primary">
               {teachers.length === 0 ? 'No teacher contacts yet' : 'No teachers found'}
             </h3>
@@ -389,7 +390,7 @@ export const TeachersContactsScreen: React.FC = () => {
                       href={`tel:${cleanPhone}`}
                       className="px-3 py-1.5 rounded-lg bg-green-50 hover:bg-green-100 text-green-700 border border-green-200/80 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      <Phone className="w-3.5 h-3.5" />
+                      <Phone aria-hidden="true" className="w-3.5 h-3.5" />
                       <span>Call</span>
                     </a>
                     <a
@@ -397,7 +398,7 @@ export const TeachersContactsScreen: React.FC = () => {
                       className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue border border-blue-200/80 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                       title="Send SMS"
                     >
-                      <MessageSquare className="w-3.5 h-3.5" />
+                      <MessageSquare aria-hidden="true" className="w-3.5 h-3.5" />
                       <span>SMS</span>
                     </a>
 
@@ -406,9 +407,10 @@ export const TeachersContactsScreen: React.FC = () => {
                       <button
                         onClick={() => setContactToArchive(tch)}
                         className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs transition-colors cursor-pointer"
+                        aria-label="Archive contact"
                         title="Archive contact (Class Captain permission)"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 aria-hidden="true" className="w-3.5 h-3.5" />
                       </button>
                     )}
 
@@ -436,9 +438,10 @@ export const TeachersContactsScreen: React.FC = () => {
                         <button
                           onClick={() => setContactToArchive(tch)}
                           className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs transition-colors cursor-pointer"
+                          aria-label="Archive contact"
                           title="Archive contact (Admin)"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 aria-hidden="true" className="w-3.5 h-3.5" />
                         </button>
                       </>
                     )}
@@ -448,19 +451,19 @@ export const TeachersContactsScreen: React.FC = () => {
                 {/* Details Footer */}
                 <div className="mt-3 pt-2.5 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600">
                   <div className="flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <Phone aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <span className="font-mono text-slate-700">{tch.phone}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <Mail aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <span className="truncate">{tch.email || 'dept.cst@dpi.gov.bd'}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <MapPin aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <span className="truncate">{tch.room}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <Clock aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <span className="truncate">{tch.consultingHours}</span>
                   </div>
                 </div>
@@ -472,22 +475,27 @@ export const TeachersContactsScreen: React.FC = () => {
 
       {/* Class Captain / Admin Add & Edit Teacher Modal */}
       {showAddModal && (isCaptain || isAdmin) && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+        <Modal
+          onClose={closeContactModal}
+          labelledBy="contacts-contact-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150"
+          overlayClassName="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-teal-50 text-brand-teal flex items-center justify-center">
-                  <Contact2 className="w-4 h-4" />
+                  <Contact2 aria-hidden="true" className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-text-primary text-base">{editingContact ? 'Edit Teacher Contact' : 'Add Teacher Contact'}</h3>
+                  <h3 id="contacts-contact-title" className="font-bold text-text-primary text-base">{editingContact ? 'Edit Teacher Contact' : 'Add Teacher Contact'}</h3>
                   <p className="text-[10px] text-slate-500">{isAdmin ? 'Full admin access — any college & department' : 'Scoped to your Class Captain authority'}</p>
                 </div>
               </div>
               <button 
                 onClick={closeContactModal}
                 className="text-slate-400 hover:text-slate-600 p-1"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -653,17 +661,20 @@ export const TeachersContactsScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Archive / Removal Confirmation Modal */}
       {contactToArchive && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+        <Modal
+          onClose={() => setContactToArchive(null)}
+          labelledBy="contacts-archive-title"
+          panelClassName="bg-surface rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95"
+          overlayClassName="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+        >
             <div className="flex items-center gap-2 pb-3 border-b border-slate-100 text-rose-600">
-              <AlertTriangle className="w-5 h-5 shrink-0" />
-              <h3 className="font-bold text-text-primary text-sm">Archive Teacher Contact?</h3>
+              <AlertTriangle aria-hidden="true" className="w-5 h-5 shrink-0" />
+              <h3 id="contacts-archive-title" className="font-bold text-text-primary text-sm">Archive Teacher Contact?</h3>
             </div>
 
             <div className="mt-3 space-y-2 text-xs text-slate-600">
@@ -723,8 +734,7 @@ export const TeachersContactsScreen: React.FC = () => {
                 {isArchiving ? 'Archiving...' : 'Confirm Archive'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

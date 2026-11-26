@@ -70,16 +70,6 @@ export interface TeacherProfile {
   regulation?: CatalogRegulation;
 }
 
-export interface PaymentRecord {
-  transactionId: string;
-  provider: 'bKash' | 'Nagad' | 'Rocket' | 'Card';
-  amount: number;
-  currency: 'BDT';
-  paidAt: string;
-  verifiedByBackend: boolean;
-  receiptToken: string;
-}
-
 export interface StudentProfile {
   id: string;
   name: string;
@@ -97,9 +87,7 @@ export interface StudentProfile {
   accountType: AccountType;
   captainVerificationStatus: CaptainVerificationStatus;
   isTeacherContactUnlocked: boolean;
-  paymentRecord?: PaymentRecord;
   phone?: string;
-  bloodGroup?: string;
   designation?: string;
   teachingSubjects?: string[];
   semestersTaught?: SemesterNumber[];
@@ -870,7 +858,10 @@ export type ScreenType =
   | 'teacher_portal'
   | 'teacher_setup'
   | 'bteb_results'
-  | 'community';
+  | 'community'
+  | 'privacy_policy'
+  | 'terms'
+  | 'delete_account';
 
 // ============================================================================
 // ACADEMIC COMMUNITY TYPES

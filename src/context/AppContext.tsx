@@ -18,7 +18,6 @@ import {
   CaptainApplication,
   JobCircular,
   UploadedRoutineDocument,
-  PaymentRecord,
   CaptainVerificationStatus,
   SystemAdminProfile,
   ShiftScheduleConfig,
@@ -85,6 +84,7 @@ interface AppContextType {
     role: 'student' | 'class_captain'
   ) => Promise<StudentAuthResult>;
   logout: () => void;
+  requestAccountDeletion: (reason?: string) => Promise<{ success: boolean; message: string }>;
   accountType: AccountType;
   setAccountType: (type: AccountType) => void;
   switchAccountType: (type: AccountType) => void;
@@ -851,7 +851,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       accountType: data.session.role,
       captainVerificationStatus: account.captainVerificationStatus,
       isTeacherContactUnlocked: sameAccount && Boolean(savedProfile?.isTeacherContactUnlocked),
-      paymentRecord: sameAccount && savedProfile ? savedProfile.paymentRecord : undefined,
       phone: account.phone || ''
     };
 
@@ -1000,6 +999,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem(`${STORAGE_KEY_PREFIX}system_admin`);
     setActiveScreen('welcome');
     showToast('Signed out of DiplomaMate.');
+  };
+
+  // Self-service account-deletion request (signed-in): queues the request
+  // with the server (POST /api/me/deletion-request). Personal data is
+  // hard-erased when the request is processed; only anonymised academic
+  // records are kept. The account stays usable until the admin processes it.
+  const requestAccountDeletion = async (reason?: string): Promise<{ success: boolean; message: string }> => {
+    const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+    if (!tokenToUse) {
+      return { success: false, message: 'Please sign in first.' };
+    }
+    try {
+      const response = await apiFetch('/api/me/deletion-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tokenToUse}`
+        },
+        body: JSON.stringify({ reason: reason?.trim() || undefined })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        return { success: false, message: data.error || 'Could not send the deletion request. Please try again.' };
+      }
+      return { success: true, message: data.message || 'Your account deletion request has been queued.' };
+    } catch {
+      return { success: false, message: 'Could not connect to the server. Please try again.' };
+    }
   };
 
   const setAccountType = (type: AccountType) => {
@@ -1455,7 +1482,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       section: data.section || userProfile.section,
       boardRoll: data.boardRoll || userProfile.boardRoll,
       regNumber: data.regNumber || userProfile.regNumber,
-      phone: data.phone || userProfile.phone || '+880 1700-000000',
+      phone: data.phone || userProfile.phone || '',
       session: data.session || userProfile.session,
       status: 'Pending',
       appliedAt: `${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
@@ -2653,6 +2680,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resendSmsCode,
         socialLogin,
         logout,
+        requestAccountDeletion,
         accountType: userProfile.accountType,
         setAccountType,
         switchAccountType,

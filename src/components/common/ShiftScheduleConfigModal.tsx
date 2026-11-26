@@ -22,6 +22,7 @@ import {
   buildDefaultShiftScheduleConfig
 } from '../../data/shiftScheduleUtils';
 import { TimePicker } from './TimePicker';
+import { Modal } from './Modal';
 
 interface ShiftScheduleConfigModalProps {
   isOpen: boolean;
@@ -196,16 +197,21 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
   const manualOverrideCount = draftConfig.periods.filter(p => p.isManuallyEdited).length;
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-surface w-full max-w-2xl rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
+    <Modal
+      onClose={onClose}
+      labelledBy="shift-schedule-title"
+      panelClassName="bg-surface w-full max-w-2xl rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200"
+      overlayClassName="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      showCloseButton={false}
+    >
         {/* Header */}
         <div className="flex justify-between items-start pb-3 border-b border-slate-100">
           <div className="flex items-center space-x-2.5">
             <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-700">
-              <Sliders size={20} />
+              <Sliders aria-hidden="true" size={20} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">
+              <h3 id="shift-schedule-title" className="text-base font-bold text-slate-900">
                 Configurable Period & Shift Schedule
               </h3>
               <p className="text-[11px] text-slate-500">
@@ -215,9 +221,10 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
           >
-            <X size={18} />
+            <X aria-hidden="true" size={18} />
           </button>
         </div>
 
@@ -232,7 +239,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Sun size={14} className={editingShift === 'Morning' ? 'text-amber-500' : 'text-slate-400'} />
+            <Sun aria-hidden="true" size={14} className={editingShift === 'Morning' ? 'text-amber-500' : 'text-slate-400'} />
             <span>Morning Shift (Default 08:00 AM)</span>
           </button>
           <button
@@ -244,7 +251,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Moon size={14} className={editingShift === 'Day' ? 'text-blue-600' : 'text-slate-400'} />
+            <Moon aria-hidden="true" size={14} className={editingShift === 'Day' ? 'text-blue-600' : 'text-slate-400'} />
             <span>Day Shift (Default 01:30 PM)</span>
           </button>
         </div>
@@ -255,7 +262,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
           <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/80 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Clock size={13} className="text-blue-600" />
+                <Clock aria-hidden="true" size={13} className="text-blue-600" />
                 {editingShift} Shift Base Parameters
               </span>
               <button
@@ -264,7 +271,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                 disabled={isSaving}
                 className="text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-200 flex items-center gap-1 transition-colors"
               >
-                <RotateCcw size={11} />
+                <RotateCcw aria-hidden="true" size={11} />
                 <span>Reset {editingShift} Defaults</span>
               </button>
             </div>
@@ -337,7 +344,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
             {manualOverrideCount > 0 && (
               <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-2.5 flex items-center justify-between text-[11px] text-amber-900">
                 <div className="flex items-center space-x-2">
-                  <AlertCircle size={14} className="text-amber-600 shrink-0" />
+                  <AlertCircle aria-hidden="true" size={14} className="text-amber-600 shrink-0" />
                   <span>
                     <strong>{manualOverrideCount}</strong> period(s) have manual time overrides and are preserved automatically when base settings change.
                   </span>
@@ -378,11 +385,11 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                       </span>
                       {slot.isManuallyEdited ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300">
-                          <Edit3 size={10} /> Manual Override Preserved
+                          <Edit3 aria-hidden="true" size={10} /> Manual Override Preserved
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-green-50 text-green-700 border border-green-200">
-                          <CheckCircle2 size={10} /> Auto-Calculated
+                          <CheckCircle2 aria-hidden="true" size={10} /> Auto-Calculated
                         </span>
                       )}
                     </div>
@@ -393,7 +400,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                         onClick={() => handleResetSinglePeriod(slot.periodNumber)}
                         className="text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 flex items-center gap-1"
                       >
-                        <RotateCcw size={11} />
+                        <RotateCcw aria-hidden="true" size={11} />
                         <span>Reset Period {slot.periodNumber}</span>
                       </button>
                     )}
@@ -417,7 +424,7 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
                     {!isLastPeriod ? (
                       <div>
                         <label className="text-xs font-semibold text-slate-600 flex items-center gap-1 mb-1">
-                          <Coffee size={11} className="text-amber-600" />
+                          <Coffee aria-hidden="true" size={11} className="text-amber-600" />
                           <span>Break After P{slot.periodNumber} (Min)</span>
                         </label>
                         <div className="flex items-center space-x-1">
@@ -475,11 +482,10 @@ export const ShiftScheduleConfigModal: React.FC<ShiftScheduleConfigModalProps> =
             disabled={isSaving}
             className="px-5 py-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-xs font-bold flex items-center space-x-2 shadow-md transition-all"
           >
-            <Save size={15} />
+            <Save aria-hidden="true" size={15} />
             <span>{isSaving ? 'Saving...' : `Save ${editingShift} Shift Schedule`}</span>
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };

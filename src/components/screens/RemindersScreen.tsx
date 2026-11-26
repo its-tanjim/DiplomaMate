@@ -15,6 +15,7 @@ import {
 import { ReminderItem } from '../../types';
 import { TimePicker } from '../common/TimePicker';
 import { ReminderLeadTimeSlider } from '../common/ReminderLeadTimeSlider';
+import { Modal } from '../common/Modal';
 
 export const RemindersScreen: React.FC = () => {
   const { 
@@ -73,7 +74,7 @@ export const RemindersScreen: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                <Bell className="w-4 h-4" />
+                <Bell aria-hidden="true" className="w-4 h-4" />
               </div>
               <h1 className="text-lg font-bold text-text-primary">
                 Academic Reminders
@@ -85,7 +86,7 @@ export const RemindersScreen: React.FC = () => {
             onClick={() => setShowAddModal(true)}
             className="bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus aria-hidden="true" className="w-3.5 h-3.5" />
             <span>New Reminder</span>
           </button>
         </div>
@@ -132,7 +133,7 @@ export const RemindersScreen: React.FC = () => {
       <div className="space-y-2.5">
         {filteredReminders.length === 0 ? (
           <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
-            <BookmarkCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+            <BookmarkCheck aria-hidden="true" className="w-10 h-10 text-slate-300 mx-auto mb-2" />
             <h3 className="text-sm font-bold text-text-primary">No reminders yet</h3>
             <p className="text-xs text-slate-500 mt-1">Add a new reminder to stay on track with your diploma studies.</p>
           </div>
@@ -158,9 +159,9 @@ export const RemindersScreen: React.FC = () => {
                     title={isCompleted ? 'Mark Pending' : 'Mark Completed'}
                   >
                     {isCompleted ? (
-                      <CheckCircle2 className="w-5 h-5 text-green-600" />
+                      <CheckCircle2 aria-hidden="true" className="w-5 h-5 text-green-600" />
                     ) : (
-                      <Circle className="w-5 h-5 text-slate-300 hover:text-slate-400" />
+                      <Circle aria-hidden="true" className="w-5 h-5 text-slate-300 hover:text-slate-400" />
                     )}
                   </button>
 
@@ -195,11 +196,11 @@ export const RemindersScreen: React.FC = () => {
 
                     <div className="flex items-center gap-3 text-xs text-slate-500 mt-2">
                       <span className="flex items-center gap-1 font-medium">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        <Calendar aria-hidden="true" className="w-3.5 h-3.5 text-slate-400" />
                         {rem.dueDate}
                       </span>
                       <span className="flex items-center gap-1 font-medium">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        <Clock aria-hidden="true" className="w-3.5 h-3.5 text-slate-400" />
                         {rem.dueTime}
                       </span>
                     </div>
@@ -209,9 +210,10 @@ export const RemindersScreen: React.FC = () => {
                   <button
                     onClick={() => deleteReminder(rem.id)}
                     className="text-slate-300 hover:text-rose-600 p-1 rounded-md transition-colors"
+                    aria-label="Delete Reminder"
                     title="Delete Reminder"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 aria-hidden="true" className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -222,19 +224,24 @@ export const RemindersScreen: React.FC = () => {
 
       {/* Add Reminder Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+        <Modal
+          onClose={() => setShowAddModal(false)}
+          labelledBy="reminders-add-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
+          overlayClassName="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <Bell className="w-4 h-4" />
+                  <Bell aria-hidden="true" className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold text-text-primary text-base">Schedule Reminder</h3>
+                <h3 id="reminders-add-title" className="font-bold text-text-primary text-base">Schedule Reminder</h3>
               </div>
               <button 
                 onClick={() => setShowAddModal(false)}
                 className="text-slate-400 hover:text-slate-600 p-1"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -331,8 +338,7 @@ export const RemindersScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

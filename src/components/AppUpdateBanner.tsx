@@ -50,7 +50,7 @@ export const AppUpdateBanner: React.FC = () => {
     <div className="mx-4 sm:mx-6 lg:mx-8 mt-4 rounded-2xl border border-teal-200 bg-teal-50 p-4 shadow-xs">
       <div className="flex items-start gap-3">
         <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0">
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw aria-hidden="true" className="w-4 h-4" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-teal-900">
@@ -62,7 +62,7 @@ export const AppUpdateBanner: React.FC = () => {
               onClick={() => void downloadUpdate()}
               className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
+              <Download aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Download Update</span>
             </button>
             <button
@@ -78,9 +78,10 @@ export const AppUpdateBanner: React.FC = () => {
           type="button"
           onClick={dismiss}
           className="p-1.5 rounded-lg text-teal-700 hover:bg-teal-100 cursor-pointer shrink-0"
+          aria-label="Dismiss"
           title="Dismiss"
         >
-          <X className="w-4 h-4" />
+          <X aria-hidden="true" className="w-4 h-4" />
         </button>
       </div>
     </div>

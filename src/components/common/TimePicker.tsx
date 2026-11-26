@@ -82,7 +82,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
       )}
 
       <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1.5 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all">
-        <Clock className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
+        <Clock aria-hidden="true" className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
 
         {/* Hour Select */}
         <div className="relative flex-1">
@@ -90,7 +90,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
             value={hour}
             disabled={disabled}
             onChange={(e) => updateTime(e.target.value, minute, meridiem)}
-            className="w-full bg-surface border border-slate-200/90 rounded-lg py-1 px-1.5 text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer appearance-none text-center"
+            className="w-full bg-surface border border-slate-200/90 rounded-lg py-1 px-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue cursor-pointer appearance-none text-center"
             title="Select Hour"
           >
             {hoursList.map(h => (
@@ -108,7 +108,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
             value={minute}
             disabled={disabled}
             onChange={(e) => updateTime(hour, e.target.value, meridiem)}
-            className="w-full bg-surface border border-slate-200/90 rounded-lg py-1 px-1.5 text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer appearance-none text-center"
+            className="w-full bg-surface border border-slate-200/90 rounded-lg py-1 px-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue cursor-pointer appearance-none text-center"
             title="Select Minute"
           >
             {minutesList.map(m => (

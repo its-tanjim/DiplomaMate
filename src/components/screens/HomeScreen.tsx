@@ -25,6 +25,7 @@ import {
   Briefcase
 } from 'lucide-react';
 import { BtebOfficialNotice, ScreenType, WeekDay } from '../../types';
+import { Modal } from '../common/Modal';
 
 const BTEB_HOME_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -155,14 +156,14 @@ export const HomeScreen: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-blue-200 text-xs font-medium">{t('home.greeting')}</span>
+              <span className="text-white text-xs font-medium">{t('home.greeting')}</span>
               {accountType === 'class_captain' ? (
-                <span className="inline-flex items-center gap-1 bg-teal-500/20 text-teal-200 border border-teal-400/30 text-[11px] font-semibold px-2 py-0.5 rounded-full">
-                  <ShieldCheck className="w-3 h-3 text-teal-300" />
+                <span className="inline-flex items-center gap-1 bg-teal-500/20 text-white border border-teal-400/30 text-[11px] font-semibold px-2 py-0.5 rounded-full">
+                  <ShieldCheck aria-hidden="true" className="w-3 h-3 text-white" />
                   {t('home.classCaptain')}
                 </span>
               ) : (
-                <span className="text-blue-200 text-xs">· {t('home.diplomaStudent')}</span>
+                <span className="text-white text-xs">· {t('home.diplomaStudent')}</span>
               )}
             </div>
 
@@ -170,15 +171,15 @@ export const HomeScreen: React.FC = () => {
               {userProfile.name}
             </h1>
 
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-blue-100/90 mt-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white mt-1">
               <span className="font-medium text-white">{userProfile.department}</span>
-              <span className="text-blue-300">·</span>
+              <span className="text-white/70">·</span>
               <span>{t('welcome.semester')} {userProfile.semester}</span>
-              <span className="text-blue-300">·</span>
+              <span className="text-white/70">·</span>
               <span>{userProfile.shift} {t('welcome.shift')} ({t('home.sectionShort')} {userProfile.section})</span>
             </div>
 
-            <div className="flex items-center gap-3 text-[11px] text-blue-200/80 mt-1.5 font-mono">
+            <div className="flex items-center gap-3 text-[11px] text-white mt-1.5 font-mono">
               <span>{t('home.roll')} {userProfile.boardRoll}</span>
               <span>{t('home.reg')} {userProfile.regNumber}</span>
             </div>
@@ -190,7 +191,7 @@ export const HomeScreen: React.FC = () => {
               className="text-xs bg-surface/10 hover:bg-surface/20 text-white px-3 py-1.5 rounded-lg border border-white/20 transition-all flex items-center gap-1 cursor-pointer"
             >
               <span>{t('home.viewProfile')}</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+              <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -202,7 +203,7 @@ export const HomeScreen: React.FC = () => {
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-brand-teal text-white flex items-center justify-center shadow-xs">
-                <ShieldCheck className="w-4 h-4" />
+                <ShieldCheck aria-hidden="true" className="w-4 h-4" />
               </div>
               <div>
                 <h3 className="text-xs sm:text-sm font-bold text-text-primary">
@@ -214,7 +215,7 @@ export const HomeScreen: React.FC = () => {
               onClick={() => openNotesSection('notices')}
               className="bg-brand-teal hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Megaphone className="w-3.5 h-3.5" />
+              <Megaphone aria-hidden="true" className="w-3.5 h-3.5" />
               <span>{t('home.publishGroupNotice')}</span>
             </button>
           </div>
@@ -243,7 +244,7 @@ export const HomeScreen: React.FC = () => {
         <div className="dm-card p-4 sm:p-5">
           <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
             <div className="flex items-center gap-1.5 font-medium text-brand-blue">
-              <Clock className="w-3.5 h-3.5" />
+              <Clock aria-hidden="true" className="w-3.5 h-3.5" />
               <span>{t('home.todaysNextClass')} · {nextClass.startTime} - {nextClass.endTime}</span>
             </div>
             <span className="text-slate-400 text-[11px]">{t('home.period')} #{nextClass.periodNumber}</span>
@@ -256,11 +257,11 @@ export const HomeScreen: React.FC = () => {
               </h3>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 mt-1">
                 <span className="inline-flex items-center gap-1">
-                  <User className="w-3.5 h-3.5 text-slate-400" />
+                  <User aria-hidden="true" className="w-3.5 h-3.5 text-slate-400" />
                   {nextClass.teacherName}
                 </span>
                 <span className="inline-flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                  <MapPin aria-hidden="true" className="w-3.5 h-3.5 text-slate-400" />
                   {nextClass.room}
                 </span>
               </div>
@@ -268,9 +269,10 @@ export const HomeScreen: React.FC = () => {
             <button
               onClick={() => setActiveScreen('routine')}
               className="shrink-0 p-2 rounded-lg bg-blue-50 text-brand-blue hover:bg-blue-100 transition-colors"
+              aria-label={t('home.fullRoutine')}
               title={t('home.fullRoutine')}
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight aria-hidden="true" className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -355,10 +357,10 @@ export const HomeScreen: React.FC = () => {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center group-hover:bg-brand-blue group-hover:text-white transition-colors">
-                <CalendarDays className="w-5 h-5" />
+                <CalendarDays aria-hidden="true" className="w-5 h-5" />
               </div>
               <span className="text-xs font-semibold text-brand-blue group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                {t('home.view')} <ChevronRight className="w-3.5 h-3.5" />
+                {t('home.view')} <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
@@ -381,10 +383,10 @@ export const HomeScreen: React.FC = () => {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center group-hover:bg-brand-blue group-hover:text-white transition-colors">
-                <Megaphone className="w-5 h-5" />
+                <Megaphone aria-hidden="true" className="w-5 h-5" />
               </div>
               <span className="text-xs font-semibold text-brand-blue group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                {t('home.noticesLink')} <ChevronRight className="w-3.5 h-3.5" />
+                {t('home.noticesLink')} <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
@@ -407,10 +409,10 @@ export const HomeScreen: React.FC = () => {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-teal-50 text-brand-teal flex items-center justify-center group-hover:bg-brand-teal group-hover:text-white transition-colors">
-                <Briefcase className="w-5 h-5" />
+                <Briefcase aria-hidden="true" className="w-5 h-5" />
               </div>
               <span className="text-xs font-semibold text-brand-teal group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                {t('home.browseJobs')} <ChevronRight className="w-3.5 h-3.5" />
+                {t('home.browseJobs')} <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
@@ -433,10 +435,10 @@ export const HomeScreen: React.FC = () => {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-teal-50 text-brand-teal flex items-center justify-center group-hover:bg-brand-teal group-hover:text-white transition-colors">
-                <FileText className="w-5 h-5" />
+                <FileText aria-hidden="true" className="w-5 h-5" />
               </div>
               <span className="text-xs font-semibold text-brand-teal group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                {t('home.open')} <ChevronRight className="w-3.5 h-3.5" />
+                {t('home.open')} <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
@@ -459,10 +461,10 @@ export const HomeScreen: React.FC = () => {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center group-hover:bg-brand-blue group-hover:text-white transition-colors">
-                <Users className="w-5 h-5" />
+                <Users aria-hidden="true" className="w-5 h-5" />
               </div>
               <span className="text-xs font-semibold text-brand-blue group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                {t('home.joinChat')} <ChevronRight className="w-3.5 h-3.5" />
+                {t('home.joinChat')} <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
@@ -471,8 +473,6 @@ export const HomeScreen: React.FC = () => {
                 {t('home.academicCommunityDesc')}
               </p>
               <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2 text-[11px] text-slate-600">
-                <span className="font-semibold text-teal-600">{t('home.cohortVerified')}</span>
-                <span className="text-slate-300">·</span>
                 <span>{t('home.peerFacultyHub')}</span>
               </div>
             </div>
@@ -485,10 +485,10 @@ export const HomeScreen: React.FC = () => {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                <Bell className="w-5 h-5" />
+                <Bell aria-hidden="true" className="w-5 h-5" />
               </div>
               <span className="text-xs font-semibold text-blue-600 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                {t('home.manage')} <ChevronRight className="w-3.5 h-3.5" />
+                {t('home.manage')} <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
@@ -509,10 +509,10 @@ export const HomeScreen: React.FC = () => {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center group-hover:bg-sky-600 group-hover:text-white transition-colors">
-                <GraduationCap className="w-5 h-5" />
+                <GraduationCap aria-hidden="true" className="w-5 h-5" />
               </div>
               <span className="text-xs font-semibold text-sky-600 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                {t('home.details')} <ChevronRight className="w-3.5 h-3.5" />
+                {t('home.details')} <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
@@ -535,10 +535,10 @@ export const HomeScreen: React.FC = () => {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center group-hover:bg-brand-blue group-hover:text-white transition-colors">
-                <BookOpen className="w-5 h-5" />
+                <BookOpen aria-hidden="true" className="w-5 h-5" />
               </div>
               <span className="text-xs font-semibold text-brand-blue group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                {t('common.search')} <ChevronRight className="w-3.5 h-3.5" />
+                {t('common.search')} <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
@@ -561,11 +561,11 @@ export const HomeScreen: React.FC = () => {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-teal-50 text-brand-teal flex items-center justify-center group-hover:bg-brand-teal group-hover:text-white transition-colors">
-                <Contact2 className="w-5 h-5" />
+                <Contact2 aria-hidden="true" className="w-5 h-5" />
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-xs font-semibold text-brand-teal group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                  {t('home.directory')} <ChevronRight className="w-3.5 h-3.5" />
+                  {t('home.directory')} <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
                 </span>
               </div>
             </div>
@@ -589,10 +589,10 @@ export const HomeScreen: React.FC = () => {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                <BookOpen className="w-5 h-5" />
+                <BookOpen aria-hidden="true" className="w-5 h-5" />
               </div>
               <span className="text-xs font-semibold text-blue-600 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                {t('home.openBookList')} <ChevronRight className="w-3.5 h-3.5" />
+                {t('home.openBookList')} <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="mt-3">
@@ -611,19 +611,24 @@ export const HomeScreen: React.FC = () => {
 
       {/* Class Captain Modal: Post Notice */}
       {showNoticeModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+        <Modal
+          onClose={() => setShowNoticeModal(false)}
+          labelledBy="home-notice-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
+          overlayClassName="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-teal-50 text-brand-teal flex items-center justify-center">
-                  <Megaphone className="w-4 h-4" />
+                  <Megaphone aria-hidden="true" className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold text-text-primary text-base">{t('home.broadcastNotice')}</h3>
+                <h3 id="home-notice-title" className="font-bold text-text-primary text-base">{t('home.broadcastNotice')}</h3>
               </div>
               <button 
                 onClick={() => setShowNoticeModal(false)}
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -697,8 +702,7 @@ export const HomeScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

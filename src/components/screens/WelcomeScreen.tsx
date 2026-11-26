@@ -59,6 +59,71 @@ const normalizeDigits = (val: string): string =>
     .replace(/[০-৯]/g, ch => BANGLA_DIGIT_MAP[ch] ?? ch)
     .replace(/[\s\-_]+/g, '');
 
+// Small "Privacy Policy · Terms of Service" link row shown near the
+// sign-in and sign-up submit buttons.
+const LegalLinks: React.FC = () => {
+  const { setActiveScreen } = useApp();
+  const { lang } = useLanguage();
+  const bn = lang === 'bn';
+  return (
+    <p className="text-center text-[11px] text-slate-500">
+      {bn ? 'ব্যবহার করে আপনি আমাদের ' : 'By using DiplomaMate you agree to our '}
+      <button
+        type="button"
+        onClick={() => setActiveScreen('privacy_policy')}
+        className="font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-1 cursor-pointer"
+      >
+        {bn ? 'গোপনীয়তা নীতি' : 'Privacy Policy'}
+      </button>
+      {bn ? ' ও ' : ' and '}
+      <button
+        type="button"
+        onClick={() => setActiveScreen('terms')}
+        className="font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-1 cursor-pointer"
+      >
+        {bn ? 'সেবার শর্তাবলি' : 'Terms of Service'}
+      </button>
+      {bn ? ' মেনে নিচ্ছেন।' : '.'}
+    </p>
+  );
+};
+const CONSENT_VERSION = '2026-11-26';
+
+const ConsentCheckbox: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = ({ checked, onChange }) => {
+  const { setActiveScreen } = useApp();
+  const { lang } = useLanguage();
+  const bn = lang === 'bn';
+  return (
+    <label className="flex items-start gap-2 text-[11px] leading-relaxed text-slate-600 cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 w-4 h-4 shrink-0 accent-blue-600 cursor-pointer"
+      />
+      <span>
+        {bn ? 'আমি ' : 'I agree to the '}
+        <button
+          type="button"
+          onClick={() => setActiveScreen('privacy_policy')}
+          className="font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-1 cursor-pointer"
+        >
+          {bn ? 'গোপনীয়তা নীতি' : 'Privacy Policy'}
+        </button>
+        {bn ? ' এবং ' : ' and '}
+        <button
+          type="button"
+          onClick={() => setActiveScreen('terms')}
+          className="font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-1 cursor-pointer"
+        >
+          {bn ? 'সেবার শর্তাবলি' : 'Terms of Service'}
+        </button>
+        {bn ? 'তে রাজি আছি।' : '.'}
+      </span>
+    </label>
+  );
+};
+
 export const WelcomeScreen: React.FC = () => {
   const {
     login,
@@ -71,7 +136,7 @@ export const WelcomeScreen: React.FC = () => {
     setActiveScreen,
     showToast
   } = useApp();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [tab, setTab] = useState<'signin' | 'signup'>('signin');
   const [selectedRole, setSelectedRole] = useState<AccountType>('student');
 
@@ -117,6 +182,9 @@ export const WelcomeScreen: React.FC = () => {
   });
   const [signUpPin, setSignUpPin] = useState('');
   const [signUpConfirmPin, setSignUpConfirmPin] = useState('');
+  // Privacy/terms consent — unchecked by default on BOTH sign-up forms.
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [teacherConsentAccepted, setTeacherConsentAccepted] = useState(false);
 
   // Teacher Sign Up Form State
   const [teacherName, setTeacherName] = useState('');
@@ -314,6 +382,13 @@ export const WelcomeScreen: React.FC = () => {
           return;
         }
 
+        if (!teacherConsentAccepted) {
+          setSignInError(lang === 'bn'
+            ? 'অ্যাকাউন্ট খুলতে গোপনীয়তা নীতি এবং সেবার শর্তাবলিতে রাজি হোন।'
+            : 'Please agree to the Privacy Policy and Terms of Service to create an account.');
+          return;
+        }
+
         const subjectsArray = teacherSubjectsList
           .map(s => s.trim())
           .filter(Boolean);
@@ -329,7 +404,9 @@ export const WelcomeScreen: React.FC = () => {
           teachingSubjects: subjectsArray.length > 0 ? subjectsArray : ['Department Core Subject'],
           semestersTaught: teacherSemesters,
           shift: teacherShift,
-          pin: normalizeDigits(teacherNewPin)
+          pin: normalizeDigits(teacherNewPin),
+          consentAccepted: true,
+          consentVersion: CONSENT_VERSION
         }, turnstileProof);
         resetTurnstile();
 
@@ -362,10 +439,17 @@ export const WelcomeScreen: React.FC = () => {
           return;
         }
 
+        if (!consentAccepted) {
+          setSignInError(lang === 'bn'
+            ? 'অ্যাকাউন্ট খুলতে গোপনীয়তা নীতি এবং সেবার শর্তাবলিতে রাজি হোন।'
+            : 'Please agree to the Privacy Policy and Terms of Service to create an account.');
+          return;
+        }
+
         let newProfile: StudentProfile = {
           id: `std_${Date.now()}`,
           name: signUpData.name.trim(),
-          email: signUpData.email?.trim() || 'student@polytechnic.edu.bd',
+          email: signUpData.email?.trim() || '',
           college: signUpData.college || POLYTECHNIC_COLLEGES[0],
           department: signUpData.department || DEPARTMENTS[0],
           boardRoll: cleanRoll,
@@ -377,7 +461,7 @@ export const WelcomeScreen: React.FC = () => {
           accountType: selectedRole === 'class_captain' ? 'class_captain' : 'student',
           captainVerificationStatus: selectedRole === 'class_captain' ? 'Pending' : 'NotApplied',
           isTeacherContactUnlocked: false,
-          phone: signUpData.phone || '+880 1700-000000'
+          phone: signUpData.phone?.trim() || ''
         };
 
         try {
@@ -387,6 +471,8 @@ export const WelcomeScreen: React.FC = () => {
             body: JSON.stringify({
               ...newProfile,
               pin: cleanPin,
+              consentAccepted: true,
+              consentVersion: CONSENT_VERSION,
               turnstileToken: turnstileToken || undefined,
               turnstileEnabled: isTurnstileEnabled
             })
@@ -512,7 +598,7 @@ export const WelcomeScreen: React.FC = () => {
                 {t('welcome.onboardingWelcome')} {onboardingProfile.name}!
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                {t('welcome.profileVerifiedFor')}
+                {lang === 'bn' ? 'আপনার প্রোফাইল:' : 'Your profile:'}
               </p>
               <div className="inline-flex flex-wrap items-center justify-center gap-1.5 text-xs font-semibold text-blue-900 bg-blue-50 border border-blue-200/80 rounded-xl px-3 py-1.5 mt-2">
                 <span>{onboardingProfile.college}</span>
@@ -832,6 +918,8 @@ export const WelcomeScreen: React.FC = () => {
                     <span>{isSubmitting ? t('welcome.authenticating') : selectedRole === 'teacher' ? t('welcome.signInAsTeacher') : selectedRole === 'class_captain' ? t('welcome.signInAsCaptain') : t('welcome.signInAsStudent')}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
+
+                  <LegalLinks />
                 </form>
               )}
 
@@ -1197,6 +1285,11 @@ export const WelcomeScreen: React.FC = () => {
 
               <TurnstileWidget key={turnstileKey} onToken={setTurnstileToken} />
 
+              <ConsentCheckbox
+                checked={selectedRole === 'teacher' ? teacherConsentAccepted : consentAccepted}
+                onChange={selectedRole === 'teacher' ? setTeacherConsentAccepted : setConsentAccepted}
+              />
+
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -1212,6 +1305,8 @@ export const WelcomeScreen: React.FC = () => {
                 <span>{isSubmitting ? t('welcome.registering') : selectedRole === 'teacher' ? t('welcome.completeTeacherRegistration') : selectedRole === 'class_captain' ? t('welcome.completeCaptainRegistration') : t('welcome.completeStudentRegistration')}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
+
+              <LegalLinks />
             </form>
           )}
 

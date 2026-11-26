@@ -23,7 +23,7 @@ export const ReminderLeadTimeSlider: React.FC<ReminderLeadTimeSliderProps> = ({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
-            <Bell className="w-4 h-4" />
+            <Bell aria-hidden="true" className="w-4 h-4" />
           </div>
           <div>
             <span className="text-xs font-bold text-text-primary block">{label}</span>
@@ -33,7 +33,7 @@ export const ReminderLeadTimeSlider: React.FC<ReminderLeadTimeSliderProps> = ({
 
         {/* Live Badge */}
         <span className="inline-flex items-center gap-1 bg-blue-600 text-white font-mono font-bold text-xs px-2.5 py-1 rounded-full shadow-xs">
-          <Clock className="w-3 h-3" />
+          <Clock aria-hidden="true" className="w-3 h-3" />
           <span>{value} min{value > 1 ? 's' : ''} prior</span>
         </span>
       </div>
@@ -48,7 +48,7 @@ export const ReminderLeadTimeSlider: React.FC<ReminderLeadTimeSliderProps> = ({
           disabled={disabled}
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none"
+          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
         />
         <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-1">
           <span>1 min</span>

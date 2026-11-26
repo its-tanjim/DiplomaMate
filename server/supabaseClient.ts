@@ -876,6 +876,20 @@ export async function insertStudent(student: EnrolledStudent): Promise<EnrolledS
   return toStudent(data as StudentRow);
 }
 
+/**
+ * Delete helper for account data-deletion (compliance audit §7).
+ * Hard-deletes the student's row from `students`. Returns true when a
+ * Postgres row was deleted, false when Postgres had no row for the id.
+ * Throws on any query error — callers catch and continue with the JSON
+ * erasure, so a Postgres outage never blocks an approved deletion.
+ */
+export async function deleteStudentById(id: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('students').delete().eq('id', id).select('id');
+  throwIfError(error, 'deleteStudentById');
+  return (data?.length ?? 0) > 0;
+}
+
 // ---------------------------------------------------------------------------
 // Teachers — replaces `serverTeachers` / `legacyUnregisteredTeachers` Maps.
 // NOTE: those Maps are the live source of truth in server.ts today; a route
@@ -943,6 +957,20 @@ export async function updateTeacherById(
   }
   throwIfError(error, 'updateTeacherById');
   return data ? toTeacher(data as TeacherRow) : null;
+}
+
+/**
+ * Delete helper for account data-deletion (compliance audit §7).
+ * Hard-deletes the teacher's row from `teacher_accounts`. Returns true
+ * when a Postgres row was deleted, false when Postgres had no row for
+ * the id. Throws on any query error — callers catch and continue with
+ * the JSON erasure.
+ */
+export async function deleteTeacherById(id: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('teacher_accounts').delete().eq('id', id).select('id');
+  throwIfError(error, 'deleteTeacherById');
+  return (data?.length ?? 0) > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -1019,6 +1047,30 @@ export async function updateCaptainRecordById(
     .maybeSingle();
   throwIfError(error, 'updateCaptainRecordById');
   return data ? toCaptain(data as CaptainRow) : null;
+}
+
+/**
+ * Anonymisation helper for account data-deletion (compliance audit §7).
+ * Keeps a deleted student's captain-application rows but strips the
+ * personal data from them (name -> 'deleted', board roll / reg number /
+ * phone -> NULL). Returns how many rows were anonymised. Throws on any
+ * query error — callers catch and continue with the JSON erasure.
+ */
+export async function anonymizeCaptainRecordsByStudentId(studentId: string): Promise<number> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('captain_records')
+    .update({
+      student_name: 'deleted',
+      board_roll: null,
+      reg_number: null,
+      phone: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('student_id', studentId)
+    .select('id');
+  throwIfError(error, 'anonymizeCaptainRecordsByStudentId');
+  return data?.length ?? 0;
 }
 
 /**
@@ -1225,6 +1277,59 @@ export async function getMembership(userId: string, communityId: string): Promis
     .maybeSingle();
   throwIfError(error, 'getMembership');
   return data ? toMembership(data as MembershipRow) : null;
+}
+
+/**
+ * Delete helper for account data-deletion (compliance audit §7).
+ * Removes every community membership row for the user, across all
+ * communities. Returns how many rows were removed. Throws on any query
+ * error — callers catch and continue with the JSON erasure.
+ */
+export async function deleteMembershipsByUserId(userId: string): Promise<number> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('community_memberships')
+    .delete()
+    .eq('user_id', userId)
+    .select('id');
+  throwIfError(error, 'deleteMembershipsByUserId');
+  return data?.length ?? 0;
+}
+
+/**
+ * Anonymisation helper for account data-deletion (compliance audit §7).
+ * Keeps a deleted account's community messages (community history) but
+ * strips the sender identity (sender_id / sender_name -> 'deleted').
+ * Returns how many messages were anonymised. Throws on any query error
+ * — callers catch and continue with the JSON erasure.
+ */
+export async function anonymizeCommunityMessagesBySenderId(senderId: string): Promise<number> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('community_messages')
+    .update({ sender_id: 'deleted', sender_name: 'deleted' })
+    .eq('sender_id', senderId)
+    .select('id');
+  throwIfError(error, 'anonymizeCommunityMessagesBySenderId');
+  return data?.length ?? 0;
+}
+
+/**
+ * Anonymisation helper for account data-deletion (compliance audit §7).
+ * Keeps communities created by a deleted account (they still have other
+ * members) but strips the creator identity (created_by / created_by_name
+ * -> 'deleted'). Returns how many communities were anonymised. Throws
+ * on any query error — callers catch and continue with the JSON erasure.
+ */
+export async function anonymizeCommunitiesByCreator(creatorId: string): Promise<number> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('communities')
+    .update({ created_by: 'deleted', created_by_name: 'deleted' })
+    .eq('created_by', creatorId)
+    .select('id');
+  throwIfError(error, 'anonymizeCommunitiesByCreator');
+  return data?.length ?? 0;
 }
 
 /** Latest messages for a community (newest first). `limit` defaults to 100. */

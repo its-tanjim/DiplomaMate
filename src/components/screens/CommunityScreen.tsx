@@ -47,6 +47,7 @@ import {
   Section
 } from '../../types';
 import { POLYTECHNIC_COLLEGES, DEPARTMENTS } from '../../data/mockData';
+import { Modal } from '../common/Modal';
 
 export const CommunityScreen: React.FC = () => {
   const { 
@@ -114,7 +115,7 @@ export const CommunityScreen: React.FC = () => {
   const [createSemester, setCreateSemester] = useState<number>(userProfile.semester || 1);
   const [createShift, setCreateShift] = useState<Shift | 'Both'>(userProfile.shift || 'Both');
   const [createSection, setCreateSection] = useState<Section | 'All'>(userProfile.section || 'All');
-  const [createVisibility, setCreateVisibility] = useState<'public' | 'private'>('public');
+  const [createVisibility, setCreateVisibility] = useState<'public' | 'private'>('private');
   const [isCreating, setIsCreating] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -600,7 +601,7 @@ export const CommunityScreen: React.FC = () => {
       {/* Toast Notification */}
       {successToast && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-teal-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xl flex items-center gap-2 border border-teal-600 animate-in fade-in duration-150">
-          <CheckCircle2 className="w-4 h-4 text-teal-300 shrink-0" />
+          <CheckCircle2 aria-hidden="true" className="w-4 h-4 text-teal-300 shrink-0" />
           <span>{successToast}</span>
         </div>
       )}
@@ -609,14 +610,15 @@ export const CommunityScreen: React.FC = () => {
       {errorMsg && (
         <div className="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-xl text-xs flex items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <AlertTriangle aria-hidden="true" className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{errorMsg}</span>
           </div>
           <button 
             onClick={() => setErrorMsg(null)}
+            aria-label="Dismiss error"
             className="text-rose-500 hover:text-rose-700 font-bold p-1"
           >
-            <X className="w-4 h-4" />
+            <X aria-hidden="true" className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -636,9 +638,10 @@ export const CommunityScreen: React.FC = () => {
                   setFilterType('all');
                 }}
                 className="p-1.5 -ml-1 rounded-lg bg-surface/10 hover:bg-surface/20 text-white transition-colors cursor-pointer shrink-0"
+                aria-label="Back to Communities Hub"
                 title="Back to Communities Hub"
               >
-                <ChevronLeft className="w-5 h-5" />
+                <ChevronLeft aria-hidden="true" className="w-5 h-5" />
               </button>
               
               <div className="min-w-0">
@@ -648,11 +651,11 @@ export const CommunityScreen: React.FC = () => {
                   </h2>
                   {selectedCommunity.visibility === 'private' ? (
                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-200 border border-amber-400/30">
-                      <Lock className="w-2.5 h-2.5" /> Private
+                      <Lock aria-hidden="true" className="w-2.5 h-2.5" /> Private
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-500/20 text-teal-200 border border-teal-400/30">
-                      <Globe className="w-2.5 h-2.5" /> Public
+                      <Globe aria-hidden="true" className="w-2.5 h-2.5" /> Public
                     </span>
                   )}
                 </div>
@@ -679,12 +682,13 @@ export const CommunityScreen: React.FC = () => {
                     ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
                     : 'bg-surface/10 text-white hover:bg-surface/20'
                 }`}
+                aria-label={userMemberships[selectedCommunity.id]?.is_muted ? 'Unmute Group Notifications' : 'Mute Group Notifications'}
                 title={userMemberships[selectedCommunity.id]?.is_muted ? 'Unmute Group Notifications' : 'Mute Group Notifications'}
               >
                 {userMemberships[selectedCommunity.id]?.is_muted ? (
-                  <BellOff className="w-4 h-4" />
+                  <BellOff aria-hidden="true" className="w-4 h-4" />
                 ) : (
-                  <Bell className="w-4 h-4" />
+                  <Bell aria-hidden="true" className="w-4 h-4" />
                 )}
               </button>
 
@@ -692,18 +696,20 @@ export const CommunityScreen: React.FC = () => {
               <button
                 onClick={() => setShowMembersModal(true)}
                 className="p-2 rounded-lg bg-surface/10 hover:bg-surface/20 text-white transition-colors cursor-pointer"
+                aria-label="View Group Members"
                 title="View Group Members"
               >
-                <Users className="w-4 h-4" />
+                <Users aria-hidden="true" className="w-4 h-4" />
               </button>
 
               {/* Leave Community Button */}
               <button
                 onClick={() => handleLeave(selectedCommunity.id)}
                 className="p-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 transition-colors cursor-pointer"
+                aria-label="Leave Community"
                 title="Leave Community"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut aria-hidden="true" className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -712,7 +718,7 @@ export const CommunityScreen: React.FC = () => {
           {pinnedAnnouncements.length > 0 && (
             <div className="bg-amber-50 border-b border-amber-200/80 px-3.5 py-2.5 flex items-start justify-between gap-3 text-xs text-amber-950">
               <div className="flex items-start gap-2 min-w-0">
-                <Pin className="w-4 h-4 text-amber-700 shrink-0 mt-0.5 rotate-45" />
+                <Pin aria-hidden="true" className="w-4 h-4 text-amber-700 shrink-0 mt-0.5 rotate-45" />
                 <div className="min-w-0">
                   <div className="font-semibold text-amber-900 flex items-center gap-1.5">
                     <span>Pinned Announcement</span>
@@ -737,7 +743,7 @@ export const CommunityScreen: React.FC = () => {
           {/* Search & Filter Toolbar */}
           <div className="bg-slate-50 border-b border-slate-200/80 px-3 py-2 flex items-center justify-between gap-2">
             <div className="relative flex-1 max-w-sm">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <Search aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="Search messages, notes, PDFs..."
@@ -748,9 +754,10 @@ export const CommunityScreen: React.FC = () => {
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X aria-hidden="true" className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
@@ -770,7 +777,7 @@ export const CommunityScreen: React.FC = () => {
                   filterType === 'files' ? 'bg-brand-blue text-white' : 'bg-surface text-slate-600 border border-slate-200'
                 }`}
               >
-                <FileText className="w-3 h-3" /> Files & Videos
+                <FileText aria-hidden="true" className="w-3 h-3" /> Files & Videos
               </button>
             </div>
           </div>
@@ -785,7 +792,7 @@ export const CommunityScreen: React.FC = () => {
             ) : messages.length === 0 ? (
               <div className="text-center py-12 px-4 text-slate-500">
                 <div className="w-12 h-12 rounded-full bg-blue-100/70 text-brand-blue mx-auto flex items-center justify-center mb-2.5">
-                  <MessageSquare className="w-6 h-6" />
+                  <MessageSquare aria-hidden="true" className="w-6 h-6" />
                 </div>
                 <h4 className="font-bold text-sm text-text-primary">No messages yet</h4>
               </div>
@@ -814,11 +821,11 @@ export const CommunityScreen: React.FC = () => {
                         {/* Role Badges */}
                         {msg.sender_role === 'teacher' ? (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                            <GraduationCap className="w-3 h-3" /> Teacher
+                            <GraduationCap aria-hidden="true" className="w-3 h-3" /> Teacher
                           </span>
                         ) : msg.sender_role === 'class_captain' ? (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
-                            <ShieldCheck className="w-3 h-3" /> Class Captain
+                            <ShieldCheck aria-hidden="true" className="w-3 h-3" /> Class Captain
                           </span>
                         ) : (
                           <span className="text-[10px] text-slate-400">Student</span>
@@ -845,7 +852,7 @@ export const CommunityScreen: React.FC = () => {
                         {/* Pinned Indicator on Message */}
                         {msg.is_pinned && (
                           <div className={`flex items-center gap-1 text-[10px] font-bold mb-1.5 ${isAuthor ? 'text-amber-200' : 'text-amber-700'}`}>
-                            <Pin className="w-3 h-3 rotate-45" /> Pinned Study Note
+                            <Pin aria-hidden="true" className="w-3 h-3 rotate-45" /> Pinned Study Note
                           </div>
                         )}
 
@@ -868,7 +875,7 @@ export const CommunityScreen: React.FC = () => {
                                     />
                                     <div className="flex items-center justify-between text-[10px] text-slate-400 px-2 py-1">
                                       <span className="flex items-center gap-1">
-                                        <ImageIcon className="w-3 h-3 text-teal-400" />
+                                        <ImageIcon aria-hidden="true" className="w-3 h-3 text-teal-400" />
                                         {att.file_name}
                                       </span>
                                       <span>{formatBytes(att.file_size_bytes)}</span>
@@ -881,7 +888,7 @@ export const CommunityScreen: React.FC = () => {
                                       : 'bg-slate-50 border-slate-200 text-slate-800'
                                   }`}>
                                     <div className="flex items-center gap-2 min-w-0">
-                                      <FileText className="w-5 h-5 text-teal-400 shrink-0" />
+                                      <FileText aria-hidden="true" className="w-5 h-5 text-teal-400 shrink-0" />
                                       <div className="min-w-0">
                                         <p className="font-semibold text-xs truncate">{att.file_name}</p>
                                         <p className="text-[10px] opacity-80">{formatBytes(att.file_size_bytes)} · {att.file_type.toUpperCase()}</p>
@@ -900,7 +907,7 @@ export const CommunityScreen: React.FC = () => {
                                       }`}
                                       title="Download File"
                                     >
-                                      <Download className="w-3.5 h-3.5" />
+                                      <Download aria-hidden="true" className="w-3.5 h-3.5" />
                                       <span className="hidden sm:inline">Download</span>
                                     </button>
                                   </div>
@@ -920,7 +927,7 @@ export const CommunityScreen: React.FC = () => {
                               onClick={() => handleTogglePin(msg.id)}
                               className="hover:underline flex items-center gap-0.5 cursor-pointer"
                             >
-                              <Pin className="w-2.5 h-2.5" />
+                              <Pin aria-hidden="true" className="w-2.5 h-2.5" />
                               <span>{msg.is_pinned ? 'Unpin' : 'Pin'}</span>
                             </button>
                           )}
@@ -931,7 +938,7 @@ export const CommunityScreen: React.FC = () => {
                               onClick={() => handleDeleteMessage(msg.id)}
                               className="hover:text-rose-400 flex items-center gap-0.5 cursor-pointer"
                             >
-                              <Trash2 className="w-2.5 h-2.5" />
+                              <Trash2 aria-hidden="true" className="w-2.5 h-2.5" />
                               <span>Delete</span>
                             </button>
                           )}
@@ -945,7 +952,7 @@ export const CommunityScreen: React.FC = () => {
                               }}
                               className="hover:text-rose-500 flex items-center gap-0.5 cursor-pointer"
                             >
-                              <AlertTriangle className="w-2.5 h-2.5" />
+                              <AlertTriangle aria-hidden="true" className="w-2.5 h-2.5" />
                               <span>Report</span>
                             </button>
                           )}
@@ -963,21 +970,22 @@ export const CommunityScreen: React.FC = () => {
             <div className="bg-blue-50 border-t border-blue-200 px-4 py-2 flex items-center justify-between gap-3 text-xs text-blue-900">
               <div className="flex items-center gap-2 min-w-0">
                 {attachment.fileType === 'video' ? (
-                  <Video className="w-4 h-4 text-blue-600 shrink-0" />
+                  <Video aria-hidden="true" className="w-4 h-4 text-blue-600 shrink-0" />
                 ) : (
-                  <FileText className="w-4 h-4 text-brand-blue shrink-0" />
+                  <FileText aria-hidden="true" className="w-4 h-4 text-brand-blue shrink-0" />
                 )}
                 <span className="font-semibold truncate">{attachment.fileName}</span>
                 <span className="text-[11px] text-blue-700 shrink-0">({formatBytes(attachment.fileSize)})</span>
               </div>
               <button
+                aria-label="Remove attachment"
                 onClick={() => {
                   setAttachment(null);
                   if (fileInputRef.current) fileInputRef.current.value = '';
                 }}
                 className="text-blue-700 hover:text-blue-900 font-bold p-1 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X aria-hidden="true" className="w-4 h-4" />
               </button>
             </div>
           )}
@@ -999,9 +1007,10 @@ export const CommunityScreen: React.FC = () => {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-brand-blue transition-colors cursor-pointer shrink-0"
+              aria-label="Share PDF, Study Note, or Lab Video"
               title="Share PDF, Study Note, or Lab Video (Max 15MB video, 10MB PDF)"
             >
-              <Upload className="w-4 h-4" />
+              <Upload aria-hidden="true" className="w-4 h-4" />
             </button>
 
             {/* Text Input */}
@@ -1018,9 +1027,10 @@ export const CommunityScreen: React.FC = () => {
               type="submit"
               disabled={isSubmittingMessage || (!newMsgContent.trim() && !attachment)}
               className="p-2.5 rounded-xl bg-brand-blue hover:bg-blue-700 disabled:opacity-50 text-white transition-colors cursor-pointer shrink-0"
+              aria-label="Send message"
               title="Send message"
             >
-              <Send className="w-4 h-4" />
+              <Send aria-hidden="true" className="w-4 h-4" />
             </button>
           </form>
         </div>
@@ -1061,7 +1071,7 @@ export const CommunityScreen: React.FC = () => {
                   }}
                   className="bg-teal-500 hover:bg-teal-600 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow-sm flex items-center gap-1.5 transition-all cursor-pointer shrink-0 self-start sm:self-auto"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus aria-hidden="true" className="w-4 h-4" />
                   <span>Create Academic Group</span>
                 </button>
               )}
@@ -1079,7 +1089,7 @@ export const CommunityScreen: React.FC = () => {
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                <Users className="w-3.5 h-3.5" />
+                <Users aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>My Groups ({myJoinedCommunities.length})</span>
               </button>
 
@@ -1091,7 +1101,7 @@ export const CommunityScreen: React.FC = () => {
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                <Globe className="w-3.5 h-3.5" />
+                <Globe aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>Discover Cohort Groups ({discoverableCommunities.length})</span>
               </button>
 
@@ -1104,7 +1114,7 @@ export const CommunityScreen: React.FC = () => {
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+                  <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5 text-teal-400" />
                   <span>Admin Moderation</span>
                 </button>
               )}
@@ -1125,7 +1135,7 @@ export const CommunityScreen: React.FC = () => {
               {myJoinedCommunities.length === 0 ? (
                 <div className="bg-surface rounded-2xl border border-slate-200/90 p-8 text-center shadow-xs">
                   <div className="w-12 h-12 rounded-full bg-blue-50 text-brand-blue mx-auto flex items-center justify-center mb-3">
-                    <Users className="w-6 h-6" />
+                    <Users aria-hidden="true" className="w-6 h-6" />
                   </div>
                   <h3 className="font-bold text-base text-text-primary">
                     {communities.length === 0 ? 'No communities created yet' : 'No joined communities yet'}
@@ -1173,11 +1183,11 @@ export const CommunityScreen: React.FC = () => {
 
                             {comm.visibility === 'private' ? (
                               <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                <Lock className="w-2.5 h-2.5" /> Private
+                                <Lock aria-hidden="true" className="w-2.5 h-2.5" /> Private
                               </span>
                             ) : (
                               <span className="text-[10px] bg-teal-50 text-teal-700 border border-teal-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                <Globe className="w-2.5 h-2.5" /> Public
+                                <Globe aria-hidden="true" className="w-2.5 h-2.5" /> Public
                               </span>
                             )}
                           </div>
@@ -1188,7 +1198,7 @@ export const CommunityScreen: React.FC = () => {
 
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 mt-3 pt-2.5 border-t border-slate-100">
                             <span className="flex items-center gap-1 font-medium text-slate-700">
-                              <Users className="w-3.5 h-3.5 text-slate-400" />
+                              <Users aria-hidden="true" className="w-3.5 h-3.5 text-slate-400" />
                               {comm.member_count} Members
                             </span>
                             <span>·</span>
@@ -1197,7 +1207,7 @@ export const CommunityScreen: React.FC = () => {
                               <>
                                 <span>·</span>
                                 <span className="text-amber-600 flex items-center gap-0.5 font-medium">
-                                  <BellOff className="w-3 h-3" /> Muted
+                                  <BellOff aria-hidden="true" className="w-3 h-3" /> Muted
                                 </span>
                               </>
                             )}
@@ -1209,7 +1219,7 @@ export const CommunityScreen: React.FC = () => {
                             onClick={() => setSelectedCommunity(comm)}
                             className="flex-1 py-2 px-3 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
                           >
-                            <MessageSquare className="w-3.5 h-3.5" />
+                            <MessageSquare aria-hidden="true" className="w-3.5 h-3.5" />
                             <span>Enter Room</span>
                           </button>
                         </div>
@@ -1227,7 +1237,7 @@ export const CommunityScreen: React.FC = () => {
               {discoverableCommunities.length === 0 ? (
                 <div className="bg-surface rounded-2xl border border-slate-200/90 p-8 text-center shadow-xs">
                   <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center mb-3">
-                    <Globe className="w-6 h-6" />
+                    <Globe aria-hidden="true" className="w-6 h-6" />
                   </div>
                   <h3 className="font-bold text-base text-text-primary">No additional cohort groups found</h3>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
@@ -1263,17 +1273,17 @@ export const CommunityScreen: React.FC = () => {
 
                             {comm.visibility === 'private' ? (
                               <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                <Lock className="w-2.5 h-2.5" /> Private
+                                <Lock aria-hidden="true" className="w-2.5 h-2.5" /> Private
                               </span>
                             ) : (
                               <span className="text-[10px] bg-teal-50 text-teal-700 border border-teal-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                <Globe className="w-2.5 h-2.5" /> Public
+                                <Globe aria-hidden="true" className="w-2.5 h-2.5" /> Public
                               </span>
                             )}
                           </div>
 
                           <p className="text-xs text-slate-600 line-clamp-2 mt-1">
-                            {comm.description || 'Verified academic group for student discussions and notes.'}
+                            {comm.description || 'Student discussion group'}
                           </p>
 
                           <div className="text-[11px] text-slate-500 mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2">
@@ -1287,7 +1297,7 @@ export const CommunityScreen: React.FC = () => {
                         <div className="mt-3 pt-2">
                           {isPending ? (
                             <div className="py-2 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold text-center flex items-center justify-center gap-1">
-                              <Clock className="w-3.5 h-3.5" />
+                              <Clock aria-hidden="true" className="w-3.5 h-3.5" />
                               <span>Request Pending Approval</span>
                             </div>
                           ) : (
@@ -1295,7 +1305,7 @@ export const CommunityScreen: React.FC = () => {
                               onClick={() => handleJoin(comm)}
                               className="w-full py-2 px-3 rounded-xl bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
                             >
-                              <Plus className="w-3.5 h-3.5" />
+                              <Plus aria-hidden="true" className="w-3.5 h-3.5" />
                               <span>{comm.visibility === 'private' ? 'Request to Join' : 'Join Academic Group'}</span>
                             </button>
                           )}
@@ -1387,18 +1397,24 @@ export const CommunityScreen: React.FC = () => {
       {/* MODAL 1: CREATE COMMUNITY MODAL */}
       {/* ==================================================================== */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-4">
-          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+        <Modal
+          onClose={() => setShowCreateModal(false)}
+          labelledBy="community-create-title"
+          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-brand-blue" />
-                <h3 className="font-bold text-base text-text-primary">Create Academic Community</h3>
+                <Users aria-hidden="true" className="w-5 h-5 text-brand-blue" />
+                <h3 id="community-create-title" className="font-bold text-base text-text-primary">Create Academic Community</h3>
               </div>
               <button
                 onClick={() => setShowCreateModal(false)}
+                aria-label="Close"
                 className="text-slate-400 hover:text-slate-600 p-1"
               >
-                <X className="w-5 h-5" />
+                <X aria-hidden="true" className="w-5 h-5" />
               </button>
             </div>
 
@@ -1500,7 +1516,7 @@ export const CommunityScreen: React.FC = () => {
                     />
                     <div>
                       <p className="font-bold text-slate-800 flex items-center gap-1">
-                        <Globe className="w-3 h-3 text-teal-600" /> Public
+                        <Globe aria-hidden="true" className="w-3 h-3 text-teal-600" /> Public
                       </p>
                       <p className="text-[10px] text-slate-500 mt-0.5">
                         Discoverable by any student in this department & semester.
@@ -1521,7 +1537,7 @@ export const CommunityScreen: React.FC = () => {
                     />
                     <div>
                       <p className="font-bold text-slate-800 flex items-center gap-1">
-                        <Lock className="w-3 h-3 text-amber-600" /> Private
+                        <Lock aria-hidden="true" className="w-3 h-3 text-amber-600" /> Private
                       </p>
                       <p className="text-[10px] text-slate-500 mt-0.5">
                         Requires moderator approval to join.
@@ -1548,28 +1564,33 @@ export const CommunityScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ==================================================================== */}
       {/* MODAL 2: MEMBERS LIST MODAL */}
       {/* ==================================================================== */}
       {showMembersModal && selectedCommunity && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200">
+        <Modal
+          onClose={() => setShowMembersModal(false)}
+          labelledBy="community-members-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-brand-blue" />
-                <h3 className="font-bold text-sm text-text-primary">
+                <Users aria-hidden="true" className="w-5 h-5 text-brand-blue" />
+                <h3 id="community-members-title" className="font-bold text-sm text-text-primary">
                   Group Members ({members.length})
                 </h3>
               </div>
               <button
                 onClick={() => setShowMembersModal(false)}
+                aria-label="Close"
                 className="text-slate-400 hover:text-slate-600 p-1"
               >
-                <X className="w-5 h-5" />
+                <X aria-hidden="true" className="w-5 h-5" />
               </button>
             </div>
 
@@ -1601,26 +1622,31 @@ export const CommunityScreen: React.FC = () => {
                 </div>
               ))}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ==================================================================== */}
       {/* MODAL 3: REPORT ABUSE MODAL */}
       {/* ==================================================================== */}
       {showReportModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-4">
-          <div className="bg-surface rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200">
+        <Modal
+          onClose={() => setShowReportModal(false)}
+          labelledBy="community-report-title"
+          panelClassName="bg-surface rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2 text-rose-600">
-                <AlertTriangle className="w-5 h-5" />
-                <h3 className="font-bold text-sm text-text-primary">Report Content or User</h3>
+                <AlertTriangle aria-hidden="true" className="w-5 h-5" />
+                <h3 id="community-report-title" className="font-bold text-sm text-text-primary">Report Content or User</h3>
               </div>
               <button
                 onClick={() => setShowReportModal(false)}
+                aria-label="Close"
                 className="text-slate-400 hover:text-slate-600 p-1"
               >
-                <X className="w-5 h-5" />
+                <X aria-hidden="true" className="w-5 h-5" />
               </button>
             </div>
 
@@ -1668,8 +1694,7 @@ export const CommunityScreen: React.FC = () => {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

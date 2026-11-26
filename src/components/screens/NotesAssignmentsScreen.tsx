@@ -58,6 +58,7 @@ import { SearchableCollegeSelect } from '../common/SearchableCollegeSelect';
 import { SearchableDepartmentSelect } from '../common/SearchableDepartmentSelect';
 import { CatalogSubjectSelect } from '../common/CatalogSubjectSelect';
 import { TECHNOLOGIES_DIRECTORY } from '../../data/directoryData';
+import { Modal } from '../common/Modal';
 
 const BTEB_CATEGORIES: BtebNoticeCategory[] = [
   'Diploma in Engineering',
@@ -265,11 +266,11 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
   const [newNoteData, setNewNoteData] = useState({
     title: '',
-    subjectCode: '66662',
-    subjectName: 'Microprocessor & Interfacing',
-    chapter: 'Chapter 4',
+    subjectCode: '',
+    subjectName: '',
+    chapter: '',
     fileType: 'PDF' as 'PDF' | 'DOCX' | 'SLIDES' | 'IMAGE' | 'VIDEO',
-    fileSize: '3.4 MB',
+    fileSize: '',
     summary: '',
     extractedText: '',
     headingsText: '',
@@ -284,10 +285,10 @@ export const NotesAssignmentsScreen: React.FC = () => {
     type: 'Full-Time' as 'Internship' | 'Full-Time' | 'Apprenticeship' | 'Part-Time' | 'Contract',
     targetDepartments: [userProfile.department || 'Computer Science & Technology (CST)'],
     publishedAt: new Date().toISOString().slice(0, 10),
-    deadline: '2026-11-30',
-    stipendOrSalary: 'BDT 20,000 - 25,000 / month',
-    experienceRequirements: 'Freshers / 0–1 Year',
-    educationalQualifications: '4-Year Diploma in Engineering (BTEB)',
+    deadline: '',
+    stipendOrSalary: '',
+    experienceRequirements: '',
+    educationalQualifications: '',
     description: '',
     requirements: '',
     sourceName: '',
@@ -1038,11 +1039,11 @@ export const NotesAssignmentsScreen: React.FC = () => {
     if (res.success) {
       setNewNoteData({
         title: '',
-        subjectCode: '66662',
-        subjectName: 'Microprocessor & Interfacing',
-        chapter: 'Chapter 4',
+        subjectCode: '',
+        subjectName: '',
+        chapter: '',
         fileType: 'PDF',
-        fileSize: '3.4 MB',
+        fileSize: '',
         summary: '',
         extractedText: '',
         headingsText: '',
@@ -1090,10 +1091,10 @@ export const NotesAssignmentsScreen: React.FC = () => {
         type: 'Full-Time',
         targetDepartments: [userProfile.department || 'Computer Science & Technology (CST)'],
         publishedAt: new Date().toISOString().slice(0, 10),
-        deadline: '2026-11-30',
-        stipendOrSalary: 'BDT 20,000 - 25,000 / month',
-        experienceRequirements: 'Freshers / 0–1 Year',
-        educationalQualifications: '4-Year Diploma in Engineering (BTEB)',
+        deadline: '',
+        stipendOrSalary: '',
+        experienceRequirements: '',
+        educationalQualifications: '',
         description: '',
         requirements: '',
         sourceName: '',
@@ -1216,9 +1217,9 @@ export const NotesAssignmentsScreen: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center font-bold">
-                {mainTab === 'notices' && <Megaphone className="w-4 h-4" />}
-                {mainTab === 'jobs' && <Briefcase className="w-4 h-4" />}
-                {(mainTab === 'assignments' || mainTab === 'notes') && <BookOpen className="w-4 h-4" />}
+                {mainTab === 'notices' && <Megaphone aria-hidden="true" className="w-4 h-4" />}
+                {mainTab === 'jobs' && <Briefcase aria-hidden="true" className="w-4 h-4" />}
+                {(mainTab === 'assignments' || mainTab === 'notes') && <BookOpen aria-hidden="true" className="w-4 h-4" />}
               </div>
               <h1 className="text-base sm:text-lg font-bold text-text-primary">
                 {mainTab === 'notices' && 'Notices & Official Announcements (নোটিশ বোর্ড)'}
@@ -1231,11 +1232,11 @@ export const NotesAssignmentsScreen: React.FC = () => {
               {mainTab === 'notices' &&
                 'Official BTEB Notices (bteb.gov.bd) + Verified Teacher & Class Captain Announcements'}
               {mainTab === 'jobs' &&
-                'Diploma Engineer opportunities with verified external application links'}
+                'Diploma Engineer opportunities with external application links'}
               {(mainTab === 'assignments' || mainTab === 'notes') &&
                 (isTeacher
                   ? `Publish course materials & inspect student submissions (${userProfile.department})`
-                  : `Verified BTEB semester resources for Section ${userProfile.section}`)}
+                  : `Semester resources for Section ${userProfile.section}`)}
             </p>
           </div>
 
@@ -1266,7 +1267,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     }}
                     className="bg-brand-teal hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                   >
-                    <Megaphone className="w-3.5 h-3.5" />
+                    <Megaphone aria-hidden="true" className="w-3.5 h-3.5" />
                     <span>Publish Notice (নোটিশ প্রকাশ)</span>
                   </button>
                 )}
@@ -1278,7 +1279,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         onClick={() => setShowBatchImportJobsModal(true)}
                         className="bg-slate-100 hover:bg-slate-200 text-text-primary text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-slate-200 cursor-pointer"
                       >
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" />
+                        <FileSpreadsheet aria-hidden="true" className="w-3.5 h-3.5 text-blue-600" />
                         <span>Batch Import</span>
                       </button>
                     )}
@@ -1290,7 +1291,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       }}
                       className="bg-text-primary hover:bg-blue-950 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus aria-hidden="true" className="w-3.5 h-3.5" />
                       <span>Post Job Circular</span>
                     </button>
                   </>
@@ -1313,14 +1314,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     }}
                     className="bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <Plus aria-hidden="true" className="w-3.5 h-3.5" />
                     <span>{mainTab === 'assignments' ? 'Post Assignment' : 'Upload Note / Lab'}</span>
                   </button>
                 )}
               </>
             ) : isTeacher ? (
               <span className="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5" />
+                <Lock aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>Pending Faculty Verification</span>
               </span>
             ) : (
@@ -1329,7 +1330,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 className="bg-teal-50 hover:bg-teal-100 text-brand-teal border border-teal-200 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
                 title="Only verified Class Captains or Faculty may publish"
               >
-                <Lock className="w-3.5 h-3.5" />
+                <Lock aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>CR / Teacher Auth Required to Publish</span>
               </button>
             )}
@@ -1346,7 +1347,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <Megaphone className="w-3.5 h-3.5 shrink-0" />
+            <Megaphone aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
             <span>Notices ({btebTotalCached + campusNotices.length})</span>
           </button>
 
@@ -1358,7 +1359,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <Briefcase className="w-3.5 h-3.5 shrink-0" />
+            <Briefcase aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
             <span>Job Circulars ({jobsTotal})</span>
           </button>
 
@@ -1370,7 +1371,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <FileText className="w-3.5 h-3.5 shrink-0" />
+            <FileText aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
             <span>Assignments ({filteredAssignments.length})</span>
           </button>
 
@@ -1382,7 +1383,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <BookOpen className="w-3.5 h-3.5 shrink-0" />
+            <BookOpen aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
             <span>Notes & Labs ({filteredNotes.length})</span>
           </button>
         </div>
@@ -1428,7 +1429,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               onClick={() => refreshAcademicFeed()}
               className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
             >
-              <RefreshCw className="w-3 h-3" />
+              <RefreshCw aria-hidden="true" className="w-3 h-3" />
               <span>Refresh Counts</span>
             </button>
           </div>
@@ -1481,7 +1482,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             {/* Search & Category / Date Filters */}
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-1">
               <div className="sm:col-span-5 relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="নোটিশ খুঁজুন (Search by title, exam, or keyword)..."
@@ -1540,7 +1541,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px] text-slate-600">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-flex items-center gap-1 font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-md">
-                    <CheckCircle2 className="w-3 h-3" />
+                    <CheckCircle2 aria-hidden="true" className="w-3 h-3" />
                     <span>Official BTEB Sync Active ({btebTotalCached} notices · {btebPagesFetched} pages)</span>
                   </span>
                   <span className="text-slate-400">·</span>
@@ -1556,7 +1557,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     onClick={() => fetchBtebNotices(1, false, true)}
                     className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    <RefreshCw className={`w-3 h-3 ${isSyncingBteb ? 'animate-spin' : ''}`} />
+                    <RefreshCw aria-hidden="true" className={`w-3 h-3 ${isSyncingBteb ? 'animate-spin' : ''}`} />
                     <span>{isSyncingBteb ? 'Syncing BTEB...' : 'Sync Now (হালনাগাদ)'}</span>
                   </button>
                   <a
@@ -1566,7 +1567,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold flex items-center gap-1"
                   >
                     <span>bteb.gov.bd</span>
-                    <ExternalLink className="w-3 h-3" />
+                    <ExternalLink aria-hidden="true" className="w-3 h-3" />
                   </a>
                 </div>
               </div>
@@ -1574,7 +1575,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
             {btebSyncError && (noticeSubTab === 'all' || noticeSubTab === 'bteb') && (
               <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <AlertTriangle aria-hidden="true" className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold">Source Update Warning: </span>
                   <span>{btebSyncError}</span>
@@ -1588,7 +1589,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             <div className="space-y-2.5">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-brand-teal" />
+                  <ShieldCheck aria-hidden="true" className="w-4 h-4 text-brand-teal" />
                   <h2 className="text-xs sm:text-sm font-bold text-text-primary">
                     {noticeSubTab === 'college'
                       ? 'College & Department Faculty Notices (কলেজ ও বিভাগীয় নোটিশ)'
@@ -1601,12 +1602,12 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
               {isLoadingCampusNotices ? (
                 <div className="bg-surface rounded-2xl border border-slate-200 p-6 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-teal-600" />
+                  <RefreshCw aria-hidden="true" className="w-4 h-4 animate-spin text-teal-600" />
                   <span>Loading campus & class notices...</span>
                 </div>
               ) : campusNotices.length === 0 ? (
                 <div className="bg-surface rounded-2xl border border-slate-200 p-6 text-center shadow-xs">
-                  <Megaphone className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
+                  <Megaphone aria-hidden="true" className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
                   <h3 className="text-xs sm:text-sm font-bold text-text-primary">
                     No Teacher or Class Captain notices found for this filter
                   </h3>
@@ -1639,12 +1640,12 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             >
                               {isCrNotice ? (
                                 <>
-                                  <ShieldCheck className="w-3 h-3" />
+                                  <ShieldCheck aria-hidden="true" className="w-3 h-3" />
                                   <span>CR / Group Notice (সিআর নোটিশ)</span>
                                 </>
                               ) : (
                                 <>
-                                  <GraduationCap className="w-3 h-3" />
+                                  <GraduationCap aria-hidden="true" className="w-3 h-3" />
                                   <span>Faculty / College Notice (শিক্ষক নোটিশ)</span>
                                 </>
                               )}
@@ -1682,7 +1683,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       {cNotice.attachmentName && (
                         <div className="flex items-center justify-between p-2 rounded-xl bg-teal-50/70 border border-teal-200/70 text-xs">
                           <div className="flex items-center gap-1.5 text-teal-900 font-medium truncate">
-                            <FileText className="w-3.5 h-3.5 text-brand-teal shrink-0" />
+                            <FileText aria-hidden="true" className="w-3.5 h-3.5 text-brand-teal shrink-0" />
                             <span className="truncate">{cNotice.attachmentName}</span>
                           </div>
                           <button
@@ -1695,7 +1696,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             }
                             className="px-2.5 py-1 rounded-lg bg-surface text-brand-teal font-bold text-[11px] border border-teal-200 flex items-center gap-1 shrink-0 cursor-pointer"
                           >
-                            <Download className="w-3 h-3" />
+                            <Download aria-hidden="true" className="w-3 h-3" />
                             <span>Open Attachment</span>
                           </button>
                         </div>
@@ -1720,7 +1721,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             onClick={() => setSelectedCampusNotice(cNotice)}
                             className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold flex items-center gap-1 cursor-pointer"
                           >
-                            <Eye className="w-3 h-3" />
+                            <Eye aria-hidden="true" className="w-3 h-3" />
                             <span>Details</span>
                           </button>
 
@@ -1747,7 +1748,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                                 }}
                                 className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue font-semibold flex items-center gap-1 cursor-pointer"
                               >
-                                <Edit3 className="w-3 h-3" />
+                                <Edit3 aria-hidden="true" className="w-3 h-3" />
                                 <span>Edit</span>
                               </button>
                               <button
@@ -1755,7 +1756,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                                 onClick={() => handleDeleteCampusNotice(cNotice.id)}
                                 className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold flex items-center gap-1 cursor-pointer"
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <Trash2 aria-hidden="true" className="w-3 h-3" />
                                 <span>Delete</span>
                               </button>
                             </>
@@ -1769,7 +1770,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                               className="px-2 py-1 rounded-lg bg-slate-50 hover:bg-rose-50 text-slate-500 hover:text-rose-700 font-semibold flex items-center gap-1 cursor-pointer"
                               title="Report inaccurate or inappropriate notice"
                             >
-                              <Flag className="w-3 h-3" />
+                              <Flag aria-hidden="true" className="w-3 h-3" />
                               <span>Report</span>
                             </button>
                           )}
@@ -1787,7 +1788,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             <div className="space-y-2.5">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <Award className="w-4 h-4 text-brand-blue" />
+                  <Award aria-hidden="true" className="w-4 h-4 text-brand-blue" />
                   <h2 className="text-xs sm:text-sm font-bold text-text-primary">
                     Official BTEB Board Notices (বাংলাদেশ কারিগরি শিক্ষা বোর্ড নোটিশ)
                   </h2>
@@ -1799,14 +1800,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
               {isLoadingBteb && btebNotices.length === 0 ? (
                 <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 flex flex-col items-center justify-center gap-2">
-                  <RefreshCw className="w-6 h-6 animate-spin text-brand-blue" />
+                  <RefreshCw aria-hidden="true" className="w-6 h-6 animate-spin text-brand-blue" />
                   <span className="font-semibold text-text-primary">
                     Synchronizing official notices from bteb.gov.bd...
                   </span>
                 </div>
               ) : btebNotices.length === 0 ? (
                 <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
-                  <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <FileText aria-hidden="true" className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                   <h3 className="text-sm font-bold text-text-primary">
                     No BTEB notices match your current search filter
                   </h3>
@@ -1828,14 +1829,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                           </span>
                           {item.isNew && (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-50 text-green-700 border border-green-200 flex items-center gap-0.5">
-                              <Sparkles className="w-2.5 h-2.5" />
+                              <Sparkles aria-hidden="true" className="w-2.5 h-2.5" />
                               <span>NEW (নতুন)</span>
                             </span>
                           )}
                         </div>
 
                         <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                          <Calendar aria-hidden="true" className="w-3.5 h-3.5 text-slate-400" />
                           <span>প্রকাশিত: {item.publishedDateBn} ({item.publishedDateDisplay})</span>
                         </div>
                       </div>
@@ -1858,7 +1859,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             onClick={() => setSelectedBtebNotice(item)}
                             className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold flex items-center gap-1 cursor-pointer"
                           >
-                            <Eye className="w-3.5 h-3.5" />
+                            <Eye aria-hidden="true" className="w-3.5 h-3.5" />
                             <span>বিস্তারিত (Details)</span>
                           </button>
 
@@ -1869,7 +1870,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                               rel="noopener noreferrer"
                               className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-brand-teal border border-teal-200 font-semibold flex items-center gap-1"
                             >
-                              <Download className="w-3.5 h-3.5" />
+                              <Download aria-hidden="true" className="w-3.5 h-3.5" />
                               <span>PDF ডাউনলোড</span>
                             </a>
                           )}
@@ -1881,7 +1882,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             className="px-2.5 py-1 rounded-lg bg-brand-blue hover:bg-blue-700 text-white font-semibold flex items-center gap-1 shadow-xs"
                           >
                             <span>মূল নোটিশ (BTEB)</span>
-                            <ExternalLink className="w-3 h-3" />
+                            <ExternalLink aria-hidden="true" className="w-3 h-3" />
                           </a>
                         </div>
                       </div>
@@ -1898,13 +1899,13 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       >
                         {isLoadingBteb ? (
                           <>
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <RefreshCw aria-hidden="true" className="w-3.5 h-3.5 animate-spin" />
                             <span>Loading more BTEB notices...</span>
                           </>
                         ) : (
                           <>
                             <span>Load More BTEB Notices (আরও নোটিশ দেখুন)</span>
-                            <ChevronRight className="w-4 h-4" />
+                            <ChevronRight aria-hidden="true" className="w-4 h-4" />
                           </>
                         )}
                       </button>
@@ -1943,7 +1944,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   onClick={handleTriggerJobSync}
                   className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
                 >
-                  <RefreshCw className={`w-3 h-3 ${isSyncingJobs ? 'animate-spin' : ''}`} />
+                  <RefreshCw aria-hidden="true" className={`w-3 h-3 ${isSyncingJobs ? 'animate-spin' : ''}`} />
                   <span>{isSyncingJobs ? 'Refreshing...' : 'Refresh Jobs'}</span>
                 </button>
                 <a
@@ -1953,7 +1954,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1"
                 >
                   <span>Careerjet BD</span>
-                  <ExternalLink className="w-3 h-3" />
+                  <ExternalLink aria-hidden="true" className="w-3 h-3" />
                 </a>
               </div>
             </div>
@@ -1961,7 +1962,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             {/* Search & Multi-Filter Controls */}
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
               <div className="sm:col-span-4 relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="Search by job title, company, or skill..."
@@ -2060,12 +2061,12 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
           {isLoadingJobs && serverJobs.length === 0 ? (
             <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-              <RefreshCw className="w-5 h-5 animate-spin text-brand-blue" />
+              <RefreshCw aria-hidden="true" className="w-5 h-5 animate-spin text-brand-blue" />
               <span>Loading Diploma Engineering job circulars...</span>
             </div>
           ) : serverJobs.length === 0 ? (
             <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
-              <Briefcase className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <Briefcase aria-hidden="true" className="w-10 h-10 text-slate-300 mx-auto mb-2" />
               <h3 className="text-sm font-bold text-text-primary">No matching job circulars found</h3>
               {!(jobSearch || jobDeptFilter !== 'all' || jobLocationFilter !== 'all' || jobTypeFilter !== 'all' || jobStatusFilter !== 'all') && (
                 <p className="text-xs text-slate-500 mt-1">
@@ -2081,7 +2082,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-semibold flex items-center gap-1 border border-blue-200"
                   >
                     <span>Careerjet BD — Diploma Engineer Jobs</span>
-                    <ExternalLink className="w-3 h-3" />
+                    <ExternalLink aria-hidden="true" className="w-3 h-3" />
                   </a>
                   <a
                     href="https://www.bdjobs.com/"
@@ -2090,7 +2091,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-semibold flex items-center gap-1 border border-blue-200"
                   >
                     <span>Bdjobs</span>
-                    <ExternalLink className="w-3 h-3" />
+                    <ExternalLink aria-hidden="true" className="w-3 h-3" />
                   </a>
                   <a
                     href="https://bpsc.gov.bd/"
@@ -2099,7 +2100,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-semibold flex items-center gap-1 border border-blue-200"
                   >
                     <span>BPSC (Govt. Jobs)</span>
-                    <ExternalLink className="w-3 h-3" />
+                    <ExternalLink aria-hidden="true" className="w-3 h-3" />
                   </a>
                 </div>
               )}
@@ -2154,12 +2155,12 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         </h3>
                         <div className="text-xs font-semibold text-slate-700 flex flex-wrap items-center gap-2 mt-0.5">
                           <span className="inline-flex items-center gap-1">
-                            <Building className="w-3.5 h-3.5 text-slate-400" />
+                            <Building aria-hidden="true" className="w-3.5 h-3.5 text-slate-400" />
                             {job.company}
                           </span>
                           <span className="text-slate-300">·</span>
                           <span className="inline-flex items-center gap-1 text-slate-600 font-normal">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                            <MapPin aria-hidden="true" className="w-3.5 h-3.5 text-slate-400" />
                             {job.location}
                           </span>
                         </div>
@@ -2207,7 +2208,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         </span>
                         {job.deadline && (
                           <span className="inline-flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            <Clock aria-hidden="true" className="w-3.5 h-3.5 text-slate-400" />
                             <span>
                               Deadline:{' '}
                               <strong className={job.status === 'Expired' ? 'text-rose-600' : 'text-amber-700'}>
@@ -2223,7 +2224,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                           onClick={() => setSelectedJob(job)}
                           className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1 cursor-pointer"
                         >
-                          <Eye className="w-3.5 h-3.5" />
+                          <Eye aria-hidden="true" className="w-3.5 h-3.5" />
                           <span>Full Details</span>
                         </button>
 
@@ -2236,7 +2237,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             title="Opens the original application page in your browser"
                           >
                             <span>Apply on Original Site</span>
-                            <ExternalLink className="w-3.5 h-3.5" />
+                            <ExternalLink aria-hidden="true" className="w-3.5 h-3.5" />
                           </a>
                         ) : job.sourceUrl ? (
                           <a
@@ -2247,7 +2248,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             title="No direct apply link was given — verify on the source site"
                           >
                             <span>View on Source Site</span>
-                            <ExternalLink className="w-3.5 h-3.5" />
+                            <ExternalLink aria-hidden="true" className="w-3.5 h-3.5" />
                           </a>
                         ) : null}
                       </div>
@@ -2280,7 +2281,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
         <div className="space-y-3">
           {filteredAssignments.length === 0 ? (
             <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
-              <FileCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <FileCheck aria-hidden="true" className="w-10 h-10 text-slate-300 mx-auto mb-2" />
               <h3 className="text-sm font-bold text-text-primary">No assignments yet</h3>
               <p className="text-xs text-slate-500 mt-1">
                 {isTeacher
@@ -2316,7 +2317,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
                     {isTeacher ? (
                       <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1 shrink-0">
-                        <Users className="w-3 h-3" />
+                        <Users aria-hidden="true" className="w-3 h-3" />
                         <span>
                           {summary
                             ? `${summary.totalSubmitted} / ${summary.eligibleRosterCount ?? '?'} Submitted`
@@ -2331,7 +2332,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                             : 'bg-amber-50 text-amber-700 border border-amber-200'
                         }`}
                       >
-                        {isSubmitted ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                        {isSubmitted ? <CheckCircle2 aria-hidden="true" className="w-3 h-3" /> : <Clock aria-hidden="true" className="w-3 h-3" />}
                         <span>{asg.status}</span>
                       </span>
                     )}
@@ -2384,14 +2385,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   {asg.attachmentName && (
                     <div className="flex items-center justify-between p-2 bg-blue-50/60 rounded-xl border border-blue-100 text-xs text-brand-blue">
                       <div className="flex items-center gap-1.5 truncate">
-                        <FileText className="w-3.5 h-3.5 shrink-0" />
+                        <FileText aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate font-medium">{asg.attachmentName}</span>
                       </div>
                       <button
                         onClick={() => handleDownloadFile(asg.attachmentName!, asg.attachmentUrl)}
                         className="px-2 py-1 text-[11px] font-bold bg-surface text-brand-blue rounded hover:bg-blue-100 border border-blue-200 flex items-center gap-1 cursor-pointer"
                       >
-                        <Download className="w-3 h-3" />
+                        <Download aria-hidden="true" className="w-3 h-3" />
                         <span>Download</span>
                       </button>
                     </div>
@@ -2437,7 +2438,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                         onClick={() => handleOpenTeacherSubmissions(asg)}
                         className="px-3.5 py-2 rounded-xl bg-text-primary hover:bg-blue-950 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer shrink-0"
                       >
-                        <Eye className="w-3.5 h-3.5 text-teal-300" />
+                        <Eye aria-hidden="true" className="w-3.5 h-3.5 text-teal-300" />
                         <span>View Submissions</span>
                       </button>
                     </div>
@@ -2445,7 +2446,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
                   <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs">
                     <div className="flex items-center gap-1.5 text-slate-500">
-                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      <Calendar aria-hidden="true" className="w-3.5 h-3.5 text-slate-400" />
                       <span>
                         Due: <span className="font-semibold text-slate-700">{asg.dueDate}</span>
                       </span>
@@ -2461,13 +2462,13 @@ export const NotesAssignmentsScreen: React.FC = () => {
                           }}
                           className="px-3 py-1.5 rounded-lg bg-brand-blue hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer shadow-xs"
                         >
-                          <Upload className="w-3 h-3" />
+                          <Upload aria-hidden="true" className="w-3 h-3" />
                           <span>Submit Work</span>
                         </button>
                       ) : (
                         <div className="flex items-center gap-2">
                           <span className="text-green-700 font-semibold text-xs flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <CheckCircle2 aria-hidden="true" className="w-3.5 h-3.5" />
                             <span>Submitted {asg.submittedAt ? `(${asg.submittedAt})` : ''}</span>
                           </span>
                           <button
@@ -2500,7 +2501,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
           {/* Search bar across Note Title, Subject, Chapter, and Extracted Document Text */}
           <div className="bg-surface rounded-2xl border border-slate-200/90 p-3 shadow-xs flex flex-col sm:flex-row sm:items-center gap-2">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search aria-hidden="true" className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={noteSearchQuery}
@@ -2522,7 +2523,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
           {filteredNotes.length === 0 ? (
             <div className="bg-surface rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
-              <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <BookOpen aria-hidden="true" className="w-10 h-10 text-slate-300 mx-auto mb-2" />
               <h3 className="text-sm font-bold text-text-primary">
                 {noteSearchQuery ? 'No matching study materials found' : 'No notes uploaded yet'}
               </h3>
@@ -2592,7 +2593,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-2.5 text-xs space-y-1.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-brand-teal flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" />
+                        <Sparkles aria-hidden="true" className="w-3 h-3" />
                         <span>Searchable Extracted Text</span>
                       </span>
                       <button
@@ -2652,7 +2653,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       onClick={() => setSelectedNote(note)}
                       className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1 cursor-pointer"
                     >
-                      <Eye className="w-3 h-3" />
+                      <Eye aria-hidden="true" className="w-3 h-3" />
                       <span>Preview</span>
                     </button>
                     <button
@@ -2664,7 +2665,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                       }
                       className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-teal-50 hover:bg-teal-100 text-brand-teal border border-teal-200 flex items-center gap-1 cursor-pointer"
                     >
-                      <Download className="w-3 h-3" />
+                      <Download aria-hidden="true" className="w-3 h-3" />
                       <span>Save</span>
                     </button>
                   </div>
@@ -2681,8 +2682,13 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
       {/* 1. OFFICIAL BTEB NOTICE DETAILS MODAL */}
       {selectedBtebNotice && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3.5">
+        <Modal
+          onClose={() => setSelectedBtebNotice(null)}
+          labelledBy="notes-bteb-notice-title"
+          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3.5"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
                 <div className="flex flex-wrap items-center gap-1.5 mb-1">
@@ -2693,14 +2699,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     {selectedBtebNotice.category}
                   </span>
                 </div>
-                <h3 className="font-bold text-sm sm:text-base text-text-primary leading-snug">
+                <h3 id="notes-bteb-notice-title" className="font-bold text-sm sm:text-base text-text-primary leading-snug">
                   {selectedBtebNotice.title}
                 </h3>
               </div>
               <button
                 onClick={() => setSelectedBtebNotice(null)}
                 className="text-slate-400 hover:text-slate-600 p-1 font-bold cursor-pointer"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -2747,7 +2753,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   rel="noopener noreferrer"
                   className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-brand-teal text-white hover:bg-teal-700 flex items-center gap-1.5 shadow-xs"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download aria-hidden="true" className="w-3.5 h-3.5" />
                   <span>Open Official PDF (পিডিএফ দেখুন)</span>
                 </a>
               )}
@@ -2758,17 +2764,21 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-brand-blue text-white hover:bg-blue-700 flex items-center gap-1.5 shadow-xs"
               >
                 <span>Open on bteb.gov.bd</span>
-                <ExternalLink className="w-3.5 h-3.5" />
+                <ExternalLink aria-hidden="true" className="w-3.5 h-3.5" />
               </a>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* 2. CAMPUS NOTICE DETAILS MODAL */}
       {selectedCampusNotice && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-3.5">
+        <Modal
+          onClose={() => setSelectedCampusNotice(null)}
+          labelledBy="notes-campus-notice-title"
+          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-3.5"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-brand-teal border border-teal-200">
@@ -2776,12 +2786,12 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     ? 'Class Captain (CR) Notice — Non-Board'
                     : 'College / Faculty Notice — Non-Board'}
                 </span>
-                <h3 className="font-bold text-base text-text-primary mt-1">{selectedCampusNotice.title}</h3>
+                <h3 id="notes-campus-notice-title" className="font-bold text-base text-text-primary mt-1">{selectedCampusNotice.title}</h3>
               </div>
               <button
                 onClick={() => setSelectedCampusNotice(null)}
                 className="text-slate-400 hover:text-slate-600 p-1 font-bold cursor-pointer"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -2833,22 +2843,26 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   }
                   className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-brand-teal text-white hover:bg-teal-700 flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download aria-hidden="true" className="w-3.5 h-3.5" />
                   <span>Open Attachment ({selectedCampusNotice.attachmentName})</span>
                 </button>
               )}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* 3. PUBLISH / EDIT TEACHER OR CR CAMPUS NOTICE MODAL */}
       {showPublishNoticeModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-3 max-h-[90vh] overflow-y-auto">
+        <Modal
+          onClose={() => setShowPublishNoticeModal(false)}
+          labelledBy="notes-publish-notice-title"
+          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-3 max-h-[90vh] overflow-y-auto"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <div>
-                <h3 className="font-bold text-sm sm:text-base text-text-primary">
+                <h3 id="notes-publish-notice-title" className="font-bold text-sm sm:text-base text-text-primary">
                   {editingCampusNotice ? 'Edit Campus / Group Notice' : 'Publish Teacher / Class Captain Notice'}
                 </h3>
                 <p className="text-[11px] text-slate-500">
@@ -2860,7 +2874,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               <button
                 onClick={() => setShowPublishNoticeModal(false)}
                 className="text-slate-400 hover:text-slate-600 p-1 font-bold cursor-pointer"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -3001,7 +3015,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 {fileError && <p className="text-red-600 text-[11px]">{fileError}</p>}
                 {isScanningDoc && (
                   <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-[11px] text-blue-800 flex items-center gap-1.5">
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600 shrink-0" />
+                    <RefreshCw aria-hidden="true" className="w-3.5 h-3.5 animate-spin text-blue-600 shrink-0" />
                     <span>{scanStageText || 'Scanning notice document...'}</span>
                   </div>
                 )}
@@ -3043,17 +3057,21 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* 4. REPORT CAMPUS NOTICE MODAL */}
       {reportingCampusNotice && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3">
+        <Modal
+          onClose={() => setReportingCampusNotice(null)}
+          labelledBy="notes-report-notice-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="font-bold text-sm text-text-primary">Report Notice for Review</h3>
-              <button onClick={() => setReportingCampusNotice(null)} className="text-slate-400 p-1">
+              <h3 id="notes-report-notice-title" className="font-bold text-sm text-text-primary">Report Notice for Review</h3>
+              <button onClick={() => setReportingCampusNotice(null)} className="text-slate-400 p-1" aria-label="Close">
                 ✕
               </button>
             </div>
@@ -3088,14 +3106,18 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* 5. JOB DETAILS & HONEST EXTERNAL APPLICATION MODAL */}
       {selectedJob && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3.5 my-8 max-h-[90vh] overflow-y-auto">
+        <Modal
+          onClose={() => setSelectedJob(null)}
+          labelledBy="notes-job-title"
+          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3.5 my-8 max-h-[90vh] overflow-y-auto"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          showCloseButton={false}
+        >
             <div className="flex items-start justify-between border-b border-slate-100 pb-3">
               <div>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -3116,7 +3138,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     </span>
                   )}
                 </div>
-                <h3 className="font-bold text-base text-text-primary mt-1">{selectedJob.title}</h3>
+                <h3 id="notes-job-title" className="font-bold text-base text-text-primary mt-1">{selectedJob.title}</h3>
                 <p className="text-xs font-semibold text-slate-600">
                   {selectedJob.company} · {selectedJob.location}
                 </p>
@@ -3124,7 +3146,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               <button
                 onClick={() => setSelectedJob(null)}
                 className="text-slate-400 hover:text-slate-600 p-1 font-bold cursor-pointer"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -3186,7 +3208,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               {/* Honest Application Disclosure */}
               <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-[11px] text-slate-700 space-y-1">
                 <div className="font-bold text-text-primary flex items-center gap-1.5">
-                  <ExternalLink className="w-3.5 h-3.5 text-brand-blue" />
+                  <ExternalLink aria-hidden="true" className="w-3.5 h-3.5 text-brand-blue" />
                   <span>External Employer Application Process</span>
                 </div>
                 <p>
@@ -3234,7 +3256,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   }
                   className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-teal-50 text-brand-teal hover:bg-teal-100 border border-teal-200 flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download aria-hidden="true" className="w-3.5 h-3.5" />
                   <span>Download Circular{selectedJob.mediaName ? ` (${selectedJob.mediaName})` : ''}</span>
                 </button>
               )}
@@ -3246,7 +3268,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   className="px-4 py-2 text-xs font-semibold rounded-xl bg-brand-blue text-white hover:bg-blue-700 flex items-center gap-1.5 shadow-xs"
                 >
                   <span>Apply Now on Original Site</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <ExternalLink aria-hidden="true" className="w-3.5 h-3.5" />
                 </a>
               ) : selectedJob.sourceUrl ? (
                 <a
@@ -3256,21 +3278,25 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center gap-1.5 shadow-xs"
                 >
                   <span>View on Source Site</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <ExternalLink aria-hidden="true" className="w-3.5 h-3.5" />
                 </a>
               ) : null}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* 6. ADMIN / PLACEMENT CELL BATCH JOB IMPORT MODAL */}
       {showBatchImportJobsModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-3">
+        <Modal
+          onClose={() => setShowBatchImportJobsModal(false)}
+          labelledBy="notes-batch-import-jobs-title"
+          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-3"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div>
-                <h3 className="font-bold text-sm text-text-primary">
+                <h3 id="notes-batch-import-jobs-title" className="font-bold text-sm text-text-primary">
                   Admin / Placement Cell Batch Job Import
                 </h3>
                 <p className="text-[11px] text-slate-500">
@@ -3278,7 +3304,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                   Every item must include a real <span className="font-mono">applyUrl</span> to the original circular — items without one are skipped, never published.
                 </p>
               </div>
-              <button onClick={() => setShowBatchImportJobsModal(false)} className="text-slate-400 p-1">
+              <button onClick={() => setShowBatchImportJobsModal(false)} className="text-slate-400 p-1" aria-label="Close">
                 ✕
               </button>
             </div>
@@ -3313,17 +3339,21 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* PREVIEW NOTE MODAL */}
       {selectedNote && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
+        <Modal
+          onClose={() => setSelectedNote(null)}
+          labelledBy="notes-note-title"
+          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <div>
-                <h3 className="font-bold text-sm text-text-primary">{selectedNote.title}</h3>
+                <h3 id="notes-note-title" className="font-bold text-sm text-text-primary">{selectedNote.title}</h3>
                 <p className="text-xs text-brand-teal">
                   {selectedNote.subjectName} · {selectedNote.chapter}
                 </p>
@@ -3331,7 +3361,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               <button
                 onClick={() => setSelectedNote(null)}
                 className="text-slate-400 hover:text-slate-600 p-1 font-bold"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -3393,7 +3423,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
             {selectedNote.fileType === 'IMAGE' && notePreviewUrl && (
               <img
                 src={notePreviewUrl}
-                alt="Note Attachment"
+                alt={selectedNote.mediaName || selectedNote.title || 'Note Attachment'}
                 className="max-h-60 mx-auto rounded-lg border border-slate-200"
               />
             )}
@@ -3422,21 +3452,25 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 }
                 className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-brand-teal text-white hover:bg-teal-700 flex items-center gap-1.5"
               >
-                <Download className="w-3.5 h-3.5" />
+                <Download aria-hidden="true" className="w-3.5 h-3.5" />
                 <span>Save Offline</span>
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* STUDENT SUBMIT ASSIGNMENT MODAL */}
       {submittingAssignment && !isTeacher && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3">
+        <Modal
+          onClose={() => setSubmittingAssignment(null)}
+          labelledBy="notes-submit-assignment-title"
+          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div>
-                <h3 className="font-bold text-sm text-text-primary">
+                <h3 id="notes-submit-assignment-title" className="font-bold text-sm text-text-primary">
                   Submit Assignment: {submittingAssignment.title}
                 </h3>
                 <p className="text-xs text-slate-500">Subject: {submittingAssignment.subjectName}</p>
@@ -3445,7 +3479,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 type="button"
                 onClick={() => setSubmittingAssignment(null)}
                 className="text-slate-400 hover:text-slate-600 font-bold"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
@@ -3499,14 +3533,18 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* TEACHER SUBMISSIONS INSPECTOR MODAL */}
       {inspectingAssignment && isTeacher && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-surface rounded-2xl max-w-2xl w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-4 max-h-[90vh] overflow-y-auto">
+        <Modal
+          onClose={() => setInspectingAssignment(null)}
+          labelledBy="notes-submissions-title"
+          panelClassName="bg-surface rounded-2xl max-w-2xl w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-4 max-h-[90vh] overflow-y-auto"
+          overlayClassName="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          showCloseButton={false}
+        >
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
               <div>
                 <div className="flex items-center gap-2">
@@ -3518,7 +3556,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     {inspectingAssignment.section}
                   </span>
                 </div>
-                <h3 className="font-bold text-sm sm:text-base text-text-primary mt-1">
+                <h3 id="notes-submissions-title" className="font-bold text-sm sm:text-base text-text-primary mt-1">
                   {inspectingAssignment.title} — Student Submissions
                 </h3>
                 <p className="text-xs text-slate-500">
@@ -3529,14 +3567,14 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 type="button"
                 onClick={() => setInspectingAssignment(null)}
                 className="text-slate-400 hover:text-slate-700 font-bold text-lg p-1 cursor-pointer"
-              >
+               aria-label="Close">
                 ✕
               </button>
             </div>
 
             {isLoadingSubmissions ? (
               <div className="p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                <RefreshCw aria-hidden="true" className="w-4 h-4 animate-spin text-blue-600" />
                 <span>Loading verified student submissions...</span>
               </div>
             ) : !submissionsDetail ? (
@@ -3659,7 +3697,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                                 }
                                 className="px-2.5 py-1 rounded bg-surface text-blue-700 font-bold text-[11px] border border-blue-200 flex items-center gap-1 cursor-pointer"
                               >
-                                <Download className="w-3 h-3" />
+                                <Download aria-hidden="true" className="w-3 h-3" />
                                 <span>Download</span>
                               </button>
                             </div>
@@ -3716,19 +3754,23 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 Close Inspector
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* POST ASSIGNMENT MODAL */}
       {showAddAssignmentModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-3 max-h-[90vh] overflow-y-auto">
+        <Modal
+          onClose={() => setShowAddAssignmentModal(false)}
+          labelledBy="notes-add-assignment-title"
+          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-3 max-h-[90vh] overflow-y-auto"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="font-bold text-sm text-text-primary">
+              <h3 id="notes-add-assignment-title" className="font-bold text-sm text-text-primary">
                 Post New Assignment ({isTeacher ? 'Verified Faculty' : 'Class Captain'})
               </h3>
-              <button onClick={() => setShowAddAssignmentModal(false)} className="text-slate-400 p-1">
+              <button onClick={() => setShowAddAssignmentModal(false)} className="text-slate-400 p-1" aria-label="Close">
                 ✕
               </button>
             </div>
@@ -3909,7 +3951,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               <div className="p-3 rounded-xl bg-blue-50/50 border border-blue-200/80 space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="font-bold text-text-primary flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-brand-blue" />
+                    <Sparkles aria-hidden="true" className="w-3.5 h-3.5 text-brand-blue" />
                     <span>Upload Assignment Sheet (Auto-Scans Image or PDF)</span>
                   </label>
                   <div className="flex items-center gap-1 text-[10px] text-slate-600">
@@ -3944,7 +3986,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
                 {isScanningDoc && (
                   <div className="p-2 rounded-lg bg-surface border border-blue-200 text-xs text-blue-800 flex items-center gap-2">
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-brand-blue shrink-0" />
+                    <RefreshCw aria-hidden="true" className="w-3.5 h-3.5 animate-spin text-brand-blue shrink-0" />
                     <span>{scanStageText || 'Scanning assignment sheet...'}</span>
                   </div>
                 )}
@@ -4011,19 +4053,23 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* UPLOAD NOTE MODAL */}
       {showAddNoteModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-3 max-h-[90vh] overflow-y-auto">
+        <Modal
+          onClose={() => setShowAddNoteModal(false)}
+          labelledBy="notes-add-note-title"
+          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 my-8 space-y-3 max-h-[90vh] overflow-y-auto"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="font-bold text-sm text-text-primary">
+              <h3 id="notes-add-note-title" className="font-bold text-sm text-text-primary">
                 Upload Lecture Note or Lab Sheet ({isTeacher ? 'Verified Faculty' : 'Class Captain'})
               </h3>
-              <button onClick={() => setShowAddNoteModal(false)} className="text-slate-400 p-1">
+              <button onClick={() => setShowAddNoteModal(false)} className="text-slate-400 p-1" aria-label="Close">
                 ✕
               </button>
             </div>
@@ -4196,7 +4242,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
               <div className="p-3 rounded-xl bg-teal-50/50 border border-teal-200/80 space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="font-bold text-text-primary flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-brand-teal" />
+                    <Sparkles aria-hidden="true" className="w-3.5 h-3.5 text-brand-teal" />
                     <span>File (PDF, Image, Slides, or Video — Auto-Extracts Text) *</span>
                   </label>
                   <div className="flex items-center gap-1 text-[10px] text-slate-600">
@@ -4231,7 +4277,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
                 {isScanningDoc && (
                   <div className="p-2 rounded-lg bg-surface border border-teal-200 text-xs text-teal-800 flex items-center gap-2">
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-brand-teal shrink-0" />
+                    <RefreshCw aria-hidden="true" className="w-3.5 h-3.5 animate-spin text-brand-teal shrink-0" />
                     <span>{scanStageText || 'Processing study material...'}</span>
                   </div>
                 )}
@@ -4298,17 +4344,21 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* POST JOB CIRCULAR MODAL */}
       {showAddJobModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3 my-8 max-h-[90vh] overflow-y-auto">
+        <Modal
+          onClose={() => setShowAddJobModal(false)}
+          labelledBy="notes-add-job-title"
+          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3 my-8 max-h-[90vh] overflow-y-auto"
+          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          showCloseButton={false}
+        >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="font-bold text-sm text-text-primary">Post Diploma Job Circular / Internship</h3>
-              <button onClick={() => setShowAddJobModal(false)} className="text-slate-400 p-1">
+              <h3 id="notes-add-job-title" className="font-bold text-sm text-text-primary">Post Diploma Job Circular / Internship</h3>
+              <button onClick={() => setShowAddJobModal(false)} className="text-slate-400 p-1" aria-label="Close">
                 ✕
               </button>
             </div>
@@ -4459,7 +4509,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 />
                 {isScanningDoc && (
                   <p className="text-[11px] text-blue-700 flex items-center gap-1">
-                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    <RefreshCw aria-hidden="true" className="w-3 h-3 animate-spin" />
                     <span>{scanStageText || 'Scanning job circular...'}</span>
                   </p>
                 )}
@@ -4486,8 +4536,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
