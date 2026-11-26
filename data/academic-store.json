@@ -176,8 +176,18 @@
   "communityMemberships": [],
   "communityMessages": [],
   "communityReports": [],
+  "accountDeletionRequests": [],
   "deletedAccountIds": [],
   "adminAuditLogs": [
+    {
+      "id": "audit_68a01b39-9d7e-4c4c-b352-6c75c82965fa",
+      "adminId": "system",
+      "action": "admin_pin_verified",
+      "targetId": "admin-pin-gate",
+      "targetName": "Admin Panel PIN",
+      "timestamp": "2026-11-26T14:51:57.700Z",
+      "details": "Admin panel PIN verified; login form unlocked for 15 minutes."
+    },
     {
       "id": "audit_955cffa9-fb1a-4940-b343-1ea6c4f61b2b",
       "adminId": "sysadmin_1792821774886",
