@@ -505,50 +505,82 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .catch(() => {});
   }, [authToken]);
 
-  // Ensure student / class_captain has a valid server session token whenever profile or academic group changes
+  // Ensure student / class_captain has a valid server session token whenever profile or academic group changes.
+  // IMPORTANT: only a genuine auth failure (HTTP 401/403) logs the user out.
+  // Transient failures (network error, cold-start timeout, 429, 5xx) must NOT
+  // bounce a signed-in user back to the login screen: the session is kept
+  // and the call is retried twice, then left alone until the next trigger.
+  // (Logging out on any failure used to burn the shared auth rate-limit
+  // bucket until 429s made the logout loop self-sustaining.)
   useEffect(() => {
     if (
-      isLoggedIn &&
-      (userProfile.accountType === 'student' || userProfile.accountType === 'class_captain')
+      !isLoggedIn ||
+      (userProfile.accountType !== 'student' && userProfile.accountType !== 'class_captain')
     ) {
-      apiFetch('/api/auth/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: userProfile.id,
-          role: userProfile.accountType,
-          name: userProfile.name,
-          email: userProfile.email,
-          college: userProfile.college,
-          department: userProfile.department,
-          boardRoll: userProfile.boardRoll,
-          classRoll: userProfile.boardRoll?.slice(-2) || '01',
-          regNumber: userProfile.regNumber,
-          semester: userProfile.semester,
-          shift: userProfile.shift,
-          section: userProfile.section
-        })
-      })
-        .then(async res => ({ ok: res.ok, data: await res.json() }))
-        .then(({ ok, data }) => {
-          if (ok && data.success && data.sessionToken) {
-            setAuthToken(data.sessionToken);
-          } else {
-            setAuthToken(null);
-            setIsLoggedIn(false);
-            setCurrentTeacherProfile(null);
-            setUserProfile(EMPTY_STUDENT_PROFILE);
-            setActiveScreen('welcome');
-          }
-        })
-        .catch(() => {
-          setAuthToken(null);
-          setIsLoggedIn(false);
-          setCurrentTeacherProfile(null);
-          setUserProfile(EMPTY_STUDENT_PROFILE);
-          setActiveScreen('welcome');
-        });
+      return;
     }
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const invalidateStudentSession = () => {
+      setAuthToken(null);
+      setIsLoggedIn(false);
+      setCurrentTeacherProfile(null);
+      setUserProfile(EMPTY_STUDENT_PROFILE);
+      setActiveScreen('welcome');
+    };
+
+    const ensureSession = async (attempt: number): Promise<void> => {
+      if (cancelled) return;
+      try {
+        const res = await apiFetch('/api/auth/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: userProfile.id,
+            role: userProfile.accountType,
+            name: userProfile.name,
+            email: userProfile.email,
+            college: userProfile.college,
+            department: userProfile.department,
+            boardRoll: userProfile.boardRoll,
+            classRoll: userProfile.boardRoll?.slice(-2) || '01',
+            regNumber: userProfile.regNumber,
+            semester: userProfile.semester,
+            shift: userProfile.shift,
+            section: userProfile.section
+          })
+        });
+        if (cancelled) return;
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success && data.sessionToken) {
+          setAuthToken(data.sessionToken);
+          return;
+        }
+        // Genuine auth failure: the server rejected this account/session.
+        if (res.status === 401 || res.status === 403) {
+          invalidateStudentSession();
+          return;
+        }
+        // Transient (429 rate-limited, 5xx, or other non-auth failure):
+        // keep the session and retry briefly, then stop quietly.
+        if (attempt < 2) {
+          retryTimer = setTimeout(() => void ensureSession(attempt + 1), 10000);
+        }
+      } catch {
+        // Network error / cold-start timeout: keep the session, retry briefly.
+        if (cancelled) return;
+        if (attempt < 2) {
+          retryTimer = setTimeout(() => void ensureSession(attempt + 1), 10000);
+        }
+      }
+    };
+
+    void ensureSession(0);
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [
     isLoggedIn,
     userProfile.id,
@@ -577,22 +609,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    apiFetch('/api/auth/me', {
-      headers: { Authorization: `Bearer ${tokenToCheck}` }
-    })
-      .then(async res => ({ ok: res.ok, data: await res.json() }))
-      .then(({ ok, data }) => {
+    // Same rule as the student session effect: only a genuine auth failure
+    // (401/403, or a 2xx answer saying this is not a teacher session) logs
+    // the user out. Network errors, 429s and 5xx keep the session and retry.
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const checkTeacherSession = async (attempt: number): Promise<void> => {
+      if (cancelled) return;
+      try {
+        const res = await apiFetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${tokenToCheck}` }
+        });
+        if (cancelled) return;
+        const data = await res.json().catch(() => ({}));
         if (
-          !ok ||
-          !data.success ||
-          !data.authenticated ||
-          data.session?.role !== 'teacher' ||
-          data.session.userId !== currentTeacherProfile?.id
+          res.ok &&
+          data.success &&
+          data.authenticated &&
+          data.session?.role === 'teacher' &&
+          data.session.userId === currentTeacherProfile?.id
         ) {
-          invalidateTeacherSession();
+          return;
         }
-      })
-      .catch(invalidateTeacherSession);
+        if (res.status === 401 || res.status === 403) {
+          invalidateTeacherSession();
+          return;
+        }
+        if (
+          res.ok &&
+          (!data.success ||
+            !data.authenticated ||
+            data.session?.role !== 'teacher' ||
+            data.session.userId !== currentTeacherProfile?.id)
+        ) {
+          // Server answered: this session is not a valid teacher session.
+          invalidateTeacherSession();
+          return;
+        }
+        // Transient (429, 5xx, or other non-auth failure): retry briefly.
+        if (attempt < 2) {
+          retryTimer = setTimeout(() => void checkTeacherSession(attempt + 1), 10000);
+        }
+      } catch {
+        if (cancelled) return;
+        if (attempt < 2) {
+          retryTimer = setTimeout(() => void checkTeacherSession(attempt + 1), 10000);
+        }
+      }
+    };
+
+    void checkTeacherSession(0);
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [isLoggedIn, userProfile.accountType, authToken, currentTeacherProfile?.id]);
 
   const refreshAcademicFeed = async () => {
