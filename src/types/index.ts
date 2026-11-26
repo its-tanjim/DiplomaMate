@@ -849,6 +849,8 @@ export type ScreenType =
   | 'routine'
   | 'notes'
   | 'reminders'
+  | 'notifications'
+  | 'support'
   | 'teachers'
   | 'semester'
   | 'profile'

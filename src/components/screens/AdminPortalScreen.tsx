@@ -30,7 +30,10 @@ import {
   BookOpen,
   Plus,
   Edit3,
-  Send
+  Send,
+  Megaphone,
+  Settings,
+  BarChart3
 } from 'lucide-react';
 import {
   CaptainApplication,
@@ -49,6 +52,16 @@ import {
 } from '../../types';
 import { TECHNOLOGIES_DIRECTORY } from '../../data/directoryData';
 import { AdminManagementScreen } from './AdminManagementScreen';
+import { AdminNoticesSection } from '../admin/AdminNoticesSection';
+import { AdminNotificationsSection } from '../admin/AdminNotificationsSection';
+import { AdminRoutinesSection } from '../admin/AdminRoutinesSection';
+import { AdminFlagsSection } from '../admin/AdminFlagsSection';
+import { AdminVersionSection } from '../admin/AdminVersionSection';
+import { AdminReportsSection } from '../admin/AdminReportsSection';
+import { AdminRolesSection } from '../admin/AdminRolesSection';
+import { AdminSessionsSection } from '../admin/AdminSessionsSection';
+import { AdminTicketsSection } from '../admin/AdminTicketsSection';
+import { AdminAnalyticsSection } from '../admin/AdminAnalyticsSection';
 import { LiquidFillLoader } from '../LiquidFillLoader';
 import { Modal } from '../common/Modal';
 
@@ -73,12 +86,38 @@ export const AdminPortalScreen: React.FC = () => {
     showToast 
   } = useApp();
 
-  const [activePortalTab, setActivePortalTab] = useState<'management' | 'captains' | 'teachers' | 'results' | 'catalog'>(() => {
+  const [activePortalTab, setActivePortalTab] = useState<'management' | 'captains' | 'teachers' | 'results' | 'catalog' | 'content' | 'ops' | 'settings'>(() => {
     if (typeof window !== 'undefined' && window.location.pathname === '/admin/results-import') {
       return 'results';
     }
     return 'management';
   });
+  // Sub-sections inside the grouped Content / Operations / Settings tabs.
+  const [contentSub, setContentSub] = useState<'notices' | 'notifications' | 'routines'>('notices');
+  const [opsSub, setOpsSub] = useState<'reports' | 'roles' | 'sessions' | 'tickets' | 'analytics'>('reports');
+  const [settingsSub, setSettingsSub] = useState<'flags' | 'version'>('flags');
+
+  // Pill sub-nav shared by the grouped tabs (Content / Operations / Settings).
+  const renderSubNav = (
+    items: Array<{ id: string; label: string }>,
+    active: string,
+    onSelect: (id: string) => void
+  ) => (
+    <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 mt-3">
+      {items.map(item => (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => onSelect(item.id)}
+          className={`rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
+            active === item.id ? 'bg-surface text-text-primary shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAppForDoc, setSelectedAppForDoc] = useState<CaptainApplication | null>(null);
@@ -696,8 +735,8 @@ export const AdminPortalScreen: React.FC = () => {
           </button>
         </div>
 
-        {/* Tab switch: Captains vs Teachers vs BTEB Results Import */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 rounded-xl bg-slate-100 p-1 mt-3">
+        {/* Tab switch: Management / Captains / Faculty / BTEB Results / Catalog / Content / Operations / Settings */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1 mt-3">
           <button
             type="button"
             onClick={() => setActivePortalTab('management')}
@@ -761,9 +800,110 @@ export const AdminPortalScreen: React.FC = () => {
             <BookOpen aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
             <span>Subject Catalog ({catalogRecords.length})</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActivePortalTab('content')}
+            className={`min-h-11 py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activePortalTab === 'content'
+                ? 'bg-surface text-violet-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Megaphone aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+            <span>Content</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActivePortalTab('ops')}
+            className={`min-h-11 py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activePortalTab === 'ops'
+                ? 'bg-surface text-teal-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <BarChart3 aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+            <span>Operations</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActivePortalTab('settings')}
+            className={`min-h-11 py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activePortalTab === 'settings'
+                ? 'bg-surface text-slate-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Settings aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+            <span>Settings</span>
+          </button>
         </div>
 
         {activePortalTab === 'management' && <AdminManagementScreen />}
+
+        {/* Content tab: notices, broadcast notifications, routines */}
+        {activePortalTab === 'content' && (
+          <div>
+            {renderSubNav(
+              [
+                { id: 'notices', label: 'Notices' },
+                { id: 'notifications', label: 'Broadcasts' },
+                { id: 'routines', label: 'Routines' },
+              ],
+              contentSub,
+              id => setContentSub(id as typeof contentSub)
+            )}
+            <div className="mt-3">
+              {contentSub === 'notices' && <AdminNoticesSection />}
+              {contentSub === 'notifications' && <AdminNotificationsSection />}
+              {contentSub === 'routines' && <AdminRoutinesSection />}
+            </div>
+          </div>
+        )}
+
+        {/* Operations tab: reports, admin team, sessions, tickets, analytics */}
+        {activePortalTab === 'ops' && (
+          <div>
+            {renderSubNav(
+              [
+                { id: 'reports', label: 'Reports & Export' },
+                { id: 'roles', label: 'Admin Team' },
+                { id: 'sessions', label: 'Sessions' },
+                { id: 'tickets', label: 'Support Tickets' },
+                { id: 'analytics', label: 'Analytics' },
+              ],
+              opsSub,
+              id => setOpsSub(id as typeof opsSub)
+            )}
+            <div className="mt-3">
+              {opsSub === 'reports' && <AdminReportsSection />}
+              {opsSub === 'roles' && <AdminRolesSection />}
+              {opsSub === 'sessions' && <AdminSessionsSection />}
+              {opsSub === 'tickets' && <AdminTicketsSection />}
+              {opsSub === 'analytics' && <AdminAnalyticsSection />}
+            </div>
+          </div>
+        )}
+
+        {/* Settings tab: feature flags + maintenance, force update */}
+        {activePortalTab === 'settings' && (
+          <div>
+            {renderSubNav(
+              [
+                { id: 'flags', label: 'Feature Flags & Maintenance' },
+                { id: 'version', label: 'Force Update' },
+              ],
+              settingsSub,
+              id => setSettingsSub(id as typeof settingsSub)
+            )}
+            <div className="mt-3">
+              {settingsSub === 'flags' && <AdminFlagsSection />}
+              {settingsSub === 'version' && <AdminVersionSection />}
+            </div>
+          </div>
+        )}
 
         {/* Filter bar (only for Captains & Teachers tabs) */}
         {(activePortalTab === 'captains' || activePortalTab === 'teachers') && (

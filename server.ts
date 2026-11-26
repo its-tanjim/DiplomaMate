@@ -165,6 +165,7 @@ import {
   anonymizeCommunitiesByCreator,
   anonymizeCommunityMessagesBySenderId,
   deleteAttendanceSheetById,
+  deleteCampusNoticeById,
   deleteMembershipsByUserId,
   deleteRoutineById,
   deleteStudentById,
@@ -176,6 +177,7 @@ import {
   getTeacherByEmail,
   getTeacherByPhone,
   insertAttendanceSheet,
+  insertCampusNotice,
   insertCaptainRecord,
   insertCommunity,
   insertCommunityMembership,
@@ -192,9 +194,11 @@ import {
   listStudentsByCohort,
   sanitizeStorageFileName,
   toAttendanceSheetRow,
+  toCampusNoticeRow,
   toCaptainRow,
   toRoutineRow,
   updateAttendanceSheetById,
+  updateCampusNoticeById,
   updateCaptainRecordById,
   updateRoutineById,
   updateStudentById,
@@ -519,7 +523,7 @@ export interface StoredSystemAdmin {
 export interface ServerSession {
   token: string;
   userId: string;
-  role: AccountType;
+  role: AccountType | AdminRole;
   name: string;
   email: string;
   college?: string;
@@ -531,6 +535,7 @@ export interface ServerSession {
   shift?: Shift;
   section?: Section;
   createdAt: number;
+  lastSeenAt: number;
   expiresAt: number;
 }
 
@@ -711,7 +716,7 @@ const STUDENT_LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
 
 function createServerSession(params: {
   userId: string;
-  role: AccountType;
+  role: AccountType | AdminRole;
   name: string;
   email: string;
   college?: string;
@@ -740,6 +745,7 @@ function createServerSession(params: {
     shift: params.shift,
     section: params.section,
     createdAt: now,
+    lastSeenAt: now,
     expiresAt: now + SESSION_TTL_MS
   };
   serverSessions.set(token, session);
@@ -771,10 +777,23 @@ function getAuthenticatedSession(req: Request): ServerSession | null {
     serverSessions.delete(token);
     return null;
   }
+  // Last-seen tracking for the admin session-control panel: refreshed on
+  // every authenticated request (see GET /api/admin/sessions).
+  session.lastSeenAt = Date.now();
   // If session is system_admin, verify admin still exists in store
   if (session.role === 'system_admin') {
     systemAdmins = loadSystemAdminsFromDisk();
     if (!systemAdmins.has(session.userId)) {
+      serverSessions.delete(token);
+      return null;
+    }
+  }
+  // Sub-admin sessions (roles in adminAccounts): the account must still
+  // exist and be active, otherwise the session is dead (revoked by a
+  // deactivation/role change or a deleted account).
+  if ((ADMIN_ROLES as string[]).includes(session.role)) {
+    const subAdmin = (academicStore.adminAccounts || []).find(a => a.id === session.userId);
+    if (!subAdmin || subAdmin.status !== 'active') {
       serverSessions.delete(token);
       return null;
     }
@@ -797,6 +816,43 @@ function requireSystemAdmin(req: Request, res: Response, next: NextFunction) {
   }
   (req as any).adminSession = session;
   return next();
+}
+
+// Admin-panel sub-admin roles. The founder is the existing
+// `system_admin` account (data/system-admins.json) and is always allowed by
+// requireAdminRole; these roles live in academicStore.adminAccounts.
+const ADMIN_ROLES: AdminRole[] = ['super_admin', 'academic_manager', 'content_manager', 'support_manager', 'analyst'];
+
+/**
+ * Role-based admin middleware for the admin panel build.
+ * Allows the founder (`system_admin`, always) OR a live sub-admin session
+ * whose role is in `allowedRoles`. Sub-admin sessions are validated in
+ * getAuthenticatedSession (account must exist and be active). Returns 403
+ * for unauthenticated, student/teacher/captain, or wrong-role callers.
+ * Sets (req as any).adminSession like requireSystemAdmin does.
+ */
+function requireAdminRole(allowedRoles: AdminRole[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: Only an authenticated administrator is authorized to perform this administrative operation.'
+      });
+    }
+    if (session.role === 'system_admin') {
+      (req as unknown as { adminSession: ServerSession }).adminSession = session;
+      return next();
+    }
+    if ((ADMIN_ROLES as string[]).includes(session.role) && allowedRoles.includes(session.role as AdminRole)) {
+      (req as unknown as { adminSession: ServerSession }).adminSession = session;
+      return next();
+    }
+    return res.status(403).json({
+      success: false,
+      error: 'Forbidden: Your admin role is not authorized to perform this operation.'
+    });
+  };
 }
 
 /**
@@ -2041,7 +2097,7 @@ app.get('/api/admin/bootstrap-status', (_req: Request, res: Response) => {
 
 // Admin audit-log viewer (paginated). The audit log was previously
 // write-only — entries were recorded but no endpoint could read them.
-app.get('/api/admin/audit-logs', requireSystemAdmin, (req: Request, res: Response) => {
+app.get('/api/admin/audit-logs', requireAdminRole(ADMIN_ROLES), (req: Request, res: Response) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
   const actionFilter = typeof req.query.action === 'string' && req.query.action.trim()
@@ -2065,6 +2121,1112 @@ app.get('/api/admin/audit-logs', requireSystemAdmin, (req: Request, res: Respons
     limit,
     totalPages: Math.max(1, Math.ceil(total / limit))
   });
+});
+
+// ============================================================================
+// ADMIN PANEL BUILD (v1.0.21 server half) — notices, notifications, routines,
+// feature flags + maintenance, force update, reports, roles, sessions,
+// support tickets, analytics. JSON store only (no Supabase changes).
+// Every admin mutation below requires an admin role (requireAdminRole) and
+// writes an audit-log entry via appendAdminAudit. Founder (system_admin)
+// is always allowed by requireAdminRole; sub-admin roles live in
+// academicStore.adminAccounts and log in via POST /api/admin/login.
+// ============================================================================
+
+type AdminNoticeStatus = 'Draft' | 'Scheduled' | 'Published' | 'Archived';
+
+/** Extra admin-panel fields carried on a CampusNoticeItem (stored in the
+ *  campusNotices array alongside the teacher/captain notice fields). */
+interface AdminNoticeExtras {
+  audience?: 'all' | 'department' | 'semester';
+  status?: AdminNoticeStatus;
+  publishAt?: string;
+  expiresAt?: string;
+  createdBy?: string;
+}
+
+function getAdminNoticeExtras(notice: CampusNoticeItem): AdminNoticeExtras {
+  return notice as unknown as AdminNoticeExtras;
+}
+
+function sanitizeAdminAccount(account: AdminAccount) {
+  const { passwordHash: _passwordHash, passwordSalt: _passwordSalt, ...safe } = account;
+  return safe;
+}
+
+function adminPanelAudit(req: Request, action: string, targetId: string, targetName: string, details?: string): void {
+  const session = (req as unknown as { adminSession?: ServerSession }).adminSession;
+  if (session) appendAdminAudit(session, action, targetId, targetName, details);
+}
+
+function toCsvCell(value: unknown): string {
+  const text = value === undefined || value === null ? '' : String(value);
+  return /[",\n\r]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+}
+
+function notificationMatchesSession(notification: AdminNotificationRecord, session: ServerSession): boolean {
+  if (notification.audienceType === 'all') return true;
+  const audience = notification.audience || {};
+  if (audience.department) {
+    const sessionDeptId = session.department ? normalizeTechnology(session.department).id : '';
+    const audienceDeptId = normalizeTechnology(String(audience.department)).id;
+    if (sessionDeptId !== audienceDeptId) return false;
+  }
+  if (audience.semester !== undefined && audience.semester !== null && String(audience.semester) !== '') {
+    if (Number(audience.semester) !== Number(session.semester)) return false;
+  }
+  return true;
+}
+
+function applyAdminNoticeFields(
+  notice: CampusNoticeItem,
+  body: Record<string, unknown>,
+  session: ServerSession
+): string | null {
+  const extras = getAdminNoticeExtras(notice);
+  if (typeof body.title === 'string' && body.title.trim()) notice.title = body.title.trim();
+  const bodyText = typeof body.body === 'string' ? body.body : typeof body.description === 'string' ? body.description : '';
+  if (bodyText.trim()) notice.description = bodyText.trim();
+  if (typeof body.priority === 'string' && ['Normal', 'Important', 'Urgent'].includes(body.priority)) {
+    // CampusNoticeItem types priority as 'Important' | 'Normal'; 'Urgent'
+    // is stored as-is (admin list surfaces it, student list ignores it).
+    (notice as unknown as { priority: string }).priority = body.priority;
+  }
+  if (typeof body.pinned === 'boolean') notice.isPinned = body.pinned;
+  if (typeof body.status === 'string' && ['Draft', 'Scheduled', 'Published', 'Archived'].includes(body.status)) {
+    extras.status = body.status as AdminNoticeStatus;
+  }
+  if (typeof body.publishAt === 'string') extras.publishAt = body.publishAt;
+  if (typeof body.expiresAt === 'string') {
+    extras.expiresAt = body.expiresAt;
+    notice.expiryDate = body.expiresAt.slice(0, 10);
+  }
+  if (typeof body.audience === 'string' && ['all', 'department', 'semester'].includes(body.audience)) {
+    extras.audience = body.audience as 'all' | 'department' | 'semester';
+    notice.targetScope = body.audience === 'all' ? 'college' : body.audience === 'department' ? 'department' : 'cohort';
+  }
+  // Cohort targeting: re-resolve canonical college/department ids when any
+  // of these change so the student GET /api/notices/campus filter matches.
+  // Never fabricate a college/department from an empty input:
+  // normalizeCollege('') defaults to DPI and normalizeTechnology('') to CST,
+  // which would silently pin an admin "all users" notice (no college given)
+  // to one institute/department and hide it from everyone else. An empty
+  // college/department stays empty — the campus filter treats an unset
+  // college as visible to every college.
+  const collegeInput = typeof body.college === 'string' ? body.college : notice.college;
+  const deptInput = typeof body.department === 'string' ? body.department : notice.department;
+  if (collegeInput && collegeInput.trim()) {
+    const collegeItem = normalizeCollege(collegeInput);
+    notice.college = collegeItem.name;
+    notice.college_id = collegeItem.id;
+  }
+  if (deptInput && deptInput.trim()) {
+    const deptItem = normalizeTechnology(deptInput);
+    notice.department = deptItem.name;
+    notice.department_id = deptItem.id;
+  }
+  if (body.semester !== undefined && body.semester !== null && body.semester !== '') {
+    const sem = Number(body.semester);
+    if (!Number.isInteger(sem) || sem < 1 || sem > 8) return 'semester must be a number between 1 and 8.';
+    notice.semester = sem as SemesterNumber;
+  }
+  if (typeof body.shift === 'string' && (body.shift === 'Morning' || body.shift === 'Day' || body.shift === 'Both')) {
+    notice.shift = body.shift as Shift | 'Both';
+  }
+  if (typeof body.section === 'string' && (['A1', 'A2', 'B1', 'B2'].includes(body.section) || body.section === 'All')) {
+    notice.section = body.section as Section | 'All';
+  }
+  extras.createdBy = extras.createdBy || session.name;
+  notice.updatedAt = new Date().toISOString();
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// 1. NOTICES — admin CRUD on the existing campusNotices array.
+//    Published + due notices surface to students via GET /api/notices/campus
+//    (wired in that route: non-Published / future publishAt / past
+//    expiresAt records are hidden; records without admin status fields —
+//    teacher/captain notices — are treated as published, as before).
+// ---------------------------------------------------------------------------
+app.get('/api/admin/notices', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), (req: Request, res: Response) => {
+  try {
+    const statusFilter = typeof req.query.status === 'string' ? req.query.status : '';
+    const audienceFilter = typeof req.query.audience === 'string' ? req.query.audience : '';
+    const notices = [...academicStore.campusNotices].sort((a, b) => {
+      const aPinned = Boolean(a.isPinned);
+      const bPinned = Boolean(b.isPinned);
+      if (aPinned !== bPinned) return aPinned ? -1 : 1;
+      return new Date(b.publishedAt || b.updatedAt || 0).getTime() - new Date(a.publishedAt || a.updatedAt || 0).getTime();
+    }).filter(notice => {
+      const extras = getAdminNoticeExtras(notice);
+      if (statusFilter && (extras.status || 'Published') !== statusFilter) return false;
+      if (audienceFilter && extras.audience && extras.audience !== audienceFilter) return false;
+      return true;
+    });
+    return res.status(200).json({ success: true, notices, total: notices.length });
+  } catch (err) {
+    console.error('[Admin Notices] GET list error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load notices.' });
+  }
+});
+
+app.post('/api/admin/notices', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { adminSession: ServerSession }).adminSession;
+    const body = (req.body || {}) as Record<string, unknown>;
+    const title = typeof body.title === 'string' ? body.title.trim() : '';
+    const bodyText = typeof body.body === 'string' ? body.body.trim() : typeof body.description === 'string' ? body.description.trim() : '';
+    if (!title || title.length < 4) {
+      return res.status(400).json({ success: false, error: 'Notice title must be at least 4 characters long.' });
+    }
+    if (!bodyText || bodyText.length < 8) {
+      return res.status(400).json({ success: false, error: 'Notice body must be at least 8 characters long.' });
+    }
+    const nowIso = new Date().toISOString();
+    const notice = {
+      id: `cnotice_admin_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      title,
+      description: bodyText,
+      publisherId: session.userId,
+      publisherName: session.name,
+      publisherRole: 'system_admin',
+      college_id: '',
+      college: '',
+      department_id: '',
+      department: '',
+      semester: null,
+      shift: 'Both',
+      section: 'All',
+      targetScope: 'college',
+      priority: 'Normal',
+      isPinned: false,
+      publishedAt: '',
+      updatedAt: nowIso
+    } as unknown as CampusNoticeItem;
+    const extras = getAdminNoticeExtras(notice);
+    extras.audience = 'all';
+    extras.status = 'Draft';
+    extras.createdBy = session.name;
+    const applyError = applyAdminNoticeFields(notice, body, session);
+    if (applyError) {
+      return res.status(400).json({ success: false, error: applyError });
+    }
+    if (getAdminNoticeExtras(notice).status === 'Published') {
+      notice.publishedAt = nowIso;
+      if (!extras.publishAt) extras.publishAt = nowIso;
+    }
+    academicStore.campusNotices.unshift(notice);
+    adminPanelAudit(req, 'admin_notice_create', notice.id, notice.title, `Status: ${extras.status || 'Draft'}; audience: ${extras.audience || 'all'}.`);
+    saveAcademicStore(academicStore);
+    void persistNoticeToSupabase(notice, 'AdminNotices');
+    return res.status(201).json({ success: true, notice });
+  } catch (err) {
+    console.error('[Admin Notices] POST create error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to create notice.' });
+  }
+});
+
+app.patch('/api/admin/notices/:id', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { adminSession: ServerSession }).adminSession;
+    const notice = academicStore.campusNotices.find(n => n.id === req.params.id);
+    if (!notice) {
+      return res.status(404).json({ success: false, error: 'Notice not found.' });
+    }
+    const applyError = applyAdminNoticeFields(notice, (req.body || {}) as Record<string, unknown>, session);
+    if (applyError) {
+      return res.status(400).json({ success: false, error: applyError });
+    }
+    const extras = getAdminNoticeExtras(notice);
+    if (extras.status === 'Published' && !notice.publishedAt) {
+      notice.publishedAt = new Date().toISOString();
+    }
+    adminPanelAudit(req, 'admin_notice_update', notice.id, notice.title, `Status: ${extras.status || 'Published'}.`);
+    saveAcademicStore(academicStore);
+    void persistNoticeToSupabase(notice, 'AdminNotices');
+    return res.status(200).json({ success: true, notice });
+  } catch (err) {
+    console.error('[Admin Notices] PATCH error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to update notice.' });
+  }
+});
+
+app.post('/api/admin/notices/:id/publish', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), (req: Request, res: Response) => {
+  try {
+    const notice = academicStore.campusNotices.find(n => n.id === req.params.id);
+    if (!notice) {
+      return res.status(404).json({ success: false, error: 'Notice not found.' });
+    }
+    const extras = getAdminNoticeExtras(notice);
+    const nowIso = new Date().toISOString();
+    extras.status = 'Published';
+    extras.publishAt = nowIso;
+    notice.publishedAt = nowIso;
+    notice.updatedAt = nowIso;
+    adminPanelAudit(req, 'admin_notice_publish', notice.id, notice.title, 'Notice published.');
+    saveAcademicStore(academicStore);
+    void persistNoticeToSupabase(notice, 'AdminNotices');
+    return res.status(200).json({ success: true, notice });
+  } catch (err) {
+    console.error('[Admin Notices] POST publish error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to publish notice.' });
+  }
+});
+
+app.post('/api/admin/notices/:id/archive', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), (req: Request, res: Response) => {
+  try {
+    const notice = academicStore.campusNotices.find(n => n.id === req.params.id);
+    if (!notice) {
+      return res.status(404).json({ success: false, error: 'Notice not found.' });
+    }
+    const extras = getAdminNoticeExtras(notice);
+    extras.status = 'Archived';
+    notice.updatedAt = new Date().toISOString();
+    adminPanelAudit(req, 'admin_notice_archive', notice.id, notice.title, 'Notice archived.');
+    saveAcademicStore(academicStore);
+    void persistNoticeToSupabase(notice, 'AdminNotices');
+    return res.status(200).json({ success: true, notice });
+  } catch (err) {
+    console.error('[Admin Notices] POST archive error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to archive notice.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 2. NOTIFICATIONS — in-app broadcast only. NO FCM, no Firebase keys.
+//    `channel` is kept as the seam for a future FCM send (only 'in-app'
+//    is accepted today).
+// ---------------------------------------------------------------------------
+app.post('/api/admin/notifications/send', requireAdminRole(['super_admin', 'academic_manager', 'content_manager', 'support_manager']), (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { adminSession: ServerSession }).adminSession;
+    const body = (req.body || {}) as Record<string, unknown>;
+    const title = typeof body.title === 'string' ? body.title.trim() : '';
+    const message = typeof body.message === 'string' ? body.message.trim() : '';
+    const audienceType = typeof body.audienceType === 'string' ? body.audienceType : '';
+    const channel = typeof body.channel === 'string' ? body.channel : 'in-app';
+    if (!title) {
+      return res.status(400).json({ success: false, error: 'Notification title is required.' });
+    }
+    if (!message) {
+      return res.status(400).json({ success: false, error: 'Notification message is required.' });
+    }
+    if (!['all', 'department', 'semester'].includes(audienceType)) {
+      return res.status(400).json({ success: false, error: "audienceType must be 'all', 'department' or 'semester'." });
+    }
+    if (channel !== 'in-app') {
+      return res.status(400).json({ success: false, error: "channel must be 'in-app'. Push channels are not enabled yet." });
+    }
+    const audience = (body.audience && typeof body.audience === 'object' ? body.audience : {}) as { department?: string; semester?: number | string };
+    if (audienceType === 'department' && !audience.department) {
+      return res.status(400).json({ success: false, error: 'audience.department is required for department notifications.' });
+    }
+    if (audienceType === 'semester' && (audience.semester === undefined || audience.semester === null || audience.semester === '')) {
+      return res.status(400).json({ success: false, error: 'audience.semester is required for semester notifications.' });
+    }
+    if (audience.semester !== undefined && audience.semester !== null && String(audience.semester) !== '') {
+      const sem = Number(audience.semester);
+      if (!Number.isInteger(sem) || sem < 1 || sem > 8) {
+        return res.status(400).json({ success: false, error: 'audience.semester must be a number between 1 and 8.' });
+      }
+      audience.semester = sem;
+    }
+    const notification: AdminNotificationRecord = {
+      id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      title,
+      message,
+      audienceType: audienceType as 'all' | 'department' | 'semester',
+      audience: { department: audience.department ? String(audience.department) : undefined, semester: audience.semester !== undefined ? Number(audience.semester) : undefined },
+      channel: 'in-app',
+      status: 'sent',
+      createdBy: session.name,
+      createdAt: new Date().toISOString()
+    };
+    academicStore.adminNotifications.unshift(notification);
+    adminPanelAudit(req, 'admin_notification_send', notification.id, notification.title, `Audience: ${audienceType}; channel: in-app.`);
+    saveAcademicStore(academicStore);
+    return res.status(201).json({ success: true, notification });
+  } catch (err) {
+    console.error('[Admin Notifications] POST send error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to send notification.' });
+  }
+});
+
+app.get('/api/admin/notifications/history', requireAdminRole(ADMIN_ROLES), (req: Request, res: Response) => {
+  try {
+    const notifications = [...(academicStore.adminNotifications || [])].sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    return res.status(200).json({ success: true, notifications, total: notifications.length });
+  } catch (err) {
+    console.error('[Admin Notifications] GET history error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load notification history.' });
+  }
+});
+
+app.get('/api/notifications', (req: Request, res: Response) => {
+  try {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to view notifications.' });
+    }
+    const notifications = (academicStore.adminNotifications || [])
+      .filter(n => n.status === 'sent' && notificationMatchesSession(n, session))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map(n => ({ id: n.id, title: n.title, message: n.message, createdAt: n.createdAt }));
+    return res.status(200).json({ success: true, notifications, total: notifications.length });
+  } catch (err) {
+    console.error('[Notifications] GET error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load notifications.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 3. ROUTINES — admin CRUD on the existing routines array. New records start
+//    as publication_status 'draft'; publish flips to 'published', archive to
+//    'archived', so the student GET /api/routines path (published only)
+//    picks them up unchanged. `kind` is 'class' (default) or 'exam'; exam
+//    routines are excluded from the class-routine student read path.
+// ---------------------------------------------------------------------------
+app.get('/api/admin/routines', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), (req: Request, res: Response) => {
+  try {
+    const deptFilter = typeof req.query.department === 'string' ? req.query.department.trim().toLowerCase() : '';
+    const semFilter = req.query.semester !== undefined && req.query.semester !== '' ? Number(req.query.semester) : undefined;
+    const dayFilter = typeof req.query.day === 'string' ? req.query.day.trim() : '';
+    const kindFilter = typeof req.query.kind === 'string' ? req.query.kind.trim() : '';
+    const statusFilter = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+    const routines = academicStore.routines.filter(r => {
+      if (deptFilter && !(r.department || '').toLowerCase().includes(deptFilter) && !(r.department_id || '').toLowerCase().includes(deptFilter)) return false;
+      if (semFilter !== undefined && Number(r.semester) !== semFilter) return false;
+      if (dayFilter && r.day !== dayFilter) return false;
+      if (kindFilter && ((r as unknown as { kind?: string }).kind || 'class') !== kindFilter) return false;
+      if (statusFilter && (r.publication_status || 'draft') !== statusFilter) return false;
+      return true;
+    });
+    return res.status(200).json({ success: true, routines, total: routines.length });
+  } catch (err) {
+    console.error('[Admin Routines] GET list error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load routines.' });
+  }
+});
+
+app.post('/api/admin/routines', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { adminSession: ServerSession }).adminSession;
+    const body = (req.body || {}) as Record<string, unknown>;
+    const groupRes = resolveExplicitAcademicGroupInput({
+      college: typeof body.college === 'string' ? body.college : typeof body.college_id === 'string' ? body.college_id : null,
+      department: typeof body.department === 'string' ? body.department : typeof body.department_id === 'string' ? body.department_id : null,
+      semester: (body.semester as number | string | null | undefined) ?? null,
+      shift: typeof body.shift === 'string' ? body.shift : 'Morning',
+      section: typeof body.section === 'string' ? body.section : 'A1',
+      regulation: typeof body.regulation === 'string' ? body.regulation : '2022'
+    });
+    if (!groupRes.valid || !groupRes.group) {
+      return res.status(400).json({ success: false, error: `Invalid academic group: ${groupRes.missingOrInvalidFields.join(', ')}.` });
+    }
+    const group = groupRes.group;
+    const day = typeof body.day === 'string' ? body.day : '';
+    if (!['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'].includes(day)) {
+      return res.status(400).json({ success: false, error: 'day must be Saturday..Thursday.' });
+    }
+    const kind = body.kind === 'exam' ? 'exam' : 'class';
+    const nowIso = new Date().toISOString();
+    const routine = {
+      id: `rt_admin_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      day: day as WeekDay,
+      periodNumber: Number(body.periodNumber) || 1,
+      startTime: typeof body.startTime === 'string' ? body.startTime.trim() : '08:00 AM',
+      endTime: typeof body.endTime === 'string' ? body.endTime.trim() : '08:45 AM',
+      subjectCode: typeof body.subjectCode === 'string' ? body.subjectCode.trim() : '',
+      subjectName: typeof body.subjectName === 'string' ? body.subjectName.trim() : '',
+      teacherName: typeof body.teacherName === 'string' ? body.teacherName.trim() : '',
+      room: typeof body.room === 'string' ? body.room.trim() : 'TBA',
+      type: body.type === 'Practical / Lab' ? 'Practical / Lab' : 'Theory',
+      shift: group.shift,
+      section: group.section,
+      college_id: group.college_id,
+      college: group.college,
+      department_id: group.department_id,
+      technology_id: group.department_id,
+      department: group.department,
+      regulation: group.regulation,
+      semester: group.semester,
+      created_by: session.userId,
+      created_by_name: session.name,
+      created_by_role: 'system_admin',
+      publication_status: 'draft',
+      created_at: nowIso,
+      updated_at: nowIso,
+      kind,
+      examType: kind === 'exam' && typeof body.examType === 'string' ? body.examType.trim() : undefined
+    } as unknown as RoutinePeriod;
+    academicStore.routines.push(routine);
+    adminPanelAudit(req, 'admin_routine_create', routine.id, `${routine.subjectName || routine.subjectCode} (${routine.day} P${routine.periodNumber})`, `Kind: ${kind}; ${group.department} Sem ${group.semester} ${group.shift}/${group.section}; draft.`);
+    saveAcademicStore(academicStore);
+    void persistRoutineToSupabase(routine, 'AdminRoutines');
+    return res.status(201).json({ success: true, routine });
+  } catch (err) {
+    console.error('[Admin Routines] POST create error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to create routine.' });
+  }
+});
+
+app.patch('/api/admin/routines/:id', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), (req: Request, res: Response) => {
+  try {
+    const routine = academicStore.routines.find(r => r.id === req.params.id);
+    if (!routine) {
+      return res.status(404).json({ success: false, error: 'Routine not found.' });
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    // Cohort fields re-resolve together so college/department/semester/
+    // shift/section stay canonical (student read path matches on ids).
+    if (body.college !== undefined || body.college_id !== undefined || body.department !== undefined || body.department_id !== undefined || body.semester !== undefined || body.shift !== undefined || body.section !== undefined || body.regulation !== undefined) {
+      const groupRes = resolveExplicitAcademicGroupInput({
+        college: typeof body.college === 'string' ? body.college : typeof body.college_id === 'string' ? body.college_id : routine.college_id,
+        department: typeof body.department === 'string' ? body.department : typeof body.department_id === 'string' ? body.department_id : routine.department_id,
+        semester: (body.semester as number | string | null | undefined) ?? routine.semester,
+        shift: typeof body.shift === 'string' ? body.shift : routine.shift,
+        section: typeof body.section === 'string' ? body.section : routine.section,
+        regulation: typeof body.regulation === 'string' ? body.regulation : routine.regulation
+      });
+      if (!groupRes.valid || !groupRes.group) {
+        return res.status(400).json({ success: false, error: `Invalid academic group: ${groupRes.missingOrInvalidFields.join(', ')}.` });
+      }
+      const group = groupRes.group;
+      routine.college_id = group.college_id;
+      routine.college = group.college;
+      routine.department_id = group.department_id;
+      routine.technology_id = group.department_id;
+      routine.department = group.department;
+      routine.regulation = group.regulation;
+      routine.semester = group.semester;
+      routine.shift = group.shift;
+      routine.section = group.section;
+    }
+    if (typeof body.day === 'string' && ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'].includes(body.day)) {
+      routine.day = body.day as WeekDay;
+    }
+    if (body.periodNumber !== undefined) routine.periodNumber = Number(body.periodNumber) || routine.periodNumber;
+    if (typeof body.startTime === 'string') routine.startTime = body.startTime.trim();
+    if (typeof body.endTime === 'string') routine.endTime = body.endTime.trim();
+    if (typeof body.subjectCode === 'string') routine.subjectCode = body.subjectCode.trim();
+    if (typeof body.subjectName === 'string') routine.subjectName = body.subjectName.trim();
+    if (typeof body.teacherName === 'string') routine.teacherName = body.teacherName.trim();
+    if (typeof body.room === 'string') routine.room = body.room.trim();
+    if (body.type === 'Theory' || body.type === 'Practical / Lab') routine.type = body.type;
+    if (typeof body.publication_status === 'string' && ['published', 'draft', 'needs_admin_review', 'archived'].includes(body.publication_status)) {
+      routine.publication_status = body.publication_status as RoutinePublicationStatus;
+    }
+    if (body.kind === 'class' || body.kind === 'exam') (routine as unknown as { kind: string }).kind = body.kind;
+    if (typeof body.examType === 'string') (routine as unknown as { examType: string }).examType = body.examType.trim();
+    routine.updated_at = new Date().toISOString();
+    adminPanelAudit(req, 'admin_routine_update', routine.id, `${routine.subjectName || routine.subjectCode} (${routine.day} P${routine.periodNumber})`, `Status: ${routine.publication_status || 'draft'}.`);
+    saveAcademicStore(academicStore);
+    void persistRoutineToSupabase(routine, 'AdminRoutines');
+    return res.status(200).json({ success: true, routine });
+  } catch (err) {
+    console.error('[Admin Routines] PATCH error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to update routine.' });
+  }
+});
+
+app.post('/api/admin/routines/:id/publish', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), (req: Request, res: Response) => {
+  try {
+    const routine = academicStore.routines.find(r => r.id === req.params.id);
+    if (!routine) {
+      return res.status(404).json({ success: false, error: 'Routine not found.' });
+    }
+    routine.publication_status = 'published';
+    routine.updated_at = new Date().toISOString();
+    adminPanelAudit(req, 'admin_routine_publish', routine.id, `${routine.subjectName || routine.subjectCode} (${routine.day} P${routine.periodNumber})`, 'Routine published.');
+    saveAcademicStore(academicStore);
+    void persistRoutineToSupabase(routine, 'AdminRoutines');
+    return res.status(200).json({ success: true, routine });
+  } catch (err) {
+    console.error('[Admin Routines] POST publish error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to publish routine.' });
+  }
+});
+
+app.post('/api/admin/routines/:id/archive', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), (req: Request, res: Response) => {
+  try {
+    const routine = academicStore.routines.find(r => r.id === req.params.id);
+    if (!routine) {
+      return res.status(404).json({ success: false, error: 'Routine not found.' });
+    }
+    routine.publication_status = 'archived';
+    routine.updated_at = new Date().toISOString();
+    adminPanelAudit(req, 'admin_routine_archive', routine.id, `${routine.subjectName || routine.subjectCode} (${routine.day} P${routine.periodNumber})`, 'Routine archived.');
+    saveAcademicStore(academicStore);
+    void persistRoutineToSupabase(routine, 'AdminRoutines');
+    return res.status(200).json({ success: true, routine });
+  } catch (err) {
+    console.error('[Admin Routines] POST archive error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to archive routine.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 4. FEATURE FLAGS + MAINTENANCE
+// ---------------------------------------------------------------------------
+app.get('/api/admin/flags', requireAdminRole(ADMIN_ROLES), (_req: Request, res: Response) => {
+  ensureAdminPanelStoreDefaults(academicStore);
+  return res.status(200).json({ success: true, featureFlags: academicStore.featureFlags });
+});
+
+app.post('/api/admin/flags', requireAdminRole(['super_admin']), (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { adminSession: ServerSession }).adminSession;
+    const body = (req.body || {}) as Record<string, unknown>;
+    const key = typeof body.key === 'string' ? body.key.trim() : '';
+    if (!key || !/^[a-z0-9_]+$/.test(key)) {
+      return res.status(400).json({ success: false, error: 'key is required (lowercase letters, digits, underscores).' });
+    }
+    if (typeof body.enabled !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'enabled must be a boolean.' });
+    }
+    ensureAdminPanelStoreDefaults(academicStore);
+    academicStore.featureFlags[key] = { enabled: body.enabled, updatedBy: session.name, updatedAt: new Date().toISOString() };
+    adminPanelAudit(req, 'admin_flag_upsert', key, key, `Flag ${key} ${body.enabled ? 'enabled' : 'disabled'}.`);
+    saveAcademicStore(academicStore);
+    return res.status(200).json({ success: true, featureFlags: academicStore.featureFlags });
+  } catch (err) {
+    console.error('[Admin Flags] POST error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to update feature flag.' });
+  }
+});
+
+app.post('/api/admin/maintenance', requireAdminRole(['super_admin']), (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { adminSession: ServerSession }).adminSession;
+    const body = (req.body || {}) as Record<string, unknown>;
+    if (typeof body.enabled !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'enabled must be a boolean.' });
+    }
+    ensureAdminPanelStoreDefaults(academicStore);
+    academicStore.maintenanceMode = {
+      enabled: body.enabled,
+      message: typeof body.message === 'string' ? body.message : '',
+      updatedBy: session.name,
+      updatedAt: new Date().toISOString()
+    };
+    adminPanelAudit(req, 'admin_maintenance', 'maintenance', 'Maintenance mode', `Maintenance ${body.enabled ? 'enabled' : 'disabled'}.`);
+    saveAcademicStore(academicStore);
+    return res.status(200).json({ success: true, maintenanceMode: academicStore.maintenanceMode });
+  } catch (err) {
+    console.error('[Admin Maintenance] POST error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to update maintenance mode.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 5. FORCE UPDATE (version control)
+// ---------------------------------------------------------------------------
+app.get('/api/admin/version-control', requireAdminRole(ADMIN_ROLES), (_req: Request, res: Response) => {
+  ensureAdminPanelStoreDefaults(academicStore);
+  return res.status(200).json({ success: true, appVersionControl: academicStore.appVersionControl });
+});
+
+app.post('/api/admin/version-control', requireAdminRole(['super_admin']), (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { adminSession: ServerSession }).adminSession;
+    const body = (req.body || {}) as Record<string, unknown>;
+    ensureAdminPanelStoreDefaults(academicStore);
+    const current = academicStore.appVersionControl;
+    if (body.minVersionCode !== undefined && (!Number.isInteger(body.minVersionCode) || (body.minVersionCode as number) < 0)) {
+      return res.status(400).json({ success: false, error: 'minVersionCode must be a non-negative integer.' });
+    }
+    if (body.latestVersionCode !== undefined && (!Number.isInteger(body.latestVersionCode) || (body.latestVersionCode as number) < 0)) {
+      return res.status(400).json({ success: false, error: 'latestVersionCode must be a non-negative integer.' });
+    }
+    if (body.latestVersionName !== undefined && (typeof body.latestVersionName !== 'string' || !body.latestVersionName.trim())) {
+      return res.status(400).json({ success: false, error: 'latestVersionName must be a non-empty string.' });
+    }
+    if (body.updateUrl !== undefined && (typeof body.updateUrl !== 'string' || !body.updateUrl.startsWith('http'))) {
+      return res.status(400).json({ success: false, error: 'updateUrl must be an http(s) URL.' });
+    }
+    academicStore.appVersionControl = {
+      minVersionCode: body.minVersionCode !== undefined ? (body.minVersionCode as number) : current.minVersionCode,
+      latestVersionCode: body.latestVersionCode !== undefined ? (body.latestVersionCode as number) : current.latestVersionCode,
+      latestVersionName: typeof body.latestVersionName === 'string' ? body.latestVersionName.trim() : current.latestVersionName,
+      forceUpdate: typeof body.forceUpdate === 'boolean' ? body.forceUpdate : current.forceUpdate,
+      updateUrl: typeof body.updateUrl === 'string' ? body.updateUrl.trim() : current.updateUrl,
+      updatedBy: session.name,
+      updatedAt: new Date().toISOString()
+    };
+    adminPanelAudit(req, 'admin_version_control', 'app-version', 'App version control', `min=${academicStore.appVersionControl.minVersionCode} latest=${academicStore.appVersionControl.latestVersionCode} (${academicStore.appVersionControl.latestVersionName}) forceUpdate=${academicStore.appVersionControl.forceUpdate}.`);
+    saveAcademicStore(academicStore);
+    return res.status(200).json({ success: true, appVersionControl: academicStore.appVersionControl });
+  } catch (err) {
+    console.error('[Admin Version Control] POST error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to update version control.' });
+  }
+});
+
+// Public boot config — NO auth. The student app calls this at startup for
+// the maintenance banner, feature flags and force-update check.
+app.get('/api/app-config', (_req: Request, res: Response) => {
+  ensureAdminPanelStoreDefaults(academicStore);
+  return res.status(200).json({
+    success: true,
+    maintenanceMode: academicStore.maintenanceMode,
+    featureFlags: academicStore.featureFlags,
+    appVersionControl: academicStore.appVersionControl
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. REPORTS & EXPORT (no raw DB/SQL access — everything is computed from
+//    the JSON store in memory).
+// ---------------------------------------------------------------------------
+app.get('/api/admin/reports/users', requireAdminRole(ADMIN_ROLES), (req: Request, res: Response) => {
+  try {
+    const deptFilter = typeof req.query.department === 'string' ? req.query.department.trim().toLowerCase() : '';
+    const semFilter = req.query.semester !== undefined && req.query.semester !== '' ? Number(req.query.semester) : undefined;
+    const statusFilter = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
+    const rows = academicStore.students
+      .filter(s => {
+        if (deptFilter && !(s.department || '').toLowerCase().includes(deptFilter)) return false;
+        if (semFilter !== undefined && Number(s.semester) !== semFilter) return false;
+        if (statusFilter && (s.captainVerificationStatus || '').toLowerCase() !== statusFilter) return false;
+        return true;
+      })
+      .map(s => ({
+        name: s.name,
+        roll: s.boardRoll,
+        reg: s.regNumber,
+        college: s.college,
+        department: s.department,
+        semester: s.semester,
+        shift: s.shift,
+        section: s.section,
+        status: s.captainVerificationStatus,
+        createdAt: s.createdAt || ''
+      }));
+    if (req.query.format === 'csv') {
+      const header = ['name', 'roll', 'reg', 'college', 'department', 'semester', 'shift', 'section', 'status', 'createdAt'];
+      const lines = [header.join(',')];
+      for (const row of rows) {
+        lines.push(header.map(h => toCsvCell((row as unknown as Record<string, unknown>)[h])).join(','));
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="diplomamate-users-${today}.csv"`);
+      return res.status(200).send(lines.join('\r\n'));
+    }
+    return res.status(200).json({ success: true, users: rows, total: rows.length });
+  } catch (err) {
+    console.error('[Admin Reports] GET users error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to build user report.' });
+  }
+});
+
+app.get('/api/admin/reports/activity', requireAdminRole(ADMIN_ROLES), (req: Request, res: Response) => {
+  try {
+    const fromMs = typeof req.query.from === 'string' && req.query.from ? new Date(req.query.from).getTime() : NaN;
+    const toMs = typeof req.query.to === 'string' && req.query.to ? new Date(req.query.to).getTime() : NaN;
+    const inRange = (iso: string | undefined): boolean => {
+      if (!iso) return Number.isNaN(fromMs) && Number.isNaN(toMs);
+      const ms = new Date(iso).getTime();
+      if (Number.isNaN(ms)) return false;
+      if (!Number.isNaN(fromMs) && ms < fromMs) return false;
+      if (!Number.isNaN(toMs) && ms > toMs) return false;
+      return true;
+    };
+    const usersByDepartment: Record<string, number> = {};
+    const usersBySemester: Record<string, number> = {};
+    for (const s of academicStore.students) {
+      if (!inRange(s.createdAt)) continue;
+      usersByDepartment[s.department || 'Unknown'] = (usersByDepartment[s.department || 'Unknown'] || 0) + 1;
+      usersBySemester[String(s.semester)] = (usersBySemester[String(s.semester)] || 0) + 1;
+    }
+    const noticesPublished = academicStore.campusNotices.filter(n => {
+      const status = getAdminNoticeExtras(n).status;
+      if (status && status !== 'Published') return false;
+      return inRange(n.publishedAt || n.updatedAt);
+    }).length;
+    const notificationsSent = (academicStore.adminNotifications || []).filter(n => inRange(n.createdAt)).length;
+    const ticketsByStatus: Record<string, number> = {};
+    for (const t of academicStore.supportTickets || []) {
+      if (!inRange(t.createdAt)) continue;
+      ticketsByStatus[t.status] = (ticketsByStatus[t.status] || 0) + 1;
+    }
+    return res.status(200).json({
+      success: true,
+      usersByDepartment,
+      usersBySemester,
+      noticesPublished,
+      notificationsSent,
+      ticketsByStatus
+    });
+  } catch (err) {
+    console.error('[Admin Reports] GET activity error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to build activity report.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 7. ROLES & PERMISSIONS — admin account management (founder-only).
+//    The founder is the existing system_admin account (unchanged, full
+//    access). Sub-admins log in via POST /api/admin/login (extended below).
+// ---------------------------------------------------------------------------
+app.get('/api/admin/admins', requireSystemAdmin, (_req: Request, res: Response) => {
+  try {
+    const admins = (academicStore.adminAccounts || []).map(sanitizeAdminAccount);
+    return res.status(200).json({ success: true, admins, total: admins.length });
+  } catch (err) {
+    console.error('[Admin Admins] GET list error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load admin accounts.' });
+  }
+});
+
+app.post('/api/admin/admins/invite', requireSystemAdmin, (req: Request, res: Response) => {
+  try {
+    const body = (req.body || {}) as Record<string, unknown>;
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const role = typeof body.role === 'string' ? body.role : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, error: 'A valid email is required.' });
+    }
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'A name is required.' });
+    }
+    if (!(ADMIN_ROLES as string[]).includes(role)) {
+      return res.status(400).json({ success: false, error: `role must be one of: ${ADMIN_ROLES.join(', ')}.` });
+    }
+    if (!password || password.length < 8) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 8 characters long.' });
+    }
+    const emailTaken =
+      (academicStore.adminAccounts || []).some(a => a.email.toLowerCase() === email) ||
+      [...systemAdmins.values()].some(a => a.email.toLowerCase() === email);
+    if (emailTaken) {
+      return res.status(409).json({ success: false, error: 'An admin account with this email already exists.' });
+    }
+    const salt = generateSalt();
+    const account: AdminAccount = {
+      id: `admin_${crypto.randomUUID()}`,
+      email,
+      name,
+      role: role as AdminRole,
+      status: 'active',
+      passwordHash: hashAdminPassword(password, salt, ADMIN_PASSWORD_ITERATIONS_V2),
+      passwordSalt: salt,
+      passwordHashVersion: 2,
+      createdAt: new Date().toISOString(),
+      failedAttempts: 0,
+      lockoutUntil: null
+    };
+    academicStore.adminAccounts.push(account);
+    adminPanelAudit(req, 'admin_account_invite', account.id, account.name, `Role: ${account.role}; email: ${account.email}.`);
+    saveAcademicStore(academicStore);
+    return res.status(201).json({
+      success: true,
+      admin: sanitizeAdminAccount(account),
+      setupNote: `Share the initial password with ${account.name} (${account.email}) once, over a trusted channel — it is not emailed and is not shown again. Ask them to sign in at the admin panel and change their password after first sign-in.`
+    });
+  } catch (err) {
+    console.error('[Admin Admins] POST invite error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to invite admin.' });
+  }
+});
+
+app.patch('/api/admin/admins/:id', requireSystemAdmin, (req: Request, res: Response) => {
+  try {
+    const account = (academicStore.adminAccounts || []).find(a => a.id === req.params.id);
+    if (!account) {
+      return res.status(404).json({ success: false, error: 'Admin account not found.' });
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    let changed = false;
+    if (typeof body.role === 'string') {
+      if (!(ADMIN_ROLES as string[]).includes(body.role)) {
+        return res.status(400).json({ success: false, error: `role must be one of: ${ADMIN_ROLES.join(', ')}.` });
+      }
+      if (body.role !== account.role) { account.role = body.role as AdminRole; changed = true; }
+    }
+    if (typeof body.status === 'string') {
+      if (body.status !== 'active' && body.status !== 'deactivated') {
+        return res.status(400).json({ success: false, error: "status must be 'active' or 'deactivated'." });
+      }
+      if (body.status !== account.status) { account.status = body.status as 'active' | 'deactivated'; changed = true; }
+    }
+    if (changed) {
+      // Role/status changes take effect immediately: revoke live sessions
+      // so the account must sign in again under the new role/status.
+      for (const [token, session] of serverSessions) {
+        if (session.userId === account.id) serverSessions.delete(token);
+      }
+    }
+    adminPanelAudit(req, 'admin_account_update', account.id, account.name, `Role: ${account.role}; status: ${account.status}.`);
+    saveAcademicStore(academicStore);
+    return res.status(200).json({ success: true, admin: sanitizeAdminAccount(account) });
+  } catch (err) {
+    console.error('[Admin Admins] PATCH error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to update admin account.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 8. SESSION CONTROL (super_admin only). Sessions live in the in-memory
+//    serverSessions map; lastSeenAt is refreshed in getAuthenticatedSession
+//    on every authenticated request.
+// ---------------------------------------------------------------------------
+app.get('/api/admin/sessions', requireAdminRole(['super_admin']), (_req: Request, res: Response) => {
+  try {
+    const sessions = [...serverSessions.entries()]
+      .map(([token, session]) => ({
+        sessionId: token,
+        userId: session.userId,
+        userName: session.name,
+        role: session.role,
+        createdAt: session.createdAt,
+        lastSeenAt: session.lastSeenAt
+      }))
+      .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+    return res.status(200).json({ success: true, sessions, total: sessions.length });
+  } catch (err) {
+    console.error('[Admin Sessions] GET list error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load sessions.' });
+  }
+});
+
+app.post('/api/admin/sessions/:id/revoke', requireAdminRole(['super_admin']), (req: Request, res: Response) => {
+  try {
+    const session = serverSessions.get(req.params.id);
+    if (!session) {
+      return res.status(404).json({ success: false, error: 'Session not found (it may already be expired or revoked).' });
+    }
+    serverSessions.delete(req.params.id);
+    adminPanelAudit(req, 'admin_session_revoke', session.userId, session.name, `Revoked ${session.role} session.`);
+    saveAcademicStore(academicStore);
+    return res.status(200).json({ success: true, message: 'Session revoked.' });
+  } catch (err) {
+    console.error('[Admin Sessions] POST revoke error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to revoke session.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 9. SUPPORT TICKETS — student create/list-mine + admin triage.
+// ---------------------------------------------------------------------------
+app.post('/api/support/tickets', (req: Request, res: Response) => {
+  try {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to raise a support ticket.' });
+    }
+    if (session.role !== 'student' && session.role !== 'class_captain') {
+      return res.status(403).json({ success: false, error: 'Only student accounts can raise support tickets.' });
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    const subject = typeof body.subject === 'string' ? body.subject.trim() : '';
+    const description = typeof body.description === 'string' ? body.description.trim() : '';
+    const category = typeof body.category === 'string' ? body.category : '';
+    const priority = typeof body.priority === 'string' ? body.priority : 'normal';
+    if (!subject || subject.length < 4) {
+      return res.status(400).json({ success: false, error: 'Ticket subject must be at least 4 characters long.' });
+    }
+    if (!description || description.length < 8) {
+      return res.status(400).json({ success: false, error: 'Ticket description must be at least 8 characters long.' });
+    }
+    if (!['missing_note', 'wrong_info', 'account_help', 'app_bug', 'other'].includes(category)) {
+      return res.status(400).json({ success: false, error: "category must be one of: missing_note, wrong_info, account_help, app_bug, other." });
+    }
+    if (!['low', 'normal', 'high', 'urgent'].includes(priority)) {
+      return res.status(400).json({ success: false, error: 'priority must be one of: low, normal, high, urgent.' });
+    }
+    const nowIso = new Date().toISOString();
+    const ticket: SupportTicket = {
+      id: `ticket_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      userId: session.userId,
+      userName: session.name,
+      userRoll: session.boardRoll || '',
+      subject,
+      description,
+      category: category as SupportTicket['category'],
+      priority: priority as SupportTicket['priority'],
+      status: 'open',
+      assigneeId: null,
+      internalNotes: [],
+      resolution: '',
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
+    academicStore.supportTickets.push(ticket);
+    saveAcademicStore(academicStore);
+    return res.status(201).json({ success: true, ticket });
+  } catch (err) {
+    console.error('[Support Tickets] POST create error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to create support ticket.' });
+  }
+});
+
+app.get('/api/support/tickets/mine', (req: Request, res: Response) => {
+  try {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to view your tickets.' });
+    }
+    const tickets = (academicStore.supportTickets || [])
+      .filter(t => t.userId === session.userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return res.status(200).json({ success: true, tickets, total: tickets.length });
+  } catch (err) {
+    console.error('[Support Tickets] GET mine error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load your tickets.' });
+  }
+});
+
+app.get('/api/admin/tickets', requireAdminRole(['super_admin', 'support_manager']), (req: Request, res: Response) => {
+  try {
+    const statusFilter = typeof req.query.status === 'string' ? req.query.status : '';
+    const priorityFilter = typeof req.query.priority === 'string' ? req.query.priority : '';
+    const assigneeFilter = typeof req.query.assignee === 'string' ? req.query.assignee : '';
+    const tickets = (academicStore.supportTickets || [])
+      .filter(t => {
+        if (statusFilter && t.status !== statusFilter) return false;
+        if (priorityFilter && t.priority !== priorityFilter) return false;
+        if (assigneeFilter && (t.assigneeId || '') !== assigneeFilter) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return res.status(200).json({ success: true, tickets, total: tickets.length });
+  } catch (err) {
+    console.error('[Admin Tickets] GET list error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load support tickets.' });
+  }
+});
+
+app.patch('/api/admin/tickets/:id', requireAdminRole(['super_admin', 'support_manager']), (req: Request, res: Response) => {
+  try {
+    const ticket = (academicStore.supportTickets || []).find(t => t.id === req.params.id);
+    if (!ticket) {
+      return res.status(404).json({ success: false, error: 'Ticket not found.' });
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    if (typeof body.status === 'string') {
+      if (!['open', 'assigned', 'pending', 'resolved', 'closed'].includes(body.status)) {
+        return res.status(400).json({ success: false, error: 'status must be one of: open, assigned, pending, resolved, closed.' });
+      }
+      ticket.status = body.status as SupportTicket['status'];
+      if (ticket.status === 'resolved' || ticket.status === 'closed') {
+        ticket.resolvedAt = new Date().toISOString();
+      } else {
+        ticket.resolvedAt = undefined;
+      }
+    }
+    if (typeof body.priority === 'string') {
+      if (!['low', 'normal', 'high', 'urgent'].includes(body.priority)) {
+        return res.status(400).json({ success: false, error: 'priority must be one of: low, normal, high, urgent.' });
+      }
+      ticket.priority = body.priority as SupportTicket['priority'];
+    }
+    // Accept both `assigneeId` (server contract) and `assignedTo` (admin UI).
+    const assigneeRaw = body.assigneeId !== undefined ? body.assigneeId : body.assignedTo;
+    if (assigneeRaw !== undefined) {
+      ticket.assigneeId = typeof assigneeRaw === 'string' && assigneeRaw.trim() ? assigneeRaw.trim() : null;
+    }
+    if (typeof body.resolution === 'string') ticket.resolution = body.resolution;
+    ticket.updatedAt = new Date().toISOString();
+    adminPanelAudit(req, 'admin_ticket_update', ticket.id, ticket.subject, `Status: ${ticket.status}; priority: ${ticket.priority}; assignee: ${ticket.assigneeId || 'unassigned'}.`);
+    saveAcademicStore(academicStore);
+    return res.status(200).json({ success: true, ticket });
+  } catch (err) {
+    console.error('[Admin Tickets] PATCH error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to update ticket.' });
+  }
+});
+
+app.post('/api/admin/tickets/:id/notes', requireAdminRole(['super_admin', 'support_manager']), (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { adminSession: ServerSession }).adminSession;
+    const ticket = (academicStore.supportTickets || []).find(t => t.id === req.params.id);
+    if (!ticket) {
+      return res.status(404).json({ success: false, error: 'Ticket not found.' });
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    if (!text) {
+      return res.status(400).json({ success: false, error: 'Note text is required.' });
+    }
+    ticket.internalNotes.push({ author: session.name, text, at: new Date().toISOString() });
+    ticket.updatedAt = new Date().toISOString();
+    adminPanelAudit(req, 'admin_ticket_note', ticket.id, ticket.subject, 'Internal note added.');
+    saveAcademicStore(academicStore);
+    return res.status(200).json({ success: true, ticket });
+  } catch (err) {
+    console.error('[Admin Tickets] POST note error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to add ticket note.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 10. ANALYTICS — computed from the JSON store + live sessions only.
+//     No new tracking, no analytics vendor. activeUsers counts distinct
+//     student/captain accounts holding a live server session; sessions live
+//     at most 24h, so last7d/last30d are bounded by live sessions (see note
+//     in the response — the store records no per-student last-login date).
+// ---------------------------------------------------------------------------
+app.get('/api/admin/analytics', requireAdminRole(ADMIN_ROLES), (req: Request, res: Response) => {
+  try {
+    const range = req.query.range === '7d' ? 7 : 30;
+    const now = Date.now();
+    const rangeStart = now - range * 24 * 60 * 60 * 1000;
+    const dayKey = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+    const signupsPerDay: { date: string; count: number }[] = [];
+    for (let i = range - 1; i >= 0; i--) {
+      const dayStart = new Date(now - i * 24 * 60 * 60 * 1000);
+      const key = dayKey(dayStart.getTime());
+      const count = academicStore.students.filter(s => s.createdAt && dayKey(new Date(s.createdAt).getTime()) === key).length;
+      signupsPerDay.push({ date: key, count });
+    }
+    const activeUserIds = new Set<string>();
+    const active7d = new Set<string>();
+    const active30d = new Set<string>();
+    for (const session of serverSessions.values()) {
+      if (session.role !== 'student' && session.role !== 'class_captain') continue;
+      activeUserIds.add(session.userId);
+      if (session.lastSeenAt >= now - 7 * 24 * 60 * 60 * 1000) active7d.add(session.userId);
+      if (session.lastSeenAt >= now - 30 * 24 * 60 * 60 * 1000) active30d.add(session.userId);
+    }
+    const usersByDepartment: { department: string; count: number }[] = [];
+    const deptCounts: Record<string, number> = {};
+    for (const s of academicStore.students) deptCounts[s.department || 'Unknown'] = (deptCounts[s.department || 'Unknown'] || 0) + 1;
+    for (const [department, count] of Object.entries(deptCounts)) usersByDepartment.push({ department, count });
+    usersByDepartment.sort((a, b) => b.count - a.count);
+    const usersBySemester: { semester: number; count: number }[] = [];
+    const semCounts: Record<string, number> = {};
+    for (const s of academicStore.students) semCounts[String(s.semester)] = (semCounts[String(s.semester)] || 0) + 1;
+    for (const [semester, count] of Object.entries(semCounts)) usersBySemester.push({ semester: Number(semester), count });
+    usersBySemester.sort((a, b) => a.semester - b.semester);
+    const noticesPublished = academicStore.campusNotices.filter(n => {
+      const status = getAdminNoticeExtras(n).status;
+      if (status && status !== 'Published') return false;
+      const ms = new Date(n.publishedAt || n.updatedAt || 0).getTime();
+      return ms >= rangeStart;
+    }).length;
+    const notificationsSent = (academicStore.adminNotifications || []).filter(n => new Date(n.createdAt).getTime() >= rangeStart).length;
+    const ticketsByStatus: Record<string, number> = {};
+    for (const t of academicStore.supportTickets || []) ticketsByStatus[t.status] = (ticketsByStatus[t.status] || 0) + 1;
+    return res.status(200).json({
+      success: true,
+      range: `${range}d`,
+      signupsPerDay,
+      activeUsers: { total: activeUserIds.size, last7d: active7d.size, last30d: active30d.size },
+      usersByDepartment,
+      usersBySemester,
+      noticesPublished,
+      notificationsSent,
+      ticketsByStatus
+    });
+  } catch (err) {
+    console.error('[Admin Analytics] GET error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to build analytics.' });
+  }
 });
 
 /**
@@ -2202,6 +3364,68 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, (req: Request, 
     }
 
     if (!targetAdmin) {
+      // Sub-admin accounts (adminAccounts in the academic store) sign in
+      // through this same endpoint; the PIN gate above already ran for
+      // them too. Passwords use the same PBKDF2 helpers (v2 = 600k
+      // iterations, legacy 10k verified + transparently upgraded).
+      const subAdmin = (academicStore.adminAccounts || []).find(
+        a => a.email.toLowerCase() === cleanEmail
+      );
+      if (subAdmin) {
+        if (subAdmin.status !== 'active') {
+          return res.status(403).json({
+            success: false,
+            error: 'This admin account has been deactivated. Contact the founder.'
+          });
+        }
+        if (subAdmin.lockoutUntil && Date.now() < subAdmin.lockoutUntil) {
+          const remainingMinutes = Math.ceil((subAdmin.lockoutUntil - Date.now()) / 60000);
+          return res.status(429).json({
+            success: false,
+            error: `Security Lockout: Admin account locked due to 5 failed login attempts. Try again in ${remainingMinutes} minute(s).`
+          });
+        }
+        const iterations = subAdmin.passwordHashVersion === 2 ? ADMIN_PASSWORD_ITERATIONS_V2 : 10000;
+        if (hashAdminPassword(cleanPassword, subAdmin.passwordSalt, iterations) !== subAdmin.passwordHash) {
+          subAdmin.failedAttempts = (subAdmin.failedAttempts || 0) + 1;
+          if (subAdmin.failedAttempts >= 5) {
+            subAdmin.lockoutUntil = Date.now() + 15 * 60 * 1000;
+            saveAcademicStore(academicStore);
+            return res.status(429).json({
+              success: false,
+              error: 'Maximum failed login attempts exceeded (5/5). Admin account locked for 15 minutes.'
+            });
+          }
+          saveAcademicStore(academicStore);
+          return res.status(401).json({
+            success: false,
+            error: `Invalid admin email or password. ${5 - subAdmin.failedAttempts} attempt(s) remaining.`
+          });
+        }
+        subAdmin.failedAttempts = 0;
+        subAdmin.lockoutUntil = null;
+        subAdmin.lastLoginAt = new Date().toISOString();
+        if (subAdmin.passwordHashVersion !== 2) {
+          const newSalt = generateSalt();
+          subAdmin.passwordSalt = newSalt;
+          subAdmin.passwordHash = hashAdminPassword(cleanPassword, newSalt, ADMIN_PASSWORD_ITERATIONS_V2);
+          subAdmin.passwordHashVersion = 2;
+        }
+        appendSystemAudit('admin_login_success', subAdmin.id, subAdmin.email, `Admin (${subAdmin.role}) signed in.`, subAdmin.id);
+        saveAcademicStore(academicStore);
+        const subSession = createServerSession({
+          userId: subAdmin.id,
+          role: subAdmin.role,
+          name: subAdmin.name,
+          email: subAdmin.email
+        });
+        return res.status(200).json({
+          success: true,
+          message: 'Administrator authenticated successfully.',
+          admin: sanitizeAdminAccount(subAdmin),
+          sessionToken: subSession.token
+        });
+      }
       return res.status(401).json({
         success: false,
         error: 'Invalid System Administrator email or password.'
@@ -5053,6 +6277,119 @@ export interface AccountDeletionRequest {
   reviewNote?: string;
 }
 
+// --- Admin panel build: roles, notifications, flags, version, tickets ---
+type AdminRole = 'super_admin' | 'academic_manager' | 'content_manager' | 'support_manager' | 'analyst';
+
+interface AdminAccount {
+  id: string;
+  email: string;
+  name: string;
+  role: AdminRole;
+  status: 'active' | 'deactivated';
+  passwordHash: string;
+  passwordSalt: string;
+  passwordHashVersion?: number;
+  createdAt: string;
+  lastLoginAt?: string;
+  // Login lockout parity with system_admin: 5 failures -> 15 min lockout.
+  failedAttempts?: number;
+  lockoutUntil?: number | null;
+}
+
+interface AdminNotificationRecord {
+  id: string;
+  title: string;
+  message: string;
+  audienceType: 'all' | 'department' | 'semester';
+  audience: { department?: string; semester?: number };
+  channel: 'in-app';
+  status: 'sent';
+  createdBy: string;
+  createdAt: string;
+}
+
+interface FeatureFlagEntry {
+  enabled: boolean;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+interface MaintenanceModeState {
+  enabled: boolean;
+  message: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+interface AppVersionControlState {
+  minVersionCode: number;
+  latestVersionCode: number;
+  latestVersionName: string;
+  forceUpdate: boolean;
+  updateUrl: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+interface SupportTicket {
+  id: string;
+  userId: string;
+  userName: string;
+  userRoll: string;
+  subject: string;
+  description: string;
+  category: 'missing_note' | 'wrong_info' | 'account_help' | 'app_bug' | 'other';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  status: 'open' | 'assigned' | 'pending' | 'resolved' | 'closed';
+  assigneeId: string | null;
+  internalNotes: { author: string; text: string; at: string }[];
+  resolution: string;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+}
+
+function defaultFeatureFlags(): Record<string, FeatureFlagEntry> {
+  const now = new Date().toISOString();
+  const entry = (enabled: boolean): FeatureFlagEntry => ({ enabled, updatedBy: 'system', updatedAt: now });
+  return {
+    notes_upload: entry(true),
+    community_create: entry(true),
+    bteb_results: entry(true)
+  };
+}
+
+function defaultMaintenanceMode(): MaintenanceModeState {
+  return { enabled: false, message: '', updatedBy: 'system', updatedAt: new Date().toISOString() };
+}
+
+function defaultAppVersionControl(): AppVersionControlState {
+  return {
+    minVersionCode: 20,
+    latestVersionCode: 20,
+    latestVersionName: '1.0.20',
+    forceUpdate: false,
+    updateUrl: 'https://github.com/its-tanjim/DiplomaMate/releases/latest',
+    updatedBy: 'system',
+    updatedAt: new Date().toISOString()
+  };
+}
+
+/** Backfills admin-panel store keys on stores loaded from disk that predate
+ *  them (idempotent; called by loadAcademicStore and the public/app-config
+ *  read paths). */
+function ensureAdminPanelStoreDefaults(store: PersistentAcademicStore): void {
+  if (!Array.isArray(store.adminNotifications)) store.adminNotifications = [];
+  if (!store.featureFlags || typeof store.featureFlags !== 'object') store.featureFlags = defaultFeatureFlags();
+  for (const key of Object.keys(defaultFeatureFlags())) {
+    if (!store.featureFlags[key]) store.featureFlags[key] = defaultFeatureFlags()[key];
+  }
+  if (!store.maintenanceMode || typeof store.maintenanceMode !== 'object') store.maintenanceMode = defaultMaintenanceMode();
+  if (!store.appVersionControl || typeof store.appVersionControl !== 'object') store.appVersionControl = defaultAppVersionControl();
+  if (!Array.isArray(store.adminAccounts)) store.adminAccounts = [];
+  if (!Array.isArray(store.supportTickets)) store.supportTickets = [];
+}
+
 interface PersistentAcademicStore {
   students: EnrolledStudent[];
   teacherAccounts: ServerTeacher[];
@@ -5075,6 +6412,13 @@ interface PersistentAcademicStore {
   jobs: JobCircular[];
   campusNotices: CampusNoticeItem[];
   campusNoticeReports: CampusNoticeReportRecord[];
+  // Admin panel build (JSON store only).
+  adminNotifications: AdminNotificationRecord[];
+  featureFlags: Record<string, FeatureFlagEntry>;
+  maintenanceMode: MaintenanceModeState;
+  appVersionControl: AppVersionControlState;
+  adminAccounts: AdminAccount[];
+  supportTickets: SupportTicket[];
   teacherContactAccessLocked: boolean;
   // Admin panel PIN gate (POST /api/admin/pin-verify): failed PIN attempts
   // + 5-hour lockout. Persisted in this store (NOT in memory) so a server
@@ -5256,6 +6600,12 @@ function buildInitialAcademicStore(): PersistentAcademicStore {
     // see LEGACY_DEMO_CONTENT_IDS.notices.
     campusNotices: [...(INITIAL_CAMPUS_NOTICES as CampusNoticeItem[])],
     campusNoticeReports: [],
+    adminNotifications: [],
+    featureFlags: defaultFeatureFlags(),
+    maintenanceMode: defaultMaintenanceMode(),
+    appVersionControl: defaultAppVersionControl(),
+    adminAccounts: [],
+    supportTickets: [],
     teacherContactAccessLocked: false,
     adminPinLockout: { failedAttempts: 0, lockedUntil: null },
     pendingTeacherEndorsements: {}
@@ -5364,6 +6714,29 @@ function loadAcademicStore(): PersistentAcademicStore {
         jobs: loadedJobs,
         campusNotices: loadedCampusNotices,
         campusNoticeReports: Array.isArray(parsed.campusNoticeReports) ? parsed.campusNoticeReports : [],
+        adminNotifications: Array.isArray(parsed.adminNotifications) ? parsed.adminNotifications : [],
+        featureFlags: (parsed.featureFlags && typeof parsed.featureFlags === 'object') ? parsed.featureFlags : defaultFeatureFlags(),
+        maintenanceMode: (parsed.maintenanceMode && typeof parsed.maintenanceMode === 'object')
+          ? {
+              enabled: parsed.maintenanceMode.enabled === true,
+              message: typeof parsed.maintenanceMode.message === 'string' ? parsed.maintenanceMode.message : '',
+              updatedBy: typeof parsed.maintenanceMode.updatedBy === 'string' ? parsed.maintenanceMode.updatedBy : 'system',
+              updatedAt: typeof parsed.maintenanceMode.updatedAt === 'string' ? parsed.maintenanceMode.updatedAt : new Date().toISOString()
+            }
+          : defaultMaintenanceMode(),
+        appVersionControl: (parsed.appVersionControl && typeof parsed.appVersionControl === 'object')
+          ? {
+              minVersionCode: Number(parsed.appVersionControl.minVersionCode) || 20,
+              latestVersionCode: Number(parsed.appVersionControl.latestVersionCode) || 20,
+              latestVersionName: typeof parsed.appVersionControl.latestVersionName === 'string' ? parsed.appVersionControl.latestVersionName : '1.0.20',
+              forceUpdate: parsed.appVersionControl.forceUpdate === true,
+              updateUrl: typeof parsed.appVersionControl.updateUrl === 'string' ? parsed.appVersionControl.updateUrl : 'https://github.com/its-tanjim/DiplomaMate/releases/latest',
+              updatedBy: typeof parsed.appVersionControl.updatedBy === 'string' ? parsed.appVersionControl.updatedBy : 'system',
+              updatedAt: typeof parsed.appVersionControl.updatedAt === 'string' ? parsed.appVersionControl.updatedAt : new Date().toISOString()
+            }
+          : defaultAppVersionControl(),
+        adminAccounts: Array.isArray(parsed.adminAccounts) ? parsed.adminAccounts : [],
+        supportTickets: Array.isArray(parsed.supportTickets) ? parsed.supportTickets : [],
         teacherContactAccessLocked: parsed.teacherContactAccessLocked === true,
         adminPinLockout: (parsed.adminPinLockout && typeof parsed.adminPinLockout === 'object')
           ? {
@@ -5377,6 +6750,7 @@ function loadAcademicStore(): PersistentAcademicStore {
           ? parsed.pendingTeacherEndorsements
           : {}
       };
+      ensureAdminPanelStoreDefaults(storeObj);
       // Only persist when the loaded content actually differs from disk.
       // An unconditional save on every startup schedules a GitHub backup
       // on every restart; Render auto-deploys on backup commits (it does
@@ -8017,7 +9391,7 @@ app.post('/api/notes', async (req: Request, res: Response) => {
           ? `${session.name} (CR)`
           : `${session.name} (Admin)`,
       uploadedById: session.userId,
-      uploadedByRole: session.role,
+      uploadedByRole: session.role as AccountType,
       uploadedDate,
       fileType: (['PDF', 'DOCX', 'SLIDES', 'IMAGE', 'VIDEO'].includes(String(fileType)) ? fileType : 'PDF') as NoteItem['fileType'],
       fileSize: String(fileSize || '2.0 MB'),
@@ -8218,7 +9592,7 @@ app.post('/api/assignments', async (req: Request, res: Response) => {
       subjectName: String(subjectName).trim(),
       assignedBy: session.role === 'teacher' ? session.name : String(assignedBy || session.name).trim(),
       assignedById: session.userId,
-      assignedByRole: session.role,
+      assignedByRole: session.role as AccountType,
       dueDate: String(dueDate).trim(),
       status: 'Pending',
       description: String(description || '').trim(),
@@ -9921,7 +11295,7 @@ app.put('/api/my-semester-results', (req: Request, res: Response) => {
       id: recordId,
       ownerUserId: session.userId,
       ownerName: session.name,
-      ownerRole: session.role,
+      ownerRole: session.role as AccountType,
       boardRoll: session.boardRoll || body.boardRoll,
       college: session.college || body.college,
       technology: canonicalTechName,
@@ -10649,6 +12023,49 @@ async function persistRoutineDeleteToSupabase(id: string, logTag: string): Promi
 }
 
 /**
+ * Admin-notice visibility, mirroring the student GET /api/notices/campus
+ * filter: only Published + due + unexpired admin notices are visible.
+ * Records without admin status fields (teacher/captain notices) are
+ * treated as published, as before.
+ */
+function isAdminNoticeVisibleToStudents(notice: CampusNoticeItem): boolean {
+  const extras = getAdminNoticeExtras(notice);
+  if (extras.status && extras.status !== 'Published') return false;
+  if (extras.publishAt && new Date(extras.publishAt).getTime() > Date.now()) return false;
+  if (extras.expiresAt && extras.expiresAt.slice(0, 10) < new Date().toISOString().slice(0, 10)) return false;
+  return true;
+}
+
+/**
+ * Admin-notice dual-write to Postgres. The `campus_notices` table has NO
+ * columns for the admin extras (status / publishAt / expiresAt /
+ * audience), so Postgres mirrors ONLY notices that are currently visible
+ * to students: visible → upsert, anything else (Draft / Scheduled-future
+ * / Archived / expired) → delete the Postgres row if one exists. The
+ * student GET /api/notices/campus reads Postgres first when configured,
+ * so without this mirror admin-published notices would never reach
+ * students in production. Never throws: unconfigured → immediate return,
+ * any query error → warning, JSON write carries on.
+ */
+async function persistNoticeToSupabase(notice: CampusNoticeItem, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    if (!isAdminNoticeVisibleToStudents(notice)) {
+      await deleteCampusNoticeById(notice.id);
+      return;
+    }
+    const row = toCampusNoticeRow(notice);
+    const { id: _noticeId, ...noticePatch } = row;
+    const updated = await updateCampusNoticeById(notice.id, noticePatch);
+    if (!updated) {
+      await insertCampusNotice(notice);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
  * Batch-replace support for POST /api/routines/publish-batch: delete
  * every Postgres routine of one cohort, using the route's own
  * in-memory cohort predicate on the rows `listRoutines()` returns —
@@ -11069,6 +12486,7 @@ app.get('/api/routines', async (req: Request, res: Response) => {
         section: effectiveSection
       });
       const filtered = routineSource.filter((r) => {
+        if ((r as unknown as { kind?: string }).kind === 'exam') return false;
         if (r.publication_status === 'needs_admin_review' || r.publication_status === 'archived') {
           return false;
         }
@@ -11147,6 +12565,7 @@ app.get('/api/routines', async (req: Request, res: Response) => {
         section: grp.section
       });
       const filtered = routineSource.filter((r) => {
+        if ((r as unknown as { kind?: string }).kind === 'exam') return false;
         if (r.publication_status === 'needs_admin_review' || r.publication_status === 'archived') return false;
         if (r.publication_status === 'draft' && !includeDrafts) return false;
         return (
@@ -11186,6 +12605,7 @@ app.get('/api/routines', async (req: Request, res: Response) => {
       section: grp.section
     });
     const filtered = routineSource.filter((r) => {
+      if ((r as unknown as { kind?: string }).kind === 'exam') return false;
       if (r.publication_status === 'needs_admin_review' || r.publication_status === 'archived') return false;
       return (
         r.college_id === grp.college_id &&
@@ -11445,7 +12865,7 @@ app.post('/api/routines', async (req: Request, res: Response) => {
       semester: verifiedGroup.semester,
       created_by: session.userId,
       created_by_name: authCheck.publisherName || session.name,
-      created_by_role: authCheck.publisherRole || session.role,
+      created_by_role: authCheck.publisherRole || (session.role as AccountType),
       publication_status: publicationStatus,
       created_at: nowIso,
       updated_at: nowIso
@@ -11559,7 +12979,7 @@ app.post('/api/routines/publish-batch', async (req: Request, res: Response) => {
       semester: verifiedGroup.semester,
       created_by: session.userId,
       created_by_name: authCheck.publisherName || session.name,
-      created_by_role: authCheck.publisherRole || session.role,
+      created_by_role: authCheck.publisherRole || (session.role as AccountType),
       publication_status: publicationStatus,
       created_at: nowIso,
       updated_at: nowIso
@@ -12342,6 +13762,7 @@ app.get('/api/communities/recommended', async (req: Request, res: Response) => {
           shift: (req.query.shift as Shift) || 'Morning',
           section: (req.query.section as Section) || 'A1',
           createdAt: Date.now(),
+          lastSeenAt: Date.now(),
           expiresAt: Date.now() + 60000
         };
       }
@@ -12504,7 +13925,7 @@ app.post('/api/communities', requireCommunityCreator, async (req: Request, res: 
       community_id: commId,
       user_id: session.userId,
       user_name: session.name,
-      user_role: session.role,
+      user_role: session.role as AccountType,
       college_id: clg.id,
       department_id: tech.id,
       semester: inputSemester as SemesterNumber,
@@ -12522,7 +13943,7 @@ app.post('/api/communities', requireCommunityCreator, async (req: Request, res: 
       community_id: commId,
       sender_id: session.userId,
       sender_name: session.name,
-      sender_role: session.role,
+      sender_role: session.role as AccountType,
       sender_designation: session.role === 'teacher' ? 'Teacher' : session.role === 'class_captain' ? 'Class Captain' : 'System Administrator',
       is_moderator: true,
       content: `Welcome to the ${communityName}! This group is created for academic collaboration, routine updates, lecture notes, and study discussions. Please adhere to respectful academic conduct.`,
@@ -12606,7 +14027,7 @@ app.post('/api/communities/:id/join', (req: Request, res: Response) => {
       community_id: comm.id,
       user_id: session.userId,
       user_name: session.name,
-      user_role: session.role,
+      user_role: session.role as AccountType,
       college_id: grp?.college_id || comm.college_id,
       department_id: grp?.department_id || comm.department_id,
       semester: ((grp?.semester) || comm.semester) as SemesterNumber,
@@ -13147,7 +14568,7 @@ app.post('/api/communities/:id/messages', async (req: Request, res: Response) =>
       community_id: comm.id,
       sender_id: session.userId,
       sender_name: session.name,
-      sender_role: session.role,
+      sender_role: session.role as AccountType,
       sender_designation: session.role === 'teacher' ? 'Instructor' : session.role === 'class_captain' ? 'Class Captain' : 'Student',
       is_moderator: isMod,
       content,
@@ -14865,6 +16286,13 @@ app.get('/api/notices/campus', async (req: Request, res: Response) => {
 
     const notices = noticeSource
       .filter(notice => {
+        // Admin-panel notices: only Published + due + unexpired ones are
+        // visible to students. Records without admin status fields
+        // (teacher/captain notices) are treated as published, as before.
+        const adminExtras = notice as unknown as { status?: string; publishAt?: string; expiresAt?: string };
+        if (adminExtras.status && adminExtras.status !== 'Published') return false;
+        if (adminExtras.publishAt && new Date(adminExtras.publishAt).getTime() > Date.now()) return false;
+        if (adminExtras.expiresAt && adminExtras.expiresAt.slice(0, 10) < todayIso) return false;
         // Expiry check
         if (!includeExpired && notice.expiryDate && notice.expiryDate < todayIso) {
           return false;
@@ -14881,11 +16309,16 @@ app.get('/api/notices/campus', async (req: Request, res: Response) => {
           return false;
         }
 
-        const noticeColId = notice.college_id || normalizeCollege(notice.college).id;
+        // A notice with no college set (admin "all users" broadcast — the
+        // admin form sends no college) is visible to every college.
+        // normalizeCollege('') would otherwise default it to DPI and hide
+        // it from every other institute's students.
+        const noticeHasCollege = Boolean(notice.college_id || notice.college);
+        const noticeColId = noticeHasCollege ? (notice.college_id || normalizeCollege(notice.college).id) : '';
         const noticeDeptId = notice.department_id || normalizeTechnology(notice.department).id;
 
         // Ensure notice belongs to the student's college (unless system_admin viewing all)
-        if (session?.role !== 'system_admin' && noticeColId !== userCollege.id) {
+        if (session?.role !== 'system_admin' && noticeColId && noticeColId !== userCollege.id) {
           return false;
         }
 
@@ -15886,7 +17319,7 @@ app.post('/api/jobs', async (req: Request, res: Response) => {
       applicationMethod: 'external_url',
       postedBy: session.name,
       postedById: session.userId,
-      postedByRole: session.role,
+      postedByRole: session.role as AccountType,
       postedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
       updatedAt: nowIso,
       mediaUrl: uploaded ? uploaded.url : undefined,
@@ -16000,7 +17433,7 @@ app.post('/api/admin/jobs/import', requireSystemAdmin, (req: Request, res: Respo
           applicationMethod: 'external_url',
           postedBy: session.name,
           postedById: session.userId,
-          postedByRole: session.role,
+          postedByRole: session.role as AccountType,
           postedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
           updatedAt: nowIso
         });

@@ -198,6 +198,28 @@ export const SettingsScreen: React.FC = () => {
         </button>
       </div>
 
+      {/* Help & Support — file a ticket, see your tickets */}
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+          <div className="w-7 h-7 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
+            <HelpCircle className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-text-primary">{lang === 'bn' ? 'সাহায্য ও সহায়তা' : 'Help & Support'}</h2>
+            <p className="text-[11px] text-slate-500">{lang === 'bn' ? 'সমস্যা জানান বা সাহায্য চান' : 'Report a problem or ask for help'}</p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setActiveScreen('support')}
+          className="w-full flex items-center justify-between py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-text-primary transition-colors cursor-pointer"
+        >
+          <span>{lang === 'bn' ? 'সাপোর্ট টিকিট খুলুন' : 'Help / Support — open a ticket'}</span>
+          <ChevronRight className="w-4 h-4 text-slate-400" />
+        </button>
+      </div>
+
       {/* Delete my account */}
       <div className="bg-surface rounded-2xl border border-rose-200 p-4 shadow-xs space-y-3">
         <div className="flex items-center gap-2 pb-2 border-b border-slate-100">

@@ -28,6 +28,11 @@ import { DeleteAccountScreen } from './components/screens/DeleteAccountScreen';
 import { CheckCircle2 } from 'lucide-react';
 import { nativeService } from './services/nativeService';
 import { AppUpdateBanner } from './components/AppUpdateBanner';
+import { MaintenanceBanner } from './components/student/MaintenanceBanner';
+import { ForceUpdatePrompt } from './components/student/ForceUpdatePrompt';
+import { NotificationsScreen } from './components/student/NotificationsScreen';
+import { SupportScreen } from './components/student/SupportScreen';
+import { getAppConfig, type AppConfig } from './services/appConfigService';
 import { SplashScreen } from './components/SplashScreen';
 
 /**
@@ -74,6 +79,20 @@ class AppErrorBoundary extends React.Component<
 const AppContent: React.FC = () => {
   const { isLoggedIn, activeScreen, setActiveScreen, toastMessage, accountType, isServerVerifiedAdmin, openNotesSection } = useApp();
   const [showSplash, setShowSplash] = React.useState(true);
+  const [appConfig, setAppConfig] = React.useState<AppConfig | null>(null);
+
+  // App config at boot (public endpoint, no auth): fetched once per
+  // session and cached in the service. Drives the maintenance banner and
+  // the force-update gate; a failed fetch leaves the app as-is.
+  React.useEffect(() => {
+    let cancelled = false;
+    getAppConfig().then(config => {
+      if (!cancelled) setAppConfig(config);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // App-open splash: centred 3D-animated logo for ~1.2s (tappable to skip)
   React.useEffect(() => {
@@ -198,6 +217,12 @@ const AppContent: React.FC = () => {
       {/* Top Mobile Bar */}
       <MobileHeader />
 
+      {/* Server maintenance notice — only when the flag is on */}
+      <MaintenanceBanner config={appConfig} />
+
+      {/* Mandatory update — full-screen, blocks the app when forced */}
+      <ForceUpdatePrompt versionControl={appConfig?.appVersionControl ?? null} />
+
       {/* New APK available — the app checks GitHub Releases itself */}
       <AppUpdateBanner />
 
@@ -216,6 +241,8 @@ const AppContent: React.FC = () => {
         {activeScreen === 'routine' && <ClassRoutineScreen />}
         {activeScreen === 'notes' && <NotesAssignmentsScreen />}
         {activeScreen === 'reminders' && <RemindersScreen />}
+        {activeScreen === 'notifications' && <NotificationsScreen />}
+        {activeScreen === 'support' && <SupportScreen />}
         {activeScreen === 'teachers' && <TeachersContactsScreen />}
         {activeScreen === 'semester' && <SemesterScreen />}
         {activeScreen === 'profile' && <ProfileScreen />}

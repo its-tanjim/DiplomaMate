@@ -1633,6 +1633,94 @@ export async function listCampusNotices(): Promise<CampusNoticeItem[]> {
   return ((data ?? []) as CampusNoticeRow[]).map(toCampusNotice);
 }
 
+/**
+ * CampusNoticeItem -> CampusNoticeRow. Admin extras (status, publishAt,
+ * expiresAt, audience) have NO Postgres columns — the caller only mirrors
+ * notices that are currently visible to students (see
+ * persistNoticeToSupabase in server.ts), so the row needs no status.
+ * 'Urgent' priority maps to 'Important' (the read mapper only preserves
+ * Important/Normal). `created_at` is set on insert only.
+ */
+export function toCampusNoticeRow(notice: CampusNoticeItem): CampusNoticeRow {
+  const nowIso = new Date().toISOString();
+  return {
+    id: notice.id,
+    title: notice.title ?? '',
+    description: notice.description ?? '',
+    publisher_id: notice.publisherId || null,
+    publisher_name: notice.publisherName || null,
+    publisher_role: 'system_admin',
+    publisher_designation: notice.publisherDesignation ?? null,
+    college_id: notice.college_id || null,
+    college: notice.college || null,
+    department_id: notice.department_id || null,
+    department: notice.department || null,
+    semester: typeof notice.semester === 'number' ? notice.semester : null,
+    shift: notice.shift ?? null,
+    section: notice.section ?? null,
+    target_scope: notice.targetScope ?? 'college',
+    // The read mapper only preserves Important/Normal; 'Urgent' maps to
+    // 'Important' so the high-priority signal survives the Postgres mirror
+    // (the student list shows a priority badge).
+    priority: notice.priority === 'Normal' ? 'Normal' : 'Important',
+    is_pinned: Boolean(notice.isPinned),
+    attachment_name: notice.attachmentName ?? null,
+    attachment_url: notice.attachmentUrl ?? null,
+    attachment_type: notice.attachmentType ?? null,
+    expiry_date: notice.expiryDate ? String(notice.expiryDate).slice(0, 10) : null,
+    reports_count: notice.reportsCount ?? 0,
+    published_at: notice.publishedAt || nowIso,
+    updated_at: notice.updatedAt || nowIso,
+  };
+}
+
+export async function insertCampusNotice(notice: CampusNoticeItem): Promise<CampusNoticeItem> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('campus_notices')
+    .insert(toCampusNoticeRow(notice))
+    .select('*')
+    .single();
+  throwIfError(error, 'insertCampusNotice');
+  return toCampusNotice(data as CampusNoticeRow);
+}
+
+/**
+ * Partial update of one campus notice. Returns the mapped notice, or null
+ * when the id has no Postgres row — callers treat null as "insert instead".
+ * Only columns present in `CampusNoticeRow` may be patched.
+ */
+export async function updateCampusNoticeById(
+  id: string,
+  patch: Partial<Omit<CampusNoticeRow, 'id' | 'created_at'>>,
+): Promise<CampusNoticeItem | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('campus_notices')
+    .update(patch)
+    .eq('id', id)
+    .select('*')
+    .maybeSingle();
+  throwIfError(error, 'updateCampusNoticeById');
+  return data ? toCampusNotice(data as CampusNoticeRow) : null;
+}
+
+/**
+ * Delete helper for archived/unpublished admin notices. Returns true when a
+ * Postgres row was deleted, false when Postgres had no row for the id.
+ * Throws on any query error — callers catch and continue with the JSON write.
+ */
+export async function deleteCampusNoticeById(id: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('campus_notices')
+    .delete()
+    .eq('id', id)
+    .select('id');
+  throwIfError(error, 'deleteCampusNoticeById');
+  return (data?.length ?? 0) > 0;
+}
+
 // ---------------------------------------------------------------------------
 // Attendance sheets — replaces the `academicStore.attendanceSheets`
 // reads in GET /api/attendance/sheets and GET /api/attendance/monthly,

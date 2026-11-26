@@ -1657,6 +1657,12 @@ export const NotesAssignmentsScreen: React.FC = () => {
                               </span>
                             )}
 
+                            {cNotice.isPinned && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                Pinned / পিন করা
+                              </span>
+                            )}
+
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700">
                               {cNotice.targetScope === 'college'
                                 ? 'College-Wide'
@@ -2786,6 +2792,11 @@ export const NotesAssignmentsScreen: React.FC = () => {
                     ? 'Class Captain (CR) Notice — Non-Board'
                     : 'College / Faculty Notice — Non-Board'}
                 </span>
+                {selectedCampusNotice.isPinned && (
+                  <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                    Pinned / পিন করা
+                  </span>
+                )}
                 <h3 id="notes-campus-notice-title" className="font-bold text-base text-text-primary mt-1">{selectedCampusNotice.title}</h3>
               </div>
               <button

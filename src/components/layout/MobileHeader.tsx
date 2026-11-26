@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { ShieldCheck, UserCheck, Bell, GraduationCap, Users, BookOpen, Settings } from 'lucide-react';
+import { fetchUnseenBroadcastCount } from '../../services/notificationsService';
 
 export const MobileHeader: React.FC = () => {
   const { 
@@ -9,10 +10,24 @@ export const MobileHeader: React.FC = () => {
     isServerVerifiedAdmin,
     activeScreen, 
     setActiveScreen,
-    reminders
   } = useApp();
 
-  const pendingRemindersCount = reminders.filter(r => !r.isCompleted).length;
+  // Broadcast inbox dot: unseen admin announcements. The bell opens the
+  // Notifications inbox now (Reminders stay on the bottom nav).
+  const [unseenNotifications, setUnseenNotifications] = React.useState(0);
+  React.useEffect(() => {
+    let cancelled = false;
+    fetchUnseenBroadcastCount()
+      .then(count => {
+        if (!cancelled) setUnseenNotifications(count);
+      })
+      .catch(() => {
+        // No dot when the inbox cannot be reached.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeScreen]);
 
   return (
     <header className="dm-header sticky top-0 z-30 border-b shadow-sm no-print">
@@ -118,14 +133,15 @@ export const MobileHeader: React.FC = () => {
             <span className="hidden sm:inline">Book List</span>
           </button>
 
-          {/* Quick Reminders Bell */}
+          {/* Notifications bell — broadcast inbox */}
           <button
-            onClick={() => setActiveScreen('reminders')}
-            className={`min-h-10 min-w-9 p-2 rounded-xl text-white hover:text-white hover:bg-white/15 transition-colors relative flex items-center justify-center ${activeScreen === 'reminders' ? 'bg-white text-brand-navy' : ''}`}
-            aria-label="View Reminders"
+            onClick={() => setActiveScreen('notifications')}
+            className={`min-h-10 min-w-9 p-2 rounded-xl text-white hover:text-white hover:bg-white/15 transition-colors relative flex items-center justify-center ${activeScreen === 'notifications' ? 'bg-white text-brand-navy' : ''}`}
+            aria-label="View Notifications"
+            title="Notifications"
           >
             <Bell aria-hidden="true" className="w-4 h-4" />
-            {pendingRemindersCount > 0 && (
+            {unseenNotifications > 0 && (
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-500" />
             )}
           </button>
