@@ -7607,6 +7607,61 @@ app.post('/api/me/deletion-request', requireAuth, (req: Request, res: Response) 
 });
 
 /**
+ * Update the session's own email address (`PATCH /api/me/email`).
+ * Registration email is optional, so an account created without one has
+ * no way to gain one later without this endpoint — and Google sign-in
+ * links by verified email (resolveSocialStudent), so an email-less
+ * account can never use it. Email only: roll, registration number,
+ * name and college cannot be changed here. The email must be unique
+ * across all student and teacher accounts (case-insensitive) — a
+ * duplicate is a 409, because one email must belong to exactly one
+ * account. Dual-writes to Supabase like the other write routes; a
+ * Postgres failure never blocks the JSON write.
+ */
+app.patch('/api/me/email', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { session: ServerSession }).session;
+    if (session.role !== 'student' && session.role !== 'class_captain' && session.role !== 'teacher') {
+      return res.status(403).json({ success: false, error: 'Forbidden: Only students and teachers can update their email address.' });
+    }
+    const email = String(req.body?.email || '').trim();
+    if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
+    }
+    const normalized = email.toLowerCase();
+    const isTeacher = session.role === 'teacher';
+    const account = isTeacher
+      ? serverTeachers.get(session.userId)
+      : academicStore.students.find(s => s.id === session.userId);
+    if (!account) {
+      return res.status(404).json({ success: false, error: 'Account not found.' });
+    }
+    // No-op when the email is unchanged (case-insensitive).
+    if ((account.email || '').toLowerCase() === normalized) {
+      return res.status(200).json({ success: true, email: account.email || '' });
+    }
+    const takenByStudent = academicStore.students.some(
+      s => s.id !== session.userId && (s.email || '').toLowerCase() === normalized
+    );
+    const takenByTeacher = Array.from(serverTeachers.values()).some(
+      t => t.id !== session.userId && (t.email || '').toLowerCase() === normalized
+    );
+    if (takenByStudent || takenByTeacher) {
+      return res.status(409).json({ success: false, error: 'This email is already linked to another account.' });
+    }
+    account.email = email;
+    session.email = email;
+    appendSystemAudit('email_updated', account.id, account.name, `Email changed to ${email}`, session.userId);
+    saveAcademicStore(academicStore);
+    await persistEmailToSupabase(session.userId, isTeacher, { email }, 'EmailUpdate');
+    return res.status(200).json({ success: true, email });
+  } catch (error) {
+    console.error('Update email error:', error);
+    return res.status(500).json({ success: false, error: 'Could not update your email. Please try again.' });
+  }
+});
+
+/**
  * Admin: list all deletion requests, newest first, with the account's
  * board roll and name snapshot.
  */
@@ -11701,6 +11756,33 @@ async function persistCaptainStudentToSupabase(
     const updated = await updateStudentById(studentId, patch);
     if (!updated) {
       console.warn(`[${logTag}] Student ${studentId} not found in Postgres; captain status kept in JSON store only.`);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Email update dual-write (`PATCH /api/me/email`). Same contract as the
+ * captain persist helpers above: return early when Supabase is
+ * unconfigured, never throw — on any query error log a warning and the
+ * caller carries on with the JSON write. `students.email` exists since
+ * supabase-migration-phase2.sql; `teacher_accounts.email` since
+ * supabase-schema-phase1.sql.
+ */
+async function persistEmailToSupabase(
+  accountId: string,
+  isTeacher: boolean,
+  patch: { email: string },
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const updated = isTeacher
+      ? await updateTeacherById(accountId, patch)
+      : await updateStudentById(accountId, patch);
+    if (!updated) {
+      console.warn(`[${logTag}] Account ${accountId} not found in Postgres; email kept in JSON store only.`);
     }
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);

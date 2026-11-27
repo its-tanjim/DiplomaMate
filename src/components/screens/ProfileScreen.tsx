@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { apiFetch } from '../../services/apiClient';
 import { 
   POLYTECHNIC_COLLEGES, 
   DEPARTMENTS, 
@@ -29,22 +30,81 @@ import {
 } from 'lucide-react';
 
 export const ProfileScreen: React.FC = () => {
-  const { 
-    userProfile, 
-    setUserProfile, 
-    accountType, 
+  const {
+    userProfile,
+    setUserProfile,
+    accountType,
     isServerVerifiedAdmin,
-    logout, 
+    authToken,
+    logout,
     setActiveScreen,
-    showToast 
+    showToast
   } = useApp();
 
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<StudentProfile>(userProfile);
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     // Never allow profile editing to escalate or alter accountType
+    const newEmail = (formData.email || '').trim();
+    const oldEmail = (userProfile.email || '').trim();
+    const emailChanged = newEmail.toLowerCase() !== oldEmail.toLowerCase();
+
+    // Client-side format check before hitting the server.
+    if (emailChanged && newEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      showToast('Please enter a valid email address.');
+      return;
+    }
+
+    if (emailChanged) {
+      // Email is the one profile field that lives on the server (it is
+      // what Google sign-in links by), so a changed email goes through
+      // PATCH /api/me/email. Everything else stays local-only, as before.
+      if (!authToken) {
+        setUserProfile({ ...formData, accountType: userProfile.accountType });
+        setIsEditing(false);
+        showToast('Profile saved on this device. Email could not be saved to the server — please sign in again.');
+        return;
+      }
+      setIsSavingEmail(true);
+      try {
+        const res = await apiFetch('/api/me/email', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ email: newEmail })
+        });
+        const data = await res.json().catch(() => ({} as { error?: string; email?: string }));
+        if (!res.ok) {
+          // Server rejected the email (invalid / already used by another
+          // account): keep the old email and leave the form open so the
+          // user can fix it.
+          showToast(data?.error || 'Could not save your email. Please try again.');
+          return;
+        }
+        setUserProfile({
+          ...formData,
+          email: data.email || newEmail,
+          accountType: userProfile.accountType
+        });
+        setIsEditing(false);
+        showToast('Profile updated successfully!');
+      } catch {
+        // Network failure: keep the new email locally and say the
+        // server save did not happen.
+        setUserProfile({ ...formData, accountType: userProfile.accountType });
+        setIsEditing(false);
+        showToast('Profile saved on this device. Email could not be saved to the server — check your connection and try again.');
+      } finally {
+        setIsSavingEmail(false);
+      }
+      return;
+    }
+
     setUserProfile({
       ...formData,
       accountType: userProfile.accountType
@@ -328,6 +388,18 @@ export const ProfileScreen: React.FC = () => {
             </div>
           </div>
 
+          <div>
+            <label className="block text-xs font-semibold text-text-primary mb-1">Email Address</label>
+            <input
+              type="email"
+              value={formData.email || ''}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="you@gmail.com"
+              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
+            />
+            <p className="text-[11px] text-slate-500 mt-1">Add your Gmail to sign in with Google later. One email can belong to only one account.</p>
+          </div>
+
           <div className="flex gap-2 pt-2 border-t border-slate-100">
             <button
               type="button"
@@ -338,9 +410,10 @@ export const ProfileScreen: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="flex-1 py-2 px-3 rounded-xl bg-brand-blue text-white text-xs font-semibold hover:bg-blue-700 shadow-xs"
+              disabled={isSavingEmail}
+              className="flex-1 py-2 px-3 rounded-xl bg-brand-blue text-white text-xs font-semibold hover:bg-blue-700 shadow-xs disabled:opacity-60"
             >
-              Save Profile Changes
+              {isSavingEmail ? 'Saving…' : 'Save Profile Changes'}
             </button>
           </div>
         </form>
@@ -356,7 +429,7 @@ export const ProfileScreen: React.FC = () => {
                 {userProfile.name}
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                {userProfile.email}
+                {userProfile.email || 'No email added — tap Edit to add your Gmail.'}
               </p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] font-semibold text-brand-blue bg-blue-50 px-2 py-0.5 rounded-md">

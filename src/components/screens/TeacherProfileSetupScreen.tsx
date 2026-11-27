@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
+import { apiFetch } from '../../services/apiClient';
 import { SearchableCollegeSelect } from '../common/SearchableCollegeSelect';
 import { SearchableDepartmentSelect } from '../common/SearchableDepartmentSelect';
 import { CatalogSubjectSelect } from '../common/CatalogSubjectSelect';
@@ -23,11 +24,12 @@ import {
 } from 'lucide-react';
 
 export const TeacherProfileSetupScreen: React.FC = () => {
-  const { 
-    currentTeacherProfile, 
-    updateTeacherProfile, 
-    setActiveScreen, 
-    showToast 
+  const {
+    currentTeacherProfile,
+    updateTeacherProfile,
+    authToken,
+    setActiveScreen,
+    showToast
   } = useApp();
 
   const [name, setName] = useState(currentTeacherProfile?.name || '');
@@ -103,6 +105,34 @@ export const TeacherProfileSetupScreen: React.FC = () => {
       return;
     }
 
+    // Email is the one profile field that lives on the server (it is
+    // what Google sign-in links by); PUT /api/teachers/profile does not
+    // accept it, so a changed email goes through PATCH /api/me/email
+    // first. A 400/409 rejection stops the save so the bad email is not
+    // kept; a network failure carries on with the local save and says so.
+    let emailSyncFailed = false;
+    const oldEmail = (currentTeacherProfile?.email || '').trim();
+    const newEmail = email.trim();
+    if (newEmail.toLowerCase() !== oldEmail.toLowerCase() && authToken) {
+      try {
+        const res = await apiFetch('/api/me/email', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ email: newEmail })
+        });
+        const data = await res.json().catch(() => ({} as { error?: string }));
+        if (!res.ok) {
+          showToast(data?.error || 'Could not save your email. Please try again.');
+          return;
+        }
+      } catch {
+        emailSyncFailed = true;
+      }
+    }
+
     setIsSaving(true);
     try {
       const updatedData: Partial<TeacherProfile> = {
@@ -129,7 +159,11 @@ export const TeacherProfileSetupScreen: React.FC = () => {
         consultingHours
       });
 
-      showToast('Profile setup complete! Welcome to your Teacher Dashboard.');
+      if (emailSyncFailed) {
+        showToast('Profile saved on this device. Email could not be saved to the server — check your connection and try again.');
+      } else {
+        showToast('Profile setup complete! Welcome to your Teacher Dashboard.');
+      }
       setActiveScreen('home');
     } catch (err: any) {
       showToast('Error updating profile: ' + (err.message || 'Server error'));

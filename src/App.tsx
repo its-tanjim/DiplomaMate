@@ -27,6 +27,7 @@ import { TermsScreen } from './components/screens/TermsScreen';
 import { DeleteAccountScreen } from './components/screens/DeleteAccountScreen';
 import { CheckCircle2 } from 'lucide-react';
 import { nativeService } from './services/nativeService';
+import { closeTopmostModal } from './components/common/Modal';
 import { AppUpdateBanner } from './components/AppUpdateBanner';
 import { MaintenanceBanner } from './components/student/MaintenanceBanner';
 import { ForceUpdatePrompt } from './components/student/ForceUpdatePrompt';
@@ -131,16 +132,36 @@ const AppContent: React.FC = () => {
     }
   }, [setActiveScreen, openNotesSection]);
 
-  // Hardware back button behavior for Android devices
+  // Hardware back button behavior for Android devices.
+  // Registered EXACTLY ONCE (empty deps): the old effect re-registered
+  // on every screen change (deps [activeScreen, ...]) while
+  // nativeService never removed the stale listeners, so a stale listener
+  // captured on 'home' kept firing and the app exited from any screen.
+  // The callback reads the CURRENT screen / login state through refs,
+  // never a closure captured at registration time.
+  const activeScreenRef = React.useRef(activeScreen);
+  activeScreenRef.current = activeScreen;
+  const isLoggedInRef = React.useRef(isLoggedIn);
+  isLoggedInRef.current = isLoggedIn;
+  const setActiveScreenRef = React.useRef(setActiveScreen);
+  setActiveScreenRef.current = setActiveScreen;
+
   React.useEffect(() => {
     nativeService.registerBackButtonListener(() => {
-      if (activeScreen !== 'home') {
-        setActiveScreen('home');
-        return true; // handled
+      // A modal is open: close the topmost one, stay on the screen.
+      if (closeTopmostModal()) return true;
+      // Not logged in (welcome / public legal screens): let the OS exit.
+      if (!isLoggedInRef.current) return false;
+      if (activeScreenRef.current !== 'home') {
+        setActiveScreenRef.current('home');
+        return true; // handled — back to home
       }
-      return false; // let Android OS exit or minimize app
+      return false; // on home: let Android OS exit the app
     });
-  }, [activeScreen, setActiveScreen]);
+    return () => nativeService.removeBackButtonListener();
+    // Empty deps on purpose: one registration for the whole app run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // A stale admin session (e.g. restored from a previous version) has no
   // admin UI in this app any more — send it to the separate admin app.

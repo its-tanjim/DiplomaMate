@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import type { PluginListenerHandle } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
@@ -341,25 +342,47 @@ Saved locally on device storage via DiplomaMate for Android.`;
     }
   }
 
+  // The back-button listener is registered at most once per app run.
+  // App.tsx used to re-register it on every screen change (effect deps
+  // [activeScreen, ...]) while App.addListener never removed the old
+  // ones, so stale listeners with stale screen closures kept firing and
+  // the app exited from screens that should have gone home. The
+  // callback reads current state through refs owned by the caller, never
+  // a closure captured at registration time.
+  private backButtonListener: Promise<PluginListenerHandle> | null = null;
+
   /**
-   * Registers Android hardware back button handler
+   * Registers the Android hardware back button handler. Registers at
+   * most once — later calls are no-ops. Use removeBackButtonListener
+   * to unregister (e.g. on unmount).
    */
   registerBackButtonListener(handleBack: () => boolean): void {
     if (!Capacitor.isNativePlatform()) return;
+    if (this.backButtonListener) return;
 
     try {
-      App.addListener('backButton', ({ canGoBack }) => {
+      this.backButtonListener = App.addListener('backButton', () => {
         const handledByApp = handleBack();
         if (!handledByApp) {
-          if (canGoBack) {
-            window.history.back();
-          } else {
-            App.exitApp();
-          }
+          // Navigation is React state, not browser history — there is
+          // nothing to go back to, so the OS exits the app.
+          App.exitApp();
         }
       });
     } catch (err) {
       console.warn('Back button listener error:', err);
+      this.backButtonListener = null;
+    }
+  }
+
+  /** Removes the back-button listener registered above, if any. */
+  removeBackButtonListener(): void {
+    const listener = this.backButtonListener;
+    this.backButtonListener = null;
+    if (listener) {
+      listener.then((handle) => handle.remove()).catch((err) => {
+        console.warn('Back button listener removal error:', err);
+      });
     }
   }
 

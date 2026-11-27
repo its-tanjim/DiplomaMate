@@ -34,6 +34,18 @@ const FOCUSABLE_SELECTOR =
 // Stack of open modal panels (topmost last). Only the topmost modal traps
 // Tab and handles Escape, so stacked modals behave correctly.
 const openPanels: HTMLElement[] = [];
+// Parallel stack of the open modals' close callbacks (topmost last), kept
+// in sync with openPanels. The Android hardware back button closes the
+// topmost modal first via closeTopmostModal() below.
+const openModalClosers: Array<() => void> = [];
+
+/** Close the topmost open modal, if any. Returns true when one was closed. */
+export function closeTopmostModal(): boolean {
+  const closer = openModalClosers[openModalClosers.length - 1];
+  if (!closer) return false;
+  closer();
+  return true;
+}
 let scrollLockCount = 0;
 let savedBodyOverflow = '';
 
@@ -78,6 +90,7 @@ export const Modal: React.FC<ModalProps> = ({
 
     previouslyFocusedRef.current = document.activeElement;
     openPanels.push(panel);
+    openModalClosers.push(onClose);
     if (scrollLockCount === 0) {
       savedBodyOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
@@ -96,6 +109,8 @@ export const Modal: React.FC<ModalProps> = ({
     return () => {
       const index = openPanels.indexOf(panel);
       if (index !== -1) openPanels.splice(index, 1);
+      const closerIndex = openModalClosers.indexOf(onClose);
+      if (closerIndex !== -1) openModalClosers.splice(closerIndex, 1);
       scrollLockCount -= 1;
       if (scrollLockCount === 0) {
         document.body.style.overflow = savedBodyOverflow;
