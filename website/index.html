@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DiplomaMate — BTEB Diploma Students' App</title>
+<meta name="description" content="DiplomaMate is the all-in-one app for BTEB Diploma in Engineering students in Bangladesh — results, routine, community, attendance, notes and more. Free on Android and the web.">
+<meta property="og:title" content="DiplomaMate — BTEB Diploma Students' App">
+<meta property="og:description" content="Results, routine, community, attendance, notes — everything a diploma student needs, in one app.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.diplomamate.online/">
+<meta property="og:image" content="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/public/diploma-mate-logo.png">
+<link rel="icon" href="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/public/diploma-mate-logo.png">
+<style>
+:root{
+  --primary:#3880ff; --primary-dark:#2b6ae0; --secondary:#f7931e;
+  --ink:#0f1e33; --muted:#5a6b84; --line:#e6ecf3; --bg:#f6f9fd; --card:#ffffff;
+  --green:#1faa59; --radius:16px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.6}
+a{color:var(--primary);text-decoration:none}
+img{max-width:100%}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+/* header */
+header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.header-in{display:flex;align-items:center;justify-content:space-between;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;color:var(--ink)}
+.brand img{width:36px;height:36px;border-radius:9px;object-fit:cover}
+nav{display:flex;gap:22px;align-items:center}
+nav a{color:var(--muted);font-weight:600;font-size:14.5px}
+nav a:hover{color:var(--ink)}
+.btn{display:inline-block;background:var(--primary);color:#fff;font-weight:700;padding:11px 22px;border-radius:12px;border:0;cursor:pointer;font-size:15px}
+.btn:hover{background:var(--primary-dark)}
+.btn.ghost{background:#fff;color:var(--primary);border:1.5px solid var(--primary)}
+.btn.orange{background:var(--secondary)}
+.btn.orange:hover{background:#e08615}
+.btn.small{padding:8px 16px;font-size:14px}
+.menu-btn{display:none;background:none;border:0;font-size:26px;cursor:pointer;color:var(--ink)}
+/* hero */
+.hero{padding:72px 0 56px;text-align:center;background:linear-gradient(180deg,#eaf2ff 0%,var(--bg) 100%)}
+.badge{display:inline-block;background:#fff;border:1px solid var(--line);color:var(--primary);font-weight:700;font-size:13px;padding:6px 14px;border-radius:999px;margin-bottom:18px}
+.hero h1{font-size:clamp(32px,5.4vw,54px);line-height:1.12;letter-spacing:-.5px;margin-bottom:14px}
+.hero h1 span{color:var(--primary)}
+.hero .bn{font-size:19px;color:var(--muted);margin-bottom:8px}
+.hero p.sub{font-size:17px;color:var(--muted);max-width:640px;margin:0 auto 28px}
+.cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:22px}
+.live-line{font-size:13.5px;color:var(--muted);display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:1px}
+.dot.grey{background:#9aa8bc}
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:34px 0 8px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px 12px;text-align:center}
+.stat b{display:block;font-size:21px}
+.stat span{font-size:13px;color:var(--muted)}
+/* sections */
+section{padding:56px 0}
+h2{font-size:clamp(24px,3.4vw,32px);letter-spacing:-.4px;margin-bottom:8px;text-align:center}
+.sec-sub{text-align:center;color:var(--muted);max-width:620px;margin:0 auto 34px}
+/* features */
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px 20px}
+.card .ic{font-size:26px;margin-bottom:10px}
+.card h3{font-size:17px;margin-bottom:6px}
+.card p{font-size:14px;color:var(--muted)}
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;counter-reset:step}
+.step{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:24px 20px;position:relative}
+.step .n{width:38px;height:38px;border-radius:50%;background:var(--primary);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.step h3{font-size:17px;margin-bottom:6px}
+.step p{font-size:14px;color:var(--muted)}
+/* download */
+.dl{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.dl-card{background:var(--ink);color:#fff;border-radius:var(--radius);padding:28px}
+.dl-card.light{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.dl-card h3{font-size:20px;margin-bottom:8px}
+.dl-card p{font-size:14.5px;opacity:.85;margin-bottom:16px}
+.dl-card.light p{color:var(--muted);opacity:1}
+.dl-card .ver{font-size:13px;opacity:.75;margin-top:14px}
+ol.howto{margin:0 0 0 18px;font-size:14.5px;opacity:.9}
+ol.howto li{margin-bottom:6px}
+/* results note */
+.note{background:#fff8ec;border:1px solid #f5dfae;border-radius:var(--radius);padding:20px 22px;font-size:14.5px;color:#6b4d0f}
+/* faq */
+.faq{max-width:720px;margin:0 auto}
+.faq details{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin-bottom:10px}
+.faq summary{font-weight:700;cursor:pointer;font-size:15.5px}
+.faq p{font-size:14.5px;color:var(--muted);margin-top:8px}
+/* footer */
+footer{background:var(--ink);color:#c6d2e2;padding:44px 0 28px;margin-top:20px}
+footer .cols{display:grid;grid-template-columns:2fr 1fr 1fr;gap:28px;margin-bottom:28px}
+footer h4{color:#fff;font-size:15px;margin-bottom:10px}
+footer a{color:#c6d2e2;font-size:14px;display:block;margin-bottom:7px}
+footer a:hover{color:#fff}
+footer p{font-size:14px}
+footer .bottom{border-top:1px solid #22344d;padding-top:18px;font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+@media(max-width:820px){
+  .grid{grid-template-columns:repeat(2,1fr)}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .steps{grid-template-columns:1fr}
+  .dl{grid-template-columns:1fr}
+  nav{display:none;position:absolute;top:64px;left:0;right:0;background:#fff;flex-direction:column;align-items:flex-start;padding:14px 20px;border-bottom:1px solid var(--line);gap:14px}
+  nav.open{display:flex}
+  .menu-btn{display:block}
+  footer .cols{grid-template-columns:1fr}
+  section{padding:42px 0}
+  .hero{padding:52px 0 40px}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap header-in">
+    <a class="brand" href="#top"><img src="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/public/diploma-mate-logo.png" alt="DiplomaMate logo">DiplomaMate</a>
+    <button class="menu-btn" id="menuBtn" aria-label="Menu">&#9776;</button>
+    <nav id="mainNav">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#download">Download</a>
+      <a href="#faq">FAQ</a>
+      <a class="btn small" href="https://diplomamate.online/">Open App</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="hero">
+    <div class="wrap">
+      <span class="badge">Made for BTEB Diploma in Engineering students</span>
+      <h1>Everything a diploma student needs.<br><span>In one app.</span></h1>
+      <p class="bn">ডিপ্লোমা শিক্ষার্থীদের সবকিছু — এক অ্যাপে।</p>
+      <p class="sub">Results, class routine, community, attendance, notes, jobs and notices — DiplomaMate keeps your whole polytechnic life in one place. Free on Android and the web.</p>
+      <div class="cta-row">
+        <a class="btn orange" id="apkBtn" href="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.32-debug.apk">Download APK</a>
+        <a class="btn" href="https://diplomamate.online/">Open Web App</a>
+      </div>
+      <div class="live-line">
+        <span><span class="dot grey" id="statusDot"></span><span id="statusText">Checking server…</span></span>
+        <span>Latest version: <b id="verLabel">v1.0.32</b></span>
+        <span>Android 9+ &middot; Web &middot; PWA</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat"><b>100% Free</b><span>No fees, no ads</span></div>
+      <div class="stat"><b>All Technologies</b><span>CST, EEE, ME &amp; more</span></div>
+      <div class="stat"><b>Bangla + English</b><span>Use it your way</span></div>
+      <div class="stat"><b>Android &amp; Web</b><span>Phone or computer</span></div>
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <h2>What you can do</h2>
+      <p class="sec-sub">One account, one app — your study life, organised.</p>
+      <div class="grid">
+        <div class="card"><div class="ic">🎓</div><h3>BTEB Results</h3><p>Check your Diploma in Engineering results — individual roll or full gazette, fast and clearly.</p></div>
+        <div class="card"><div class="ic">🗓️</div><h3>Class Routine</h3><p>Your semester routine, period by period — always up to date with your shift and section.</p></div>
+        <div class="card"><div class="ic">👥</div><h3>Community</h3><p>Join your class community, chat with classmates and stay close to your batch.</p></div>
+        <div class="card"><div class="ic">✅</div><h3>Attendance</h3><p>Teachers take attendance in the app; students can see their own record anytime.</p></div>
+        <div class="card"><div class="ic">📚</div><h3>Notes &amp; Assignments</h3><p>Study notes, PDFs and assignments — uploaded by teachers, always with you.</p></div>
+        <div class="card"><div class="ic">🧮</div><h3>CGPA Calculator</h3><p>Calculate your semester GPA and CGPA from your real subject grades.</p></div>
+        <div class="card"><div class="ic">💼</div><h3>Jobs</h3><p>Diploma-level job posts from trusted sources, with real apply links.</p></div>
+        <div class="card"><div class="ic">🔔</div><h3>Notices</h3><p>College notices and announcements reach you in the app — no more missing news.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how" style="background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+    <div class="wrap">
+      <h2>How it works</h2>
+      <p class="sec-sub">Three steps — two minutes — and you are in.</p>
+      <div class="steps">
+        <div class="step"><div class="n">1</div><h3>Get the app</h3><p>Download the APK for Android, or just open the web app — no install needed on computer or iPhone.</p></div>
+        <div class="step"><div class="n">2</div><h3>Register</h3><p>Sign up with your Board Roll and Registration Number, then set your own PIN. You can also continue with Google.</p></div>
+        <div class="step"><div class="n">3</div><h3>Explore</h3><p>See your routine, results, community and notices — everything for your semester, in one place.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap">
+      <h2>Download DiplomaMate</h2>
+      <p class="sec-sub">Free forever. Your account works on the app and the website — same data, everywhere.</p>
+      <div class="dl">
+        <div class="dl-card">
+          <h3>📱 Android App</h3>
+          <p>Full DiplomaMate experience on your phone. Install the APK directly — no Play Store needed.</p>
+          <a class="btn orange" id="apkBtn2" href="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.32-debug.apk">Download APK</a>
+          <p class="ver" id="apkVer">Latest version: v1.0.32 &middot; Android 9 or newer</p>
+          <ol class="howto" style="margin-top:14px">
+            <li>Tap Download APK</li>
+            <li>Open the downloaded file</li>
+            <li>Tap Install — done</li>
+          </ol>
+        </div>
+        <div class="dl-card light">
+          <h3>🌐 Web App — no install</h3>
+          <p>Use DiplomaMate in your browser on any device. On iPhone, tap Share &gt; Add to Home Screen to install it as an app.</p>
+          <a class="btn" href="https://diplomamate.online/">Open diplomamate.online</a>
+          <p class="ver">Same account, same data as the Android app.</p>
+        </div>
+      </div>
+      <div class="note" style="margin-top:16px">
+        <b>About results:</b> BTEB results on DiplomaMate come from <b>BTEB Result Zone</b> and the <b>Official BTEB</b> portal (result.bteb.gov.bd). Result Zone and the official portal are different sites — we credit each one where its results appear.
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" style="padding-top:20px">
+    <div class="wrap">
+      <h2>Questions</h2>
+      <p class="sec-sub">The short answers.</p>
+      <div class="faq">
+        <details><summary>Is DiplomaMate really free?</summary><p>Yes — free for students. There are no fees inside the app.</p></details>
+        <details><summary>Which phones does it work on?</summary><p>Android 9 and newer. On iPhone and computer, use the web app at diplomamate.online — it works in the browser and can be added to the home screen.</p></details>
+        <details><summary>Do I need an account?</summary><p>Yes — register once with your Board Roll and Registration Number, then set a PIN. Your account, routine and community stay saved, on the app and the website.</p></details>
+        <details><summary>Where do the results come from?</summary><p>From BTEB Result Zone and the Official BTEB portal. DiplomaMate shows them clearly and credits the source — it does not publish its own results.</p></details>
+        <details><summary>Is my data safe?</summary><p>Your data lives in a secure database, and you can delete your account anytime from Settings in the app, or from the delete-account page linked below.</p></details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <h4>DiplomaMate</h4>
+        <p>The all-in-one app for BTEB Diploma in Engineering students in Bangladesh.</p>
+        <p style="margin-top:10px">Operated by Tanjim Khan<br>Contact: <a href="mailto:its.tanjim.06@gmail.com" style="display:inline">its.tanjim.06@gmail.com</a></p>
+      </div>
+      <div>
+        <h4>App</h4>
+        <a href="https://diplomamate.online/">Open Web App</a>
+        <a href="https://admin.diplomamate.online/">Admin Panel</a>
+        <a id="apkFoot" href="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.32-debug.apk">Download APK</a>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <a href="https://diplomamate.online/privacy">Privacy Policy</a>
+        <a href="https://diplomamate.online/terms">Terms of Service</a>
+        <a href="https://diplomamate.online/delete-account">Delete My Account</a>
+      </div>
+    </div>
+    <div class="bottom">
+      <span>&copy; <span id="year">2026</span> DiplomaMate. All rights reserved.</span>
+      <span>Results: BTEB Result Zone &middot; Official BTEB</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var API = 'https://api.diplomamate.online';
+  var FALLBACK_APK = 'https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.32-debug.apk';
+  var FALLBACK_VER = 'v1.0.32';
+  document.getElementById('year').textContent = new Date().getFullYear();
+  var menuBtn = document.getElementById('menuBtn');
+  var nav = document.getElementById('mainNav');
+  if (menuBtn && nav) { menuBtn.addEventListener('click', function(){ nav.classList.toggle('open'); }); }
+  function setApk(url, ver){
+    ['apkBtn','apkBtn2','apkFoot'].forEach(function(id){ var el = document.getElementById(id); if (el) el.href = url; });
+    var v = document.getElementById('verLabel'); if (v) v.textContent = ver;
+    var av = document.getElementById('apkVer'); if (av) av.textContent = 'Latest version: ' + ver + ' \u00b7 Android 9 or newer';
+  }
+  function setStatus(ok, text){
+    var d = document.getElementById('statusDot'); if (d) d.className = 'dot' + (ok ? '' : ' grey');
+    var t = document.getElementById('statusText'); if (t) t.textContent = text;
+  }
+  // Latest version + APK link (same source the in-app updater uses)
+  fetch('https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/latest.json', {cache: 'no-store'})
+    .then(function(r){ if(!r.ok) throw new Error('bad'); return r.json(); })
+    .then(function(j){ if (j && j.downloadUrl && j.tag) setApk(j.downloadUrl, j.tag); })
+    .catch(function(){ setApk(FALLBACK_APK, FALLBACK_VER); });
+  // Live server status (same API + database the app uses — one source of truth)
+  var ctl = ('AbortController' in window) ? new AbortController() : null;
+  var timer = null;
+  if (ctl) { timer = setTimeout(function(){ try { ctl.abort(); } catch(e){} }, 9000); }
+  fetch(API + '/api/admin/pin-status', {signal: ctl ? ctl.signal : undefined, cache: 'no-store'})
+    .then(function(r){ if (timer) clearTimeout(timer); if(!r.ok) throw new Error('bad'); return r.json(); })
+    .then(function(){ setStatus(true, 'Server online'); })
+    .catch(function(){ if (timer) clearTimeout(timer); setStatus(false, 'Server status unknown'); });
+})();
+</script>
+</body>
+</html>
