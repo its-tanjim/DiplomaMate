@@ -10,9 +10,10 @@
  *
  * Student/teacher screens are unreachable here by construction: this
  * file never imports them, and the admin entry (`src/admin-main.tsx`)
- * never imports `src/App.tsx`. No update checker runs here either —
- * AppUpdateBanner and the Settings "Check for Update" row live only in
- * the main app, so the admin build can never offer the main-app APK.
+ * never imports `src/App.tsx`. The admin build has its OWN update
+ * checker (AdminUpdateBanner, v1.0.24) — it reads
+ * releases/admin-latest.json and offers only the ADMIN apk, never the
+ * main-app APK.
  *
  * LanguageProvider is intentionally NOT used here (see
  * `src/config/buildMode.ts`): no admin screen uses `useLanguage`, and
@@ -25,6 +26,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { SplashScreen } from './components/SplashScreen';
 import { AdminLoginScreen } from './components/screens/AdminLoginScreen';
 import { AdminPortalScreen } from './components/screens/AdminPortalScreen';
+import { AdminUpdateBanner } from './components/AdminUpdateBanner';
 import { CheckCircle2 } from 'lucide-react';
 import { nativeService } from './services/nativeService';
 
@@ -103,6 +105,7 @@ const AdminAppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-app-bg">
+      {hasVerifiedAdminSession && <AdminUpdateBanner />}
       {hasVerifiedAdminSession ? <AdminPortalScreen /> : <AdminLoginScreen />}
       {toastMessage && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-text-primary text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-150">

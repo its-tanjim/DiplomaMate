@@ -15,7 +15,13 @@ import {
   primaryBtnCls,
   useAdminRequest,
 } from './shared';
-import { RefreshCw, Smartphone } from 'lucide-react';
+import { RefreshCw, Smartphone, Download } from 'lucide-react';
+import {
+  currentAdminVersionLabel,
+  fetchLatestAdminRelease,
+  type AdminUpdateInfo
+} from '../../services/adminAppUpdateService';
+import { nativeService } from '../../services/nativeService';
 
 type VersionControl = {
   minVersionCode: number;
@@ -39,6 +45,43 @@ export const AdminVersionSection: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Admin app self-update (v1.0.24): the manual "Check for Update" for
+  // THIS admin app — reads releases/admin-latest.json, never the
+  // main-app release. The banner in AdminApp does the same check
+  // automatically once a day on native.
+  const [checkingAdminUpdate, setCheckingAdminUpdate] = useState(false);
+  const [adminUpdate, setAdminUpdate] = useState<AdminUpdateInfo | null>(null);
+  const [adminCheckMessage, setAdminCheckMessage] = useState('');
+
+  const checkAdminUpdate = async () => {
+    setCheckingAdminUpdate(true);
+    setAdminCheckMessage('');
+    try {
+      const info = await fetchLatestAdminRelease();
+      if (!info) {
+        setAdminCheckMessage('Could not check for updates right now. Please retry.');
+        return;
+      }
+      setAdminUpdate(info);
+      setAdminCheckMessage(
+        info.available
+          ? `Admin update available — ${info.tag}.`
+          : `You are on the latest admin version (${currentAdminVersionLabel()}).`
+      );
+    } finally {
+      setCheckingAdminUpdate(false);
+    }
+  };
+
+  const downloadAdminUpdate = async () => {
+    if (!adminUpdate?.downloadUrl) return;
+    try {
+      await nativeService.openExternalUrl(adminUpdate.downloadUrl);
+    } catch {
+      window.open(adminUpdate.downloadUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,6 +137,40 @@ export const AdminVersionSection: React.FC = () => {
     <div className="space-y-3">
       {error && <AdminError message={error} onDismiss={() => setError('')} />}
       {success && <AdminSuccess message={success} />}
+      <AdminCard>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-slate-800">Admin app update</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              This admin app is {currentAdminVersionLabel()}. A newer admin build shows a banner on login, like the main app.
+            </p>
+            {adminCheckMessage && (
+              <p className="text-[11px] font-semibold text-slate-700 mt-1.5">{adminCheckMessage}</p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void checkAdminUpdate()}
+              disabled={checkingAdminUpdate}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
+              {checkingAdminUpdate ? 'Checking…' : 'Check for Update'}
+            </button>
+            {adminUpdate?.available && adminUpdate.downloadUrl && (
+              <button
+                type="button"
+                onClick={() => void downloadAdminUpdate()}
+                className={primaryBtnCls}
+              >
+                <Download aria-hidden="true" className="h-3.5 w-3.5" />
+                Download Update
+              </button>
+            )}
+          </div>
+        </div>
+      </AdminCard>
       <AdminSectionTitle
         title="Force update"
         subtitle="Apps below the minimum version code are forced to update. The latest version is what the in-app update checker offers."
