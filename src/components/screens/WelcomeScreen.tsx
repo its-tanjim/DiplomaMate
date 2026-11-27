@@ -7,8 +7,10 @@ import { TurnstileWidget, isTurnstileEnabled } from '../TurnstileWidget';
 import {
   renderGoogleButton,
   signInWithFacebook,
+  signInWithGoogleNative,
   isGoogleSignInEnabled,
-  isFacebookSignInEnabled
+  isFacebookSignInEnabled,
+  isNativePlatform
 } from '../../services/socialAuth';
 import { 
   POLYTECHNIC_COLLEGES,
@@ -335,9 +337,30 @@ export const WelcomeScreen: React.FC = () => {
     }
   };
 
+  // Native Google sign-in (Android APK only) — the web GIS button cannot
+  // run inside the app (origin_mismatch on https://localhost).
+  const handleGoogleNativeLogin = async () => {
+    setSignInError('');
+    setSocialLoading(true);
+    try {
+      const idToken = await signInWithGoogleNative();
+      const role = selectedRole === 'class_captain' ? 'class_captain' : 'student';
+      const result = await socialLogin('google', idToken, role);
+      if (!result.success) {
+        setSignInError(result.message);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      // A cancelled account picker is not an error worth showing.
+      if (msg && !/cancel/i.test(msg)) setSignInError(msg);
+    } finally {
+      setSocialLoading(false);
+    }
+  };
+
   // Render the official Google button when it is configured and visible.
   useEffect(() => {
-    if (tab !== 'signin' || selectedRole === 'teacher' || !isGoogleSignInEnabled) return;
+    if (tab !== 'signin' || selectedRole === 'teacher' || !isGoogleSignInEnabled || isNativePlatform) return;
     const container = googleButtonRef.current;
     if (!container) return;
     let cancelled = false;
@@ -936,7 +959,26 @@ export const WelcomeScreen: React.FC = () => {
                   </div>
                   <div className="space-y-2.5">
                     {isGoogleSignInEnabled && (
-                      <div ref={googleButtonRef} className="flex justify-center [&>div]:w-full [&>div]:flex [&>div]:justify-center" />
+                      isNativePlatform ? (
+                        <button
+                          type="button"
+                          onClick={handleGoogleNativeLogin}
+                          disabled={socialLoading}
+                          className="w-full py-2.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold shadow-sm flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-60"
+                        >
+                          {socialLoading ? <LiquidFillLoader size={18} /> : (
+                            <svg className="w-4 h-4" viewBox="0 0 48 48" aria-hidden="true">
+                              <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303C33.654,32.657,29.223,36,24,36c-6.627,0-12-5.373-12-12s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z" />
+                              <path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z" />
+                              <path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z" />
+                              <path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z" />
+                            </svg>
+                          )}
+                          <span>{t('welcome.continueGoogle')}</span>
+                        </button>
+                      ) : (
+                        <div ref={googleButtonRef} className="flex justify-center [&>div]:w-full [&>div]:flex [&>div]:justify-center" />
+                      )
                     )}
                     {isFacebookSignInEnabled && (
                       <button
