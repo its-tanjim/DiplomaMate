@@ -1347,11 +1347,18 @@ export async function insertStudent(student: EnrolledStudent): Promise<EnrolledS
     // New registrations carry no subjects (they are chosen later in
     // Profile → Edit Profile); null until PATCH /api/me/profile writes.
     enrolled_subjects: student.enrolledSubjects?.length ? student.enrolledSubjects : null,
-    // New registrations carry no profile-extension fields either; null
-    // until PATCH /api/me/profile writes them (audit batch v1.0.29).
-    academic_session: null,
-    regulation: null,
-    notification_preferences: null,
+    // Profile-extension fields ride on the record (same pattern as
+    // consent above). New registrations carry none, but the backfill
+    // re-inserts existing accounts — hardcoding null here would wipe a
+    // saved session/regulation from Postgres on every backfill
+    // (profile-reset bug, v1.0.33).
+    academic_session:
+      (student as EnrolledStudent & { session?: string }).session ?? null,
+    regulation:
+      (student as EnrolledStudent & { regulation?: '2016' | '2022' }).regulation ?? null,
+    notification_preferences:
+      (student as EnrolledStudent & { notifications?: Record<string, unknown> }).notifications ??
+      null,
     failed_pin_attempts: 0,
     lockout_until: null,
     is_registered_account: student.isRegisteredAccount ?? false,
@@ -1389,6 +1396,26 @@ export async function insertStudent(student: EnrolledStudent): Promise<EnrolledS
       ...rowWithoutConsent
     } = insertRow;
     insertRow = rowWithoutConsent;
+    ({ data, error } = await client.from('students').insert(insertRow).select('*').single());
+  }
+  if (
+    error &&
+    (isMissingColumnError(error, 'academic_session') ||
+      isMissingColumnError(error, 'regulation') ||
+      isMissingColumnError(error, 'notification_preferences') ||
+      isMissingColumnError(error, 'enrolled_subjects'))
+  ) {
+    // Audit-batch / enrolled-subjects ALTERs not run yet: retry without
+    // the profile-extension columns so the insert still lands; the
+    // values then stay JSON-store only until the SQL runs (v1.0.33).
+    const {
+      academic_session: _droppedSession,
+      regulation: _droppedRegulation,
+      notification_preferences: _droppedNotifications,
+      enrolled_subjects: _droppedSubjects,
+      ...rowWithoutProfile
+    } = insertRow;
+    insertRow = rowWithoutProfile;
     ({ data, error } = await client.from('students').insert(insertRow).select('*').single());
   }
   throwIfError(error, 'insertStudent');

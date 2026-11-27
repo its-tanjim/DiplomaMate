@@ -1445,7 +1445,7 @@ function getStudentProfileExtension(student: EnrolledStudent): StudentProfileExt
 // The app's academic-session options (src/data/mockData.ts SESSIONS).
 // Kept as a server-side copy so PATCH /api/me/profile can validate
 // without importing client data.
-const PROFILE_SESSIONS = ['2021-2022', '2022-2023', '2023-2024', '2024-2025'];
+const PROFILE_SESSIONS = ['2021-2022', '2022-2023', '2023-2024', '2024-2025', '2025-2026'];
 
 // Loose Bangladesh phone check: optional leading +, then 10–15 digits
 // (01XXXXXXXXX, +8801XXXXXXXXX, landlines). Spaces/dashes are ignored.

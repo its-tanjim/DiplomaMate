@@ -94,6 +94,16 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Which criteria the currently shown `records` were fetched for.
+  // Empty until the first catalog fetch completes. The "reset
+  // incompatible selections" effect below must only run against records
+  // that actually belong to the current criteria: on mount records is
+  // still [] while the fetch is in flight (and `loading` is still false
+  // in that render's closure), so validating then would wipe the user's
+  // saved selection — and a save would persist the wipe server-side.
+  // Profile-reset bug, fixed in v1.0.33.
+  const loadedCriteriaRef = useRef<string>('');
+
   const handleRegulationChange = (reg: CatalogRegulation) => {
     setInternalRegulation(reg);
     if (onRegulationChange) {
@@ -136,6 +146,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
         const data = await res.json();
         if (!cancelled && res.ok && Array.isArray(data.records)) {
           setRecords(data.records);
+          loadedCriteriaRef.current = `${resolvedTech.id}|${activeRegulation}|${semesterKey}`;
         }
       } catch {
         // Strict local fallback using starter catalog (never invents or falls back to other semesters/regulations)
@@ -150,6 +161,7 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
               semSet.has(r.semester)
           );
           setRecords(filtered);
+          loadedCriteriaRef.current = `${resolvedTech.id}|${activeRegulation}|${semesterKey}`;
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -185,7 +197,11 @@ export const CatalogSubjectSelect: React.FC<CatalogSubjectSelectProps> = ({
     }
     prevCriteriaRef.current = currentCriteria;
 
-    if (!manualMode && hasCompleteCriteria) {
+    // Only validate against records fetched for THESE criteria. Before
+    // the first load (or while a new criteria's fetch is still in
+    // flight) records belong to nothing / the old criteria, and wiping
+    // then would discard a valid saved selection (v1.0.33).
+    if (!manualMode && hasCompleteCriteria && loadedCriteriaRef.current === currentCriteria) {
       if (records.length > 0) {
         // Validate single selection compatibility
         if (!isMulti && selectedCode && onSelect) {
