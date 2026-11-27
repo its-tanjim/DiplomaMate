@@ -195,6 +195,20 @@ export interface UploadedRoutineDocument {
   semester?: SemesterNumber | null;
   shift?: Shift;
   section?: Section;
+  // Server record (POST /api/routines/documents): the id becomes the
+  // server id and downloadUrl fetches the stored bytes back.
+  downloadUrl?: string;
+  sizeBytes?: number;
+}
+
+// Server-side routine document record (GET /api/routines/documents).
+export interface ServerRoutineDocument {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+  downloadUrl: string;
 }
 
 export interface NoteItem {

@@ -85,6 +85,7 @@ export const CommunityScreen: React.FC = () => {
 
   // Message compose state
   const [newMsgContent, setNewMsgContent] = useState('');
+  const [pinOnSend, setPinOnSend] = useState(false);
   const [attachment, setAttachment] = useState<{
     file: File | null;
     fileName: string;
@@ -94,6 +95,67 @@ export const CommunityScreen: React.FC = () => {
     base64Data?: string;
   } | null>(null);
   const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
+
+  // B8 — per-community unsent draft (localStorage
+  // `diplomamate_draft_<communityId>`): text + staged attachment
+  // metadata only (name/type/size — never base64 bytes, to respect the
+  // ~5 MB quota). Restored on entering the community, cleared on a
+  // successful send. A restored attachment has no bytes, so it is shown
+  // as staged metadata only and is not uploaded — re-attach to send it.
+  const draftKeyFor = (communityId: string) => `diplomamate_draft_${communityId}`;
+  const loadingDraftRef = useRef(false);
+
+  useEffect(() => {
+    if (!selectedCommunity) return;
+    loadingDraftRef.current = true;
+    try {
+      const raw = localStorage.getItem(draftKeyFor(selectedCommunity.id));
+      if (raw) {
+        const draft = JSON.parse(raw) as {
+          content?: string;
+          pinOnSend?: boolean;
+          attachment?: { fileName: string; fileType: 'document' | 'pdf' | 'image' | 'video'; fileSize: number } | null;
+        };
+        setNewMsgContent(draft.content || '');
+        setPinOnSend(Boolean(draft.pinOnSend));
+        setAttachment(
+          draft.attachment
+            ? { file: null, fileName: draft.attachment.fileName, fileType: draft.attachment.fileType, fileSize: draft.attachment.fileSize }
+            : null
+        );
+      } else {
+        setNewMsgContent('');
+        setPinOnSend(false);
+        setAttachment(null);
+      }
+    } catch {
+      // ignore corrupt drafts
+    }
+    // The save effect below skips its first run after a load (see
+    // loadingDraftRef), so the restored draft is not overwritten.
+  }, [selectedCommunity]);
+
+  useEffect(() => {
+    if (!selectedCommunity) return;
+    if (loadingDraftRef.current) {
+      loadingDraftRef.current = false;
+      return;
+    }
+    try {
+      localStorage.setItem(
+        draftKeyFor(selectedCommunity.id),
+        JSON.stringify({
+          content: newMsgContent,
+          pinOnSend,
+          attachment: attachment
+            ? { fileName: attachment.fileName, fileType: attachment.fileType, fileSize: attachment.fileSize }
+            : null
+        })
+      );
+    } catch {
+      // Quota/full storage: the in-memory draft still works this session.
+    }
+  }, [selectedCommunity, newMsgContent, attachment, pinOnSend]);
 
   // Search & filter inside room
   const [searchQuery, setSearchQuery] = useState('');
@@ -252,6 +314,34 @@ export const CommunityScreen: React.FC = () => {
     }
   };
 
+  // Room-level moderator (teacher / admin / community owner-moderator):
+  // only these roles may pin a message at send time (B-minor).
+  const isRoomModerator =
+    accountType === 'teacher' ||
+    accountType === 'system_admin' ||
+    (selectedCommunity
+      ? userMemberships[selectedCommunity.id]?.membership_role === 'moderator' ||
+        userMemberships[selectedCommunity.id]?.membership_role === 'owner'
+      : false);
+
+  // Measure a video's real duration from a temp <video> element before
+  // send (B-minor): the old code always sent 30s.
+  const measureVideoDuration = (file: File): Promise<number> =>
+    new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(url);
+        resolve(video.duration);
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Could not read video duration.'));
+      };
+      video.src = url;
+    });
+
   useEffect(() => {
     if (selectedCommunity) {
       loadMessages(selectedCommunity.id);
@@ -367,19 +457,34 @@ export const CommunityScreen: React.FC = () => {
     }
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const base64Data = reader.result as string;
       const fileType: 'video' | 'pdf' | 'document' | 'image' = isVideo
         ? 'video'
         : isImage
           ? 'image'
           : (file.type === 'application/pdf' || file.name.endsWith('.pdf')) ? 'pdf' : 'document';
-      
+
+      // Video: measure the real duration instead of assuming 30s. If
+      // the measurement fails, leave it unset rather than lying.
+      let durationSeconds: number | undefined;
+      if (isVideo) {
+        try {
+          const measured = await measureVideoDuration(file);
+          if (Number.isFinite(measured) && measured > 0) {
+            durationSeconds = Math.round(measured);
+          }
+        } catch {
+          durationSeconds = undefined;
+        }
+      }
+
       setAttachment({
         file,
         fileName: file.name,
         fileType,
         fileSize: file.size,
+        durationSeconds,
         base64Data
       });
     };
@@ -396,7 +501,10 @@ export const CommunityScreen: React.FC = () => {
     setErrorMsg(null);
     try {
       const payload: any = {
-        content: newMsgContent.trim()
+        content: newMsgContent.trim(),
+        // Moderators may pin at send time (B-minor): the server honours
+        // body.is_pinned. Non-moderators never send it.
+        ...(isRoomModerator && pinOnSend ? { is_pinned: true } : {})
       };
 
       if (attachment && attachment.base64Data) {
@@ -411,7 +519,7 @@ export const CommunityScreen: React.FC = () => {
             // upload working with old and new server builds.
             file_url: attachment.base64Data,
             base64_data: attachment.base64Data,
-            duration_seconds: attachment.durationSeconds || (attachment.fileType === 'video' ? 30 : undefined)
+            duration_seconds: attachment.durationSeconds
           }
         ];
       }
@@ -426,6 +534,12 @@ export const CommunityScreen: React.FC = () => {
         setMessages(prev => [...prev, data.message]);
         setNewMsgContent('');
         setAttachment(null);
+        setPinOnSend(false);
+        try {
+          localStorage.removeItem(draftKeyFor(selectedCommunity.id));
+        } catch {
+          // ignore storage errors
+        }
         if (fileInputRef.current) fileInputRef.current.value = '';
       } else {
         setErrorMsg(data.error || 'Failed to post message.');
@@ -1021,6 +1135,23 @@ export const CommunityScreen: React.FC = () => {
               onChange={e => setNewMsgContent(e.target.value)}
               className="flex-1 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-brand-blue focus:bg-surface transition-colors"
             />
+
+            {/* Pin at send time (moderators only) */}
+            {isRoomModerator && (
+              <button
+                type="button"
+                onClick={() => setPinOnSend(prev => !prev)}
+                aria-pressed={pinOnSend}
+                title={pinOnSend ? 'Pinned — this message will be pinned when sent' : 'Pin this message when sent'}
+                className={`p-2.5 rounded-xl border transition-colors cursor-pointer shrink-0 ${
+                  pinOnSend
+                    ? 'bg-amber-100 border-amber-300 text-amber-700'
+                    : 'border-slate-200 text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                <Pin aria-hidden="true" className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Send Button */}
             <button

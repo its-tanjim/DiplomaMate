@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
+import { apiFetch } from '../../services/apiClient';
 import { 
   WeekDay, 
   Shift, 
@@ -72,6 +73,8 @@ export const ClassRoutineScreen: React.FC = () => {
     selectedSection,
     setSelectedSection,
     uploadedRoutines,
+    routineDocuments,
+    loadRoutineDocuments,
     uploadRoutineDocument,
     analyzeRoutineOCR,
     saveConfirmedRoutine,
@@ -109,6 +112,27 @@ export const ClassRoutineScreen: React.FC = () => {
   const [extractedPeriods, setExtractedPeriods] = useState<RoutinePeriod[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [selectedOriginalDoc, setSelectedOriginalDoc] = useState<UploadedRoutineDocument | null>(null);
+
+  // B3: server-side routine documents list (GET /api/routines/documents).
+  useEffect(() => {
+    void loadRoutineDocuments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleDownloadRoutineDocument = async (docId: string, fileName: string, downloadUrl: string) => {
+    try {
+      const res = await apiFetch(downloadUrl);
+      if (!res.ok) {
+        showToast('Could not download this routine file.');
+        return;
+      }
+      const blob = await res.blob();
+      const ok = await nativeService.downloadBlob(blob, fileName);
+      if (!ok) showToast('Could not download this routine file.');
+    } catch {
+      showToast('Could not download this routine file — check your connection.');
+    }
+  };
 
   const [routineTechnology, setRoutineTechnology] = useState<string>(userProfile.department);
   const [routineRegulation, setRoutineRegulation] = useState<CatalogRegulation>(userProfile.regulation || '2022');
@@ -378,7 +402,18 @@ export const ClassRoutineScreen: React.FC = () => {
       }
 
       const fileType = prepared.fileCategory === 'PDF' ? 'PDF' : 'IMAGE';
-      const doc = uploadRoutineDocument(prepared.fileName, fileType, prepared.dataUrl);
+      // B3: the upload goes to the server first (POST
+      // /api/routines/documents). A failed upload returns null with an
+      // error toast — the OCR flow aborts instead of scanning a file
+      // the server never stored. The displayed cohort is sent so the
+      // server can validate it (teachers must target a cohort
+      // explicitly — their session carries none).
+      const doc = await uploadRoutineDocument(prepared.fileName, fileType, prepared.dataUrl, {
+        semester: routineSemester,
+        shift: selectedShift,
+        section: selectedSection
+      });
+      if (!doc) return;
       setPendingDocId(doc.id);
       setPendingDocObject(doc);
       setOcrProcessing(false);
@@ -587,6 +622,34 @@ export const ClassRoutineScreen: React.FC = () => {
                 style={{ width: `${Math.min(100, Math.max(0, ocrProgress))}%` }}
               />
             </div>
+          </div>
+        )}
+
+        {/* Uploaded routine documents (B3): server-stored scans/PDFs for
+            this cohort — the same place the Original Routine viewer lives. */}
+        {routineDocuments.length > 0 && (
+          <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+              Uploaded Routine Documents ({routineDocuments.length})
+            </span>
+            {routineDocuments.map(doc => (
+              <div key={doc.id} className="flex items-center justify-between gap-2 text-xs bg-surface rounded-lg border border-slate-100 px-2.5 py-1.5">
+                <div className="min-w-0">
+                  <span className="font-semibold text-text-primary block truncate">{doc.fileName}</span>
+                  <span className="text-[11px] text-slate-500">
+                    {doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
+                    {typeof doc.sizeBytes === 'number' ? ` · ${(doc.sizeBytes / 1024).toFixed(0)} KB` : ''}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadRoutineDocument(doc.id, doc.fileName, doc.downloadUrl)}
+                  className="shrink-0 px-2.5 py-1 rounded-lg bg-blue-50 text-brand-blue text-[11px] font-semibold hover:bg-blue-100 cursor-pointer"
+                >
+                  Download
+                </button>
+              </div>
+            ))}
           </div>
         )}
 

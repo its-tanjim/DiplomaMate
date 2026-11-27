@@ -50,11 +50,12 @@ export const RemindersScreen: React.FC = () => {
   const activeCount = reminders.filter(r => !r.isCompleted).length;
   const completedCount = reminders.filter(r => r.isCompleted).length;
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReminder.title.trim()) return;
 
-    addReminder(newReminder);
+    const res = await addReminder(newReminder);
+    if (!res.success) return; // modal stays open with the error toast
     setNewReminder({
       title: '',
       category: 'Exam',
@@ -154,7 +155,7 @@ export const RemindersScreen: React.FC = () => {
                 <div className="flex items-start gap-3">
                   {/* Toggle Button */}
                   <button
-                    onClick={() => toggleReminder(rem.id)}
+                    onClick={() => void toggleReminder(rem.id)}
                     className="mt-0.5 text-slate-400 hover:text-green-600 transition-colors p-0.5 cursor-pointer"
                     title={isCompleted ? 'Mark Pending' : 'Mark Completed'}
                   >
@@ -208,7 +209,7 @@ export const RemindersScreen: React.FC = () => {
 
                   {/* Delete Button */}
                   <button
-                    onClick={() => deleteReminder(rem.id)}
+                    onClick={() => void deleteReminder(rem.id)}
                     className="text-slate-300 hover:text-rose-600 p-1 rounded-md transition-colors"
                     aria-label="Delete Reminder"
                     title="Delete Reminder"

@@ -227,14 +227,23 @@ export const TeacherDashboardScreen: React.FC = () => {
     }
   };
 
-  const handlePostFacultyNotice = (e: React.FormEvent) => {
+  const handlePostFacultyNotice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noticeTitle.trim() || !noticeContent.trim()) return;
-    addAnnouncement(noticeTitle.trim(), noticeContent.trim(), 'Important');
+    // Success is only claimed by addAnnouncement when the server stored
+    // the post — the old unconditional "Official Department Notice
+    // published to students!" toast is gone (B5). Teachers must target
+    // a cohort explicitly: their session carries no cohort, so the
+    // server 400s without semester/shift/section.
+    const res = await addAnnouncement(noticeTitle.trim(), noticeContent.trim(), 'Important', {
+      semester: selectedSemester,
+      shift: selectedShift,
+      section: selectedSection
+    });
+    if (!res.success) return; // form stays open with the error toast
     setNoticeTitle('');
     setNoticeContent('');
     setShowNoticeModal(false);
-    showToast('Official Department Notice published to students!');
   };
 
   return (

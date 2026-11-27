@@ -154,10 +154,17 @@ export const TeacherProfileSetupScreen: React.FC = () => {
         isProfileComplete: true
       };
 
-      await updateTeacherProfile(updatedData, {
+      const saveRes = await updateTeacherProfile(updatedData, {
         room,
         consultingHours
       });
+
+      if (!saveRes.success) {
+        // B7: the server rejected the save (400/409) or was
+        // unreachable — stay on the form with the server message.
+        showToast(saveRes.message);
+        return;
+      }
 
       if (emailSyncFailed) {
         showToast('Profile saved on this device. Email could not be saved to the server — check your connection and try again.');

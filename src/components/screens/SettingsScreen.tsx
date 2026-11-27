@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { LanguageSwitcher } from '../LanguageSwitcher';
 import { Shift, Section, AccountType } from '../../types';
+import { apiFetch } from '../../services/apiClient';
 import { nativeService } from '../../services/nativeService';
 import { ReminderLeadTimeSlider } from '../common/ReminderLeadTimeSlider';
 import {
@@ -38,14 +39,15 @@ import {
 } from '../../services/appUpdateService';
 
 export const SettingsScreen: React.FC = () => {
-  const { 
-    notifications, 
-    updateNotifications, 
-    userProfile, 
-    setUserProfile, 
-    accountType, 
+  const {
+    notifications,
+    updateNotifications,
+    userProfile,
+    accountType,
     setAccountType,
     requestAccountDeletion,
+    updateStudentProfileFields,
+    authToken,
     showToast,
     setActiveScreen
   } = useApp();
@@ -58,12 +60,37 @@ export const SettingsScreen: React.FC = () => {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteQueued, setDeleteQueued] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteRequestedAt, setDeleteRequestedAt] = useState('');
+
+  // B10: the pending deletion-request status survives logout/re-login
+  // (GET /api/me/deletion-request/status) instead of plain useState.
+  useEffect(() => {
+    const tokenToUse = authToken || localStorage.getItem('diplomamate_auth_token');
+    if (!tokenToUse) return;
+    let cancelled = false;
+    apiFetch('/api/me/deletion-request/status', {
+      headers: { Authorization: `Bearer ${tokenToUse}` }
+    })
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (res.ok && data.success && data.pending && data.request) {
+          setDeleteQueued(true);
+          setDeleteRequestedAt(String(data.request.requestedAt || ''));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken]);
 
   const handleDeleteAccount = async () => {
     setDeleteError('');
     setDeleteSubmitting(true);
     try {
-      const res = await requestAccountDeletion();
+      const res = await requestAccountDeletion(deleteReason.trim() || undefined);
       if (!res.success) {
         setDeleteError(res.message);
         return;
@@ -74,6 +101,23 @@ export const SettingsScreen: React.FC = () => {
     } finally {
       setDeleteSubmitting(false);
     }
+  };
+
+  // B1c: shift/section go through PATCH /api/me/profile (the same
+  // endpoint as Profile Edit). The select is bound to userProfile, so
+  // a failed save leaves the old value showing — no silent local-only
+  // change, and an Approved captain changing section/shift sees the
+  // server's 409 message.
+  const handleShiftChange = async (shift: Shift) => {
+    if (shift === userProfile.shift) return;
+    const res = await updateStudentProfileFields({ shift });
+    showToast(res.success ? `Shift updated to ${shift}` : res.message);
+  };
+
+  const handleSectionChange = async (section: Section) => {
+    if (section === userProfile.section) return;
+    const res = await updateStudentProfileFields({ section });
+    showToast(res.success ? `Section updated to Section ${section}` : res.message);
   };
 
   // Manual update check (Android app only — the web version updates itself
@@ -364,11 +408,7 @@ export const SettingsScreen: React.FC = () => {
             <label className="block text-xs font-semibold text-slate-700 mb-1">Active Shift</label>
             <select
               value={userProfile.shift}
-              onChange={(e) => {
-                const shift = e.target.value as Shift;
-                setUserProfile(prev => ({ ...prev, shift }));
-                showToast(`Shift updated to ${shift}`);
-              }}
+              onChange={(e) => void handleShiftChange(e.target.value as Shift)}
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-text-primary font-medium"
             >
               <option value="Morning">Morning (১ম শিফট: 8am - 1pm)</option>
@@ -380,11 +420,7 @@ export const SettingsScreen: React.FC = () => {
             <label className="block text-xs font-semibold text-slate-700 mb-1">Class Section</label>
             <select
               value={userProfile.section}
-              onChange={(e) => {
-                const section = e.target.value as Section;
-                setUserProfile(prev => ({ ...prev, section }));
-                showToast(`Section updated to Section ${section}`);
-              }}
+              onChange={(e) => void handleSectionChange(e.target.value as Section)}
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-text-primary font-medium"
             >
               <option value="A1">Section A1</option>
@@ -513,6 +549,11 @@ export const SettingsScreen: React.FC = () => {
               {lang === 'bn'
                 ? 'আপনার অ্যাকাউন্ট মুছে ফেলার অনুরোধ সারিতে গেছে। একজন অ্যাডমিন এটি প্রক্রিয়া করবেন এবং আপনার ব্যক্তিগত ডেটা পুরোপুরি মুছে ফেলা হবে। শুধু নামবিহীন একাডেমিক রেকর্ড রাখা হবে।'
                 : 'Your account deletion request has been queued. An admin will process it and your personal data will be hard-erased. Only anonymised academic records will be kept.'}
+              {deleteRequestedAt && (
+                <span className="block mt-1 text-teal-700">
+                  Requested {new Date(deleteRequestedAt).toLocaleString()}.
+                </span>
+              )}
             </p>
           </div>
         ) : (
@@ -533,6 +574,19 @@ export const SettingsScreen: React.FC = () => {
                 <p className="text-xs font-bold text-rose-700">
                   {lang === 'bn' ? 'আপনি কি নিশ্চিত যে আপনার অ্যাকাউন্ট মুছে ফেলতে চান? এটি পূর্বাবস্থায় ফেরানো যাবে না।' : 'Are you sure you want to delete your account? This cannot be undone.'}
                 </p>
+                <div>
+                  <label className="block text-xs font-semibold text-text-primary mb-1">
+                    {lang === 'bn' ? 'মুছে ফেলার কারণ (ঐচ্ছিক)' : 'Reason for leaving (optional)'}
+                  </label>
+                  <textarea
+                    value={deleteReason}
+                    onChange={(e) => setDeleteReason(e.target.value)}
+                    rows={2}
+                    maxLength={500}
+                    placeholder={lang === 'bn' ? 'কেন অ্যাকাউন্ট মুছতে চান…' : 'Tell the admin why you are leaving…'}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-text-primary"
+                  />
+                </div>
                 <div className="flex gap-2">
                   <button
                     type="button"

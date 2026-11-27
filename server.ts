@@ -92,6 +92,8 @@ import type {
   CampusNoticeItem,
   CampusNoticeScope,
   CampusNoticeReportRecord,
+  NotificationPreferences,
+  ReminderItem,
   WeekDay
 } from './src/types';
 import {
@@ -183,6 +185,7 @@ import {
   insertCommunity,
   insertCommunityMembership,
   insertCommunityMessage,
+  insertRecordToSupabase,
   insertRoutine,
   insertStudent,
   isUniqueViolationError,
@@ -202,12 +205,15 @@ import {
   updateAttendanceSheetById,
   updateCampusNoticeById,
   updateCaptainRecordById,
+  updateRecordByIdToSupabase,
   updateRoutineById,
   updateStudentById,
   updateTeacherById,
+  deleteRecordByIdToSupabase,
   uploadCommunityFile,
   uploadStorageFile,
-  upsertPendingTeacherEndorsement
+  upsertPendingTeacherEndorsement,
+  upsertRecordToSupabase
 } from './server/supabaseClient';
 
 dotenv.config();
@@ -1037,6 +1043,17 @@ export interface ServerTeacher {
   createdAt: string;
   adminNotes?: string;
   isRegisteredAccount?: boolean;
+  // Guide-teacher flag + cohort (audit batch v1.0.29, B7). Sent by the
+  // client setup form (TeacherProfileSetupScreen) and persisted by
+  // PUT /api/teachers/profile. NOTE: the flag persists only — it gates
+  // nothing server-side today. The teacher-approve cohort check still
+  // uses semestersTaught/shift, not the guide cohort.
+  isGuideTeacher?: boolean;
+  guideTeacherCohort?: {
+    semester: SemesterNumber;
+    shift: Shift;
+    section: Section;
+  };
   // Signup consent (compliance audit §5): recorded at registration from
   // the client's consent checkbox. consentAt is the server timestamp, so
   // it cannot be forged by the client.
@@ -1152,6 +1169,84 @@ function parseConsentFields(body: Record<string, unknown>): ConsentFields {
   // consentAt is stamped by the server at registration, never trusted
   // from the client.
   return { consentAccepted: true, consentVersion: version, consentAt: new Date().toISOString() };
+}
+
+// Student profile extension fields (audit batch v1.0.29, B1/B6).
+// EnrolledStudent lives in src/data/mockData.ts and this task keeps
+// src/ untouched, so — like the consent fields above — these ride on
+// the student record via Object.assign instead of a type change.
+// `session` is the academic session (e.g. '2024-2025', from the app's
+// SESSIONS list in src/data/mockData.ts); `regulation` is '2016' |
+// '2022'; `notifications` is the NotificationPreferences object the
+// client keeps in Settings (see src/types/index.ts).
+interface StudentProfileExtension {
+  session?: string;
+  regulation?: CatalogRegulation;
+  notifications?: NotificationPreferences;
+}
+
+function getStudentProfileExtension(student: EnrolledStudent): StudentProfileExtension {
+  return student as unknown as StudentProfileExtension;
+}
+
+// The app's academic-session options (src/data/mockData.ts SESSIONS).
+// Kept as a server-side copy so PATCH /api/me/profile can validate
+// without importing client data.
+const PROFILE_SESSIONS = ['2021-2022', '2022-2023', '2023-2024', '2024-2025'];
+
+// Loose Bangladesh phone check: optional leading +, then 10–15 digits
+// (01XXXXXXXXX, +8801XXXXXXXXX, landlines). Spaces/dashes are ignored.
+function isLooseBdPhone(value: string): boolean {
+  const digits = value.replace(/\D/g, '');
+  return /^\+?[0-9][0-9\s\-()]{6,19}$/.test(value.trim()) && digits.length >= 10 && digits.length <= 15;
+}
+
+const NOTIFICATION_PREFERENCE_KEYS = [
+  'routineAlerts',
+  'routineLeadMinutes',
+  'assignmentAlerts',
+  'crAnnouncements',
+  'btebNotices',
+  'soundVibration'
+] as const;
+
+// Stored reminder (audit batch v1.0.29, B2): the client ReminderItem
+// (src/types/index.ts ReminderItem) plus server-side ownership and
+// timestamps. The stored record is returned verbatim by the API; the
+// client ignores the extra fields.
+type StoredReminder = ReminderItem & {
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function parseNotificationPreferencesInput(
+  raw: unknown
+): { prefs?: NotificationPreferences; error?: string } {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return { error: 'notifications must be an object.' };
+  }
+  const input = raw as Record<string, unknown>;
+  for (const key of Object.keys(input)) {
+    if (!(NOTIFICATION_PREFERENCE_KEYS as readonly string[]).includes(key)) {
+      return { error: `Unknown notification preference: ${key}.` };
+    }
+  }
+  const prefs: Partial<NotificationPreferences> = {};
+  for (const key of ['routineAlerts', 'assignmentAlerts', 'crAnnouncements', 'btebNotices', 'soundVibration'] as const) {
+    if (input[key] !== undefined) {
+      if (typeof input[key] !== 'boolean') return { error: `${key} must be true or false.` };
+      prefs[key] = input[key] as boolean;
+    }
+  }
+  if (input.routineLeadMinutes !== undefined) {
+    const mins = Number(input.routineLeadMinutes);
+    if (!Number.isInteger(mins) || mins < 0 || mins > 180) {
+      return { error: 'routineLeadMinutes must be a whole number of minutes (0–180).' };
+    }
+    prefs.routineLeadMinutes = mins;
+  }
+  return { prefs: prefs as NotificationPreferences };
 }
 
 function maskPhone(phone: string): string {
@@ -3069,6 +3164,8 @@ app.post('/api/support/tickets', (req: Request, res: Response) => {
     };
     academicStore.supportTickets.push(ticket);
     saveAcademicStore(academicStore);
+    // B19 dual-write (fire-and-forget: this handler is sync).
+    void persistSupportTicketToSupabase(ticket, 'SupportTicketCreate');
     return res.status(201).json({ success: true, ticket });
   } catch (err) {
     console.error('[Support Tickets] POST create error:', err);
@@ -6320,6 +6417,56 @@ export interface AccountDeletionRequest {
   reviewedAt?: string;
   reviewedBy?: string;
   reviewNote?: string;
+  // Audit batch v1.0.29 (B10): the reason the user typed when asking
+  // for deletion. Optional — older requests predate it.
+  reason?: string;
+}
+
+// Class announcement (audit batch v1.0.29, B5). Posted by a teacher or
+// class captain to exactly one cohort; the audience is derived
+// server-side from the poster's session, never trusted from the client.
+// Stored in the JSON store (`announcements`); dual-written to the
+// public.announcements table when it exists.
+interface ServerAnnouncement {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorRole: AccountType;
+  text: string;
+  title?: string;
+  college: string;
+  department: string;
+  semester: SemesterNumber;
+  shift: Shift;
+  section: Section;
+  createdAt: string;
+}
+
+// Scanned routine document (audit batch v1.0.29, B3). The extracted
+// periods already reach the server as routines (A11); this is the
+// document itself. Bytes live in the Supabase Storage `community-files`
+// bucket (reused — no new bucket) under `storage_path`, or on the
+// record as `file_data` when Storage is unconfigured or the upload
+// failed. The download endpoint serves Storage → file_data → 503,
+// never a fake PDF.
+interface RoutineDocumentRecord {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  day?: WeekDay;
+  subjectCode?: string;
+  college: string;
+  department: string;
+  semester: SemesterNumber;
+  shift: Shift;
+  section: Section;
+  uploadedBy: string;
+  uploadedById: string;
+  uploadedByRole: AccountType;
+  storage_path?: string;
+  file_data?: string;
+  createdAt: string;
 }
 
 // --- Admin panel build: roles, notifications, flags, version, tickets ---
@@ -6425,6 +6572,9 @@ function defaultAppVersionControl(): AppVersionControlState {
  *  read paths). */
 function ensureAdminPanelStoreDefaults(store: PersistentAcademicStore): void {
   if (!Array.isArray(store.adminNotifications)) store.adminNotifications = [];
+  if (!Array.isArray(store.announcements)) store.announcements = [];
+  if (!Array.isArray(store.reminders)) store.reminders = [];
+  if (!Array.isArray(store.routineDocuments)) store.routineDocuments = [];
   if (!store.featureFlags || typeof store.featureFlags !== 'object') store.featureFlags = defaultFeatureFlags();
   for (const key of Object.keys(defaultFeatureFlags())) {
     if (!store.featureFlags[key]) store.featureFlags[key] = defaultFeatureFlags()[key];
@@ -6457,6 +6607,11 @@ interface PersistentAcademicStore {
   jobs: JobCircular[];
   campusNotices: CampusNoticeItem[];
   campusNoticeReports: CampusNoticeReportRecord[];
+  // Audit batch v1.0.29: class announcements (B5), reminders (B2),
+  // scanned routine documents (B3).
+  announcements: ServerAnnouncement[];
+  reminders: ReminderItem[];
+  routineDocuments: RoutineDocumentRecord[];
   // Admin panel build (JSON store only).
   adminNotifications: AdminNotificationRecord[];
   featureFlags: Record<string, FeatureFlagEntry>;
@@ -6645,6 +6800,11 @@ function buildInitialAcademicStore(): PersistentAcademicStore {
     // see LEGACY_DEMO_CONTENT_IDS.notices.
     campusNotices: [...(INITIAL_CAMPUS_NOTICES as CampusNoticeItem[])],
     campusNoticeReports: [],
+    // Audit batch v1.0.29 (B5/B2/B3): start empty, filled only by real
+    // posts — never back-filled with sample content.
+    announcements: [],
+    reminders: [],
+    routineDocuments: [],
     adminNotifications: [],
     featureFlags: defaultFeatureFlags(),
     maintenanceMode: defaultMaintenanceMode(),
@@ -6759,6 +6919,9 @@ function loadAcademicStore(): PersistentAcademicStore {
         jobs: loadedJobs,
         campusNotices: loadedCampusNotices,
         campusNoticeReports: Array.isArray(parsed.campusNoticeReports) ? parsed.campusNoticeReports : [],
+        announcements: Array.isArray(parsed.announcements) ? parsed.announcements : [],
+        reminders: Array.isArray(parsed.reminders) ? parsed.reminders : [],
+        routineDocuments: Array.isArray(parsed.routineDocuments) ? parsed.routineDocuments : [],
         adminNotifications: Array.isArray(parsed.adminNotifications) ? parsed.adminNotifications : [],
         featureFlags: (parsed.featureFlags && typeof parsed.featureFlags === 'object') ? parsed.featureFlags : defaultFeatureFlags(),
         maintenanceMode: (parsed.maintenanceMode && typeof parsed.maintenanceMode === 'object')
@@ -7221,7 +7384,8 @@ function queueDeletionRequest(
   accountType: 'student' | 'teacher',
   boardRoll: string,
   accountName: string,
-  source: 'public-form' | 'in-app'
+  source: 'public-form' | 'in-app',
+  reason?: string
 ): { request: AccountDeletionRequest; created: boolean } {
   const existing = academicStore.accountDeletionRequests.find(
     r => r.accountId === accountId && r.status === 'pending'
@@ -7235,10 +7399,14 @@ function queueDeletionRequest(
     accountName,
     status: 'pending',
     requestedAt: new Date().toISOString(),
-    source
+    source,
+    ...(reason ? { reason } : {})
   };
   academicStore.accountDeletionRequests.unshift(request);
   saveAcademicStore(academicStore);
+  // B19 dual-write (fire-and-forget: this function is sync, and a
+  // Postgres failure must never block the request).
+  void persistDeletionRequestToSupabase(request, 'DeletionRequestCreate');
   return { request, created: true };
 }
 
@@ -7555,8 +7723,11 @@ app.post('/api/account/deletion-request', authRateLimiter, authIpRateLimiter, (r
     if (!verifyStudentPin(pin, student)) {
       return res.status(401).json({ success: false, error: 'Invalid board roll or PIN.' });
     }
+    // B10: keep the reason the user typed (max 500 chars) — it used to
+    // be read by the client, sent, and silently discarded.
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : undefined;
     const { request, created } = queueDeletionRequest(
-      student.id, 'student', student.boardRoll, student.name, 'public-form'
+      student.id, 'student', student.boardRoll, student.name, 'public-form', reason || undefined
     );
     return res.status(created ? 201 : 200).json({
       success: true,
@@ -7592,8 +7763,10 @@ app.post('/api/me/deletion-request', requireAuth, (req: Request, res: Response) 
     const boardRoll = accountType === 'student'
       ? (account as EnrolledStudent).boardRoll
       : '';
+    // B10: keep the reason the user typed (max 500 chars).
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : undefined;
     const { request, created } = queueDeletionRequest(
-      account.id, accountType, boardRoll, account.name, 'in-app'
+      account.id, accountType, boardRoll, account.name, 'in-app', reason || undefined
     );
     return res.status(created ? 201 : 200).json({
       success: true,
@@ -7603,6 +7776,37 @@ app.post('/api/me/deletion-request', requireAuth, (req: Request, res: Response) 
   } catch (error) {
     console.error('In-app deletion request error:', error);
     return res.status(500).json({ success: false, error: 'Could not create the deletion request.' });
+  }
+});
+
+/**
+ * Pending deletion-request status for the session's own account
+ * (audit batch v1.0.29, B10). Before this endpoint existed, the
+ * pending state lived only in the client's useState — invisible after
+ * logout/re-login or on another device.
+ */
+app.get('/api/me/deletion-request/status', requireAuth, (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { session: ServerSession }).session;
+    const pending = academicStore.accountDeletionRequests
+      .filter(r => r.accountId === session.userId && r.status === 'pending')
+      .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt))[0];
+    if (!pending) {
+      return res.status(200).json({ success: true, pending: false, request: null });
+    }
+    return res.status(200).json({
+      success: true,
+      pending: true,
+      request: {
+        id: pending.id,
+        reason: pending.reason || null,
+        requestedAt: pending.requestedAt,
+        status: pending.status
+      }
+    });
+  } catch (error) {
+    console.error('Deletion request status error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load deletion request status.' });
   }
 });
 
@@ -7662,52 +7866,509 @@ app.patch('/api/me/email', requireAuth, async (req: Request, res: Response) => {
 });
 
 /**
- * Update the session's own enrolled semester subjects
- * (`PATCH /api/me/profile`). Students only — teachers do not have
- * enrolled subjects. Before this endpoint existed, subjects lived only
- * in the client's localStorage, and `applyStudentSession` rebuilt the
- * profile from the server account on every fresh login, wiping the
- * selection (and the localStorage sync then overwrote the saved copy).
- * Storing them on the student record makes a fresh login — or a login
- * from another device — restore the selection.
+ * Update the session's own profile (`PATCH /api/me/profile`).
+ * Students only — teachers use PUT /api/teachers/profile.
+ *
+ * Audit batch v1.0.29 (B1/B6): before this endpoint existed, only
+ * enrolled subjects reached the server (v1.0.28) — name, phone,
+ * academic session, regulation, semester, shift, section and
+ * notification preferences lived only in the client's localStorage, and
+ * applyStudentSession rebuilt the profile from the server account on
+ * every fresh login, wiping them. All of them now store on the
+ * student record (JSON store first, Supabase dual-write), so a fresh
+ * login — or a login from another device — restores them.
+ *
+ * Cohort rule: a shift/section/semester change moves the student's cohort
+ * (captain quota + routine grouping are section-bound), so the new
+ * cohort is resolved with the existing resolvers (400 if invalid)
+ * and the change is audited. An Approved captain may NOT change
+ * semester/section/shift at all (409) — that would move them out of the
+ * cohort they were approved for; the admin must handle it.
  */
 app.patch('/api/me/profile', requireAuth, async (req: Request, res: Response) => {
   try {
     const session = (req as unknown as { session: ServerSession }).session;
     if (session.role !== 'student' && session.role !== 'class_captain') {
-      return res.status(403).json({ success: false, error: 'Forbidden: Only students can update enrolled subjects.' });
+      return res.status(403).json({ success: false, error: 'Forbidden: Only students can update their profile.' });
     }
-    const raw = req.body?.enrolledSubjects;
-    if (!Array.isArray(raw)) {
-      return res.status(400).json({ success: false, error: 'enrolledSubjects must be a list of subjects.' });
+    const body = (req.body || {}) as Record<string, unknown>;
+    const knownFields = ['enrolledSubjects', 'name', 'phone', 'session', 'regulation', 'semester', 'shift', 'section', 'notifications'];
+    const provided = knownFields.filter(f => body[f] !== undefined);
+    if (provided.length === 0) {
+      return res.status(400).json({ success: false, error: 'Nothing to update: send at least one profile field.' });
     }
-    if (raw.length > 15) {
-      return res.status(400).json({ success: false, error: 'You can enrol in at most 15 subjects.' });
-    }
-    const enrolledSubjects: { code: string; name: string }[] = [];
-    for (const item of raw) {
-      if (typeof item !== 'object' || item === null) {
-        return res.status(400).json({ success: false, error: 'Each subject must have a code and a name.' });
+
+    // --- Validate enrolledSubjects (unchanged from v1.0.28) ---
+    let enrolledSubjects: { code: string; name: string }[] | undefined;
+    if (body.enrolledSubjects !== undefined) {
+      const raw = body.enrolledSubjects;
+      if (!Array.isArray(raw)) {
+        return res.status(400).json({ success: false, error: 'enrolledSubjects must be a list of subjects.' });
       }
-      const code = String((item as Record<string, unknown>).code || '').trim();
-      const name = String((item as Record<string, unknown>).name || '').trim();
-      if (!/^\d{4,6}$/.test(code) || !name || name.length > 120) {
-        return res.status(400).json({ success: false, error: 'Each subject needs a 4–6 digit code and a name.' });
+      if (raw.length > 15) {
+        return res.status(400).json({ success: false, error: 'You can enrol in at most 15 subjects.' });
       }
-      enrolledSubjects.push({ code, name });
+      enrolledSubjects = [];
+      for (const item of raw) {
+        if (typeof item !== 'object' || item === null) {
+          return res.status(400).json({ success: false, error: 'Each subject must have a code and a name.' });
+        }
+        const code = String((item as Record<string, unknown>).code || '').trim();
+        const name = String((item as Record<string, unknown>).name || '').trim();
+        if (!/^\d{4,6}$/.test(code) || !name || name.length > 120) {
+          return res.status(400).json({ success: false, error: 'Each subject needs a 4–6 digit code and a name.' });
+        }
+        enrolledSubjects.push({ code, name });
+      }
     }
+
+    // --- Validate the B1 profile fields ---
+    let newName: string | undefined;
+    if (body.name !== undefined) {
+      newName = String(body.name || '').trim();
+      if (!newName || newName.length > 100) {
+        return res.status(400).json({ success: false, error: 'Name must be 1–100 characters.' });
+      }
+    }
+    let newPhone: string | undefined;
+    if (body.phone !== undefined) {
+      newPhone = String(body.phone || '').trim();
+      if (!newPhone || newPhone.length > 20 || !isLooseBdPhone(newPhone)) {
+        return res.status(400).json({ success: false, error: 'Please enter a valid phone number.' });
+      }
+    }
+    let newSession: string | undefined;
+    if (body.session !== undefined) {
+      newSession = String(body.session || '').trim();
+      if (!PROFILE_SESSIONS.includes(newSession)) {
+        return res.status(400).json({ success: false, error: `Session must be one of: ${PROFILE_SESSIONS.join(', ')}.` });
+      }
+    }
+    let newRegulation: CatalogRegulation | undefined;
+    if (body.regulation !== undefined) {
+      if (body.regulation !== '2016' && body.regulation !== '2022') {
+        return res.status(400).json({ success: false, error: 'Regulation must be 2016 or 2022.' });
+      }
+      newRegulation = body.regulation;
+    }
+    let newShift: Shift | undefined;
+    if (body.shift !== undefined) {
+      if (body.shift !== 'Morning' && body.shift !== 'Day') {
+        return res.status(400).json({ success: false, error: 'Shift must be Morning or Day.' });
+      }
+      newShift = body.shift;
+    }
+    // Semester (client follow-up): the ProfileScreen edit form has a
+    // Semester dropdown (1–8). Same validation discipline as the other
+    // fields; part of the cohort, so the cohort rules below apply.
+    let newSemester: SemesterNumber | undefined;
+    if (body.semester !== undefined) {
+      const sem = Number(body.semester);
+      if (!Number.isInteger(sem) || sem < 1 || sem > 8) {
+        return res.status(400).json({ success: false, error: 'Semester must be a whole number from 1 to 8.' });
+      }
+      newSemester = sem as SemesterNumber;
+    }
+    let newSection: Section | undefined;
+    if (body.section !== undefined) {
+      if (!['A1', 'B1', 'A2', 'B2'].includes(String(body.section))) {
+        return res.status(400).json({ success: false, error: 'Section must be A1, B1, A2 or B2.' });
+      }
+      newSection = body.section as Section;
+    }
+    let newNotifications: NotificationPreferences | undefined;
+    if (body.notifications !== undefined) {
+      const parsed = parseNotificationPreferencesInput(body.notifications);
+      if (parsed.error || !parsed.prefs) {
+        return res.status(400).json({ success: false, error: parsed.error || 'Invalid notification preferences.' });
+      }
+      newNotifications = parsed.prefs;
+    }
+
     const student = academicStore.students.find(s => s.id === session.userId);
     if (!student) {
       return res.status(404).json({ success: false, error: 'Account not found.' });
     }
-    student.enrolledSubjects = enrolledSubjects;
-    appendSystemAudit('profile_subjects_updated', student.id, student.name, `Enrolled subjects updated (${enrolledSubjects.length} subjects)`, session.userId);
+    const ext = getStudentProfileExtension(student);
+
+    // --- Cohort rule: semester/shift/section change moves the cohort ---
+    const semesterChanged = newSemester !== undefined && newSemester !== student.semester;
+    const shiftChanged = newShift !== undefined && newShift !== student.shift;
+    const sectionChanged = newSection !== undefined && newSection !== student.section;
+    if (semesterChanged || shiftChanged || sectionChanged) {
+      const isApprovedCaptain =
+        student.captainVerificationStatus === 'Approved' ||
+        academicStore.captainRecords.some(
+          c => c.status === 'Approved' && (c.studentId === student.id || (student.boardRoll && c.boardRoll === student.boardRoll))
+        );
+      if (isApprovedCaptain) {
+        return res.status(409).json({ success: false, error: 'Captains cannot change their section/shift — contact the admin.' });
+      }
+      const resolved = resolveExplicitAcademicGroupInput({
+        college: student.college,
+        department: student.department,
+        semester: newSemester ?? student.semester,
+        shift: newShift ?? student.shift,
+        section: newSection ?? student.section,
+        regulation: newRegulation ?? ext.regulation ?? '2022'
+      });
+      if (!resolved.valid || !resolved.group) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid cohort: missing or unrecognized [${resolved.missingOrInvalidFields.join(', ')}].`
+        });
+      }
+    }
+
+    // --- Apply ---
+    const changed: string[] = [];
+    if (enrolledSubjects !== undefined) {
+      student.enrolledSubjects = enrolledSubjects;
+      changed.push('enrolledSubjects');
+      appendSystemAudit('profile_subjects_updated', student.id, student.name, `Enrolled subjects updated (${enrolledSubjects.length} subjects)`, session.userId);
+    }
+    if (newName !== undefined && newName !== student.name) {
+      const oldName = student.name;
+      student.name = newName;
+      session.name = newName;
+      changed.push('name');
+      appendSystemAudit('profile_name_updated', student.id, newName, `Name changed from "${oldName}" to "${newName}"`, session.userId);
+    }
+    if (newPhone !== undefined && newPhone !== student.phone) {
+      student.phone = newPhone;
+      changed.push('phone');
+    }
+    if (newSession !== undefined && newSession !== ext.session) {
+      ext.session = newSession;
+      changed.push('session');
+    }
+    if (newRegulation !== undefined && newRegulation !== ext.regulation) {
+      ext.regulation = newRegulation;
+      changed.push('regulation');
+    }
+    if (semesterChanged || shiftChanged || sectionChanged) {
+      const oldCohort = `Sem ${student.semester} · ${student.shift} · Sec ${student.section}`;
+      if (newSemester !== undefined) {
+        student.semester = newSemester;
+        session.semester = newSemester;
+      }
+      if (newShift !== undefined) {
+        student.shift = newShift;
+        session.shift = newShift;
+      }
+      if (newSection !== undefined) {
+        student.section = newSection;
+        session.section = newSection;
+      }
+      changed.push('cohort');
+      appendSystemAudit(
+        'profile_cohort_updated',
+        student.id,
+        student.name,
+        `Cohort changed from ${oldCohort} to Sem ${student.semester} · ${student.shift} · Sec ${student.section}`,
+        session.userId
+      );
+    }
+    if (newNotifications !== undefined) {
+      ext.notifications = { ...(ext.notifications || {}), ...newNotifications } as NotificationPreferences;
+      changed.push('notifications');
+    }
+    if (changed.length > 0 && !changed.includes('name') && !changed.includes('cohort') && !changed.includes('enrolledSubjects')) {
+      appendSystemAudit('profile_updated', student.id, student.name, `Profile updated (${changed.join(', ')})`, session.userId);
+    }
+
     saveAcademicStore(academicStore);
-    await persistEnrolledSubjectsToSupabase(session.userId, enrolledSubjects, 'SubjectsUpdate');
-    return res.status(200).json({ success: true, enrolledSubjects });
+
+    // Supabase dual-write for every field this endpoint now owns. The
+    // update helper retries without the new columns when the
+    // supabase-audit-batch-v1.0.29.sql ALTERs have not been run yet.
+    const supabasePatch: Parameters<typeof updateStudentById>[1] = {};
+    if (newName !== undefined) supabasePatch.name = newName;
+    if (newPhone !== undefined) supabasePatch.phone = newPhone;
+    if (newSession !== undefined) supabasePatch.academic_session = newSession;
+    if (newRegulation !== undefined) supabasePatch.regulation = newRegulation;
+    if (newShift !== undefined) supabasePatch.shift = newShift;
+    if (newSection !== undefined) supabasePatch.section = newSection;
+    if (newNotifications !== undefined) supabasePatch.notification_preferences = ext.notifications;
+    if (newSemester !== undefined) supabasePatch.semester = newSemester;
+    if (enrolledSubjects !== undefined) supabasePatch.enrolled_subjects = enrolledSubjects;
+    if (Object.keys(supabasePatch).length > 0) {
+      await persistStudentProfileToSupabase(student.id, supabasePatch, 'ProfileUpdate');
+    }
+
+    return res.status(200).json({
+      success: true,
+      profile: sanitizeStudent(student),
+      ...(enrolledSubjects !== undefined ? { enrolledSubjects } : {})
+    });
   } catch (error) {
-    console.error('Update enrolled subjects error:', error);
-    return res.status(500).json({ success: false, error: 'Could not save your subjects. Please try again.' });
+    console.error('Update profile error:', error);
+    return res.status(500).json({ success: false, error: 'Could not save your profile. Please try again.' });
+  }
+});
+
+/**
+ * Class announcements (audit batch v1.0.29, B5).
+ *
+ * Before this endpoint existed, addAnnouncement() only did
+ * setAnnouncements + a local notification — the teacher/CR toast
+ * claimed "published to students!" while the notice never left the
+ * poster's device. POST now stores the announcement on the server
+ * for the poster's own cohort; GET serves that cohort's feed.
+ *
+ * POST /api/announcements — teacher / class_captain only (plain
+ * student → 403). The audience is derived server-side from the
+ * session for captains (their Approved captain record) and, for
+ * teachers, from body-supplied cohort fields validated against the
+ * teacher's server-side taught scope (resolveTeacherTargetCohort) —
+ * a teacher session carries no semester/shift/section, so a purely
+ * session-derived audience is impossible for them. The audience is
+ * never trusted from the client unvalidated. 201 with the created
+ * announcement.
+ */
+app.post('/api/announcements', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { session: ServerSession }).session;
+    if (session.role !== 'teacher' && session.role !== 'class_captain') {
+      return res.status(403).json({ success: false, error: 'Forbidden: Only teachers and class captains can post class announcements.' });
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    const title = typeof body.title === 'string' ? body.title.trim().slice(0, 200) : undefined;
+    if (!text || text.length > 2000) {
+      return res.status(400).json({ success: false, error: 'Announcement text is required (max 2000 characters).' });
+    }
+    let group: ResolvedAcademicGroup | null = null;
+    if (session.role === 'class_captain') {
+      group = resolveSessionAcademicGroup(session);
+      if (!group) {
+        return res.status(400).json({ success: false, error: 'Could not determine your class cohort. Please complete your profile first.' });
+      }
+    } else {
+      const resolved = resolveTeacherTargetCohort(session, body);
+      if (!resolved.group) {
+        return res.status(resolved.status || 400).json({ success: false, error: resolved.error || 'Could not determine the target cohort.' });
+      }
+      group = resolved.group;
+    }
+    const nowIso = new Date().toISOString();
+    const announcement: ServerAnnouncement = {
+      id: `ann_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      authorId: session.userId,
+      authorName: session.name,
+      authorRole: session.role as AccountType,
+      text,
+      title: title || undefined,
+      college: group.college,
+      department: group.department,
+      semester: group.semester,
+      shift: group.shift,
+      section: group.section,
+      createdAt: nowIso
+    };
+    academicStore.announcements.unshift(announcement);
+    saveAcademicStore(academicStore);
+    await persistAnnouncementToSupabase(announcement, 'AnnouncementCreate');
+    return res.status(201).json({ success: true, announcement });
+  } catch (error) {
+    console.error('Post announcement error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to post the announcement.' });
+  }
+});
+
+/**
+ * GET /api/announcements — the caller's cohort feed, newest first.
+ * Students/captains see exactly their cohort. Teachers teach several
+ * cohorts, so they see every announcement in their college +
+ * department. System admins see all.
+ */
+app.get('/api/announcements', requireAuth, (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { session: ServerSession }).session;
+    let announcements = [...academicStore.announcements];
+    if (session.role === 'system_admin') {
+      // all
+    } else if (session.role === 'teacher') {
+      // Teachers teach several cohorts: college + department scope,
+      // matched by canonical id (stored display names do not equal
+      // canonical names). A teacher session carries no semester, so
+      // resolveSessionAcademicGroup() cannot be used here.
+      const teacherCol = resolveStrictCollege(session.college ?? null);
+      const teacherDept = resolveStrictTechnology(session.department ?? null);
+      if (!teacherCol || !teacherDept) {
+        return res.status(400).json({ success: false, error: 'Could not determine your college/department.' });
+      }
+      announcements = announcements.filter(
+        a =>
+          resolveStrictCollege(a.college)?.id === teacherCol.id &&
+          resolveStrictTechnology(a.department)?.id === teacherDept.id
+      );
+    } else {
+      const group = resolveSessionAcademicGroup(session);
+      if (!group) {
+        return res.status(400).json({ success: false, error: 'Could not determine your class cohort.' });
+      }
+      announcements = announcements.filter(
+        a =>
+          a.college === group.college &&
+          a.department === group.department &&
+          Number(a.semester) === Number(group.semester) &&
+          a.shift === group.shift &&
+          a.section === group.section
+      );
+    }
+    announcements.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return res.status(200).json({ success: true, announcements });
+  } catch (error) {
+    console.error('Get announcements error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load announcements.' });
+  }
+});
+
+/**
+ * Reminders (audit batch v1.0.29, B2). The whole feature lived only
+ * in localStorage (`diplomamate_reminders`) — reinstall / new device
+ * lost every reminder. CRUD below stores them on the server, scoped
+ * to the owner: a caller only ever sees (or mutates) their own rows.
+ * Fields are EXACTLY the client ReminderItem
+ * (src/types/index.ts): id, title, category, dueDate, dueTime,
+ * priority, isCompleted, note?, college_id?, department_id?,
+ * semester?, shift?, section?, routineId? — plus server-side
+ * ownerId/createdAt/updatedAt.
+ */
+const REMINDER_CATEGORIES = ['Exam', 'Assignment', 'Lab Report', 'BTEB Notice', 'Personal', 'Routine'] as const;
+const REMINDER_PRIORITIES = ['High', 'Medium', 'Normal'] as const;
+
+function validateReminderInput(body: Record<string, unknown>, isCreate: boolean): { error?: string } {
+  if (isCreate || body.title !== undefined) {
+    const title = typeof body.title === 'string' ? body.title.trim() : '';
+    if (!title || title.length > 200) return { error: 'Reminder title is required (max 200 characters).' };
+  }
+  if (body.category !== undefined && !(REMINDER_CATEGORIES as readonly string[]).includes(String(body.category))) {
+    return { error: `category must be one of: ${REMINDER_CATEGORIES.join(', ')}.` };
+  }
+  if (body.priority !== undefined && !(REMINDER_PRIORITIES as readonly string[]).includes(String(body.priority))) {
+    return { error: `priority must be one of: ${REMINDER_PRIORITIES.join(', ')}.` };
+  }
+  if (body.semester !== undefined) {
+    const sem = Number(body.semester);
+    if (!Number.isInteger(sem) || sem < 1 || sem > 8) return { error: 'semester must be 1–8.' };
+  }
+  if (body.shift !== undefined && body.shift !== 'Morning' && body.shift !== 'Day') {
+    return { error: 'shift must be Morning or Day.' };
+  }
+  if (body.section !== undefined && !['A1', 'B1', 'A2', 'B2'].includes(String(body.section))) {
+    return { error: 'section must be A1, B1, A2 or B2.' };
+  }
+  return {};
+}
+
+app.post('/api/reminders', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { session: ServerSession }).session;
+    if (session.role !== 'student' && session.role !== 'class_captain' && session.role !== 'teacher') {
+      return res.status(403).json({ success: false, error: 'Forbidden: Only students and teachers can create reminders.' });
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    const invalid = validateReminderInput(body, true);
+    if (invalid.error) return res.status(400).json({ success: false, error: invalid.error });
+    const nowIso = new Date().toISOString();
+    const reminder: StoredReminder = {
+      id: `rem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      title: String(body.title).trim(),
+      category: (body.category as ReminderItem['category']) || 'Personal',
+      dueDate: typeof body.dueDate === 'string' ? body.dueDate.trim() : '',
+      dueTime: typeof body.dueTime === 'string' ? body.dueTime.trim() : '',
+      priority: (body.priority as ReminderItem['priority']) || 'Normal',
+      isCompleted: body.isCompleted === true,
+      note: typeof body.note === 'string' ? body.note.trim().slice(0, 1000) : undefined,
+      college_id: typeof body.college_id === 'string' ? body.college_id.trim() : undefined,
+      department_id: typeof body.department_id === 'string' ? body.department_id.trim() : undefined,
+      semester: body.semester !== undefined ? Number(body.semester) as ReminderItem['semester'] : undefined,
+      shift: (body.shift as ReminderItem['shift']) || undefined,
+      section: (body.section as ReminderItem['section']) || undefined,
+      routineId: typeof body.routineId === 'string' ? body.routineId.trim() : undefined,
+      ownerId: session.userId,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
+    academicStore.reminders.unshift(reminder);
+    saveAcademicStore(academicStore);
+    await persistReminderToSupabase(reminder, 'ReminderCreate');
+    return res.status(201).json({ success: true, reminder });
+  } catch (error) {
+    console.error('Create reminder error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to create the reminder.' });
+  }
+});
+
+app.get('/api/reminders', requireAuth, (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { session: ServerSession }).session;
+    const reminders = academicStore.reminders
+      .filter(r => (r as StoredReminder).ownerId === session.userId)
+      .sort((a, b) => ((b as StoredReminder).createdAt || '').localeCompare((a as StoredReminder).createdAt || ''));
+    return res.status(200).json({ success: true, reminders });
+  } catch (error) {
+    console.error('Get reminders error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load reminders.' });
+  }
+});
+
+app.put('/api/reminders/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { session: ServerSession }).session;
+    const reminder = academicStore.reminders.find(r => r.id === req.params.id) as StoredReminder | undefined;
+    if (!reminder) {
+      return res.status(404).json({ success: false, error: 'Reminder not found.' });
+    }
+    if (reminder.ownerId !== session.userId) {
+      return res.status(403).json({ success: false, error: 'Forbidden: This reminder belongs to another user.' });
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    const invalid = validateReminderInput(body, false);
+    if (invalid.error) return res.status(400).json({ success: false, error: invalid.error });
+    if (body.title !== undefined) reminder.title = String(body.title).trim();
+    if (body.category !== undefined) reminder.category = body.category as ReminderItem['category'];
+    if (body.dueDate !== undefined) reminder.dueDate = typeof body.dueDate === 'string' ? body.dueDate.trim() : '';
+    if (body.dueTime !== undefined) reminder.dueTime = typeof body.dueTime === 'string' ? body.dueTime.trim() : '';
+    if (body.priority !== undefined) reminder.priority = body.priority as ReminderItem['priority'];
+    if (body.isCompleted !== undefined) reminder.isCompleted = body.isCompleted === true;
+    if (body.note !== undefined) reminder.note = typeof body.note === 'string' ? body.note.trim().slice(0, 1000) : undefined;
+    if (body.college_id !== undefined) reminder.college_id = typeof body.college_id === 'string' ? body.college_id.trim() : undefined;
+    if (body.department_id !== undefined) reminder.department_id = typeof body.department_id === 'string' ? body.department_id.trim() : undefined;
+    if (body.semester !== undefined) reminder.semester = body.semester === null ? undefined : Number(body.semester) as ReminderItem['semester'];
+    if (body.shift !== undefined) reminder.shift = (body.shift as ReminderItem['shift']) || undefined;
+    if (body.section !== undefined) reminder.section = (body.section as ReminderItem['section']) || undefined;
+    if (body.routineId !== undefined) reminder.routineId = typeof body.routineId === 'string' ? body.routineId.trim() : undefined;
+    reminder.updatedAt = new Date().toISOString();
+    saveAcademicStore(academicStore);
+    await persistReminderToSupabase(reminder, 'ReminderUpdate');
+    return res.status(200).json({ success: true, reminder });
+  } catch (error) {
+    console.error('Update reminder error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to update the reminder.' });
+  }
+});
+
+app.delete('/api/reminders/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { session: ServerSession }).session;
+    const idx = academicStore.reminders.findIndex(r => r.id === req.params.id);
+    if (idx === -1) {
+      return res.status(404).json({ success: false, error: 'Reminder not found.' });
+    }
+    const reminder = academicStore.reminders[idx] as StoredReminder;
+    if (reminder.ownerId !== session.userId) {
+      return res.status(403).json({ success: false, error: 'Forbidden: This reminder belongs to another user.' });
+    }
+    academicStore.reminders.splice(idx, 1);
+    saveAcademicStore(academicStore);
+    await persistReminderDeleteToSupabase(reminder.id, 'ReminderDelete');
+    return res.status(200).json({ success: true, message: 'Reminder deleted.' });
+  } catch (error) {
+    console.error('Delete reminder error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete the reminder.' });
   }
 });
 
@@ -7954,7 +8615,7 @@ function getCohortRoster(params: {
 /**
  * 10A. UPDATE TEACHER PROFILE SCOPE ON SERVER (`PUT /api/teachers/profile`)
  */
-app.put('/api/teachers/profile', (req: Request, res: Response) => {
+app.put('/api/teachers/profile', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session || session.role !== 'teacher') {
@@ -7977,10 +8638,23 @@ app.put('/api/teachers/profile', (req: Request, res: Response) => {
       teachingSubjects,
       semestersTaught,
       shift,
-      sectionsTaught
+      sectionsTaught,
+      // Audit batch v1.0.29 (B7): these were sent by the client setup
+      // form and silently ignored. They now persist on the teacher
+      // record (+ Supabase teacher_accounts columns). NOTE: the guide
+      // flag persists only — it gates nothing. The teacher-approve
+      // cohort check still uses semestersTaught/shift, not the guide
+      // cohort.
+      phone,
+      isGuideTeacher,
+      guideTeacherCohort
     } = req.body;
 
     if (name) teacher.name = String(name).trim();
+    if (typeof phone === 'string' && phone.trim()) {
+      const cleanPhone = phone.trim().slice(0, 20);
+      if (isLooseBdPhone(cleanPhone)) teacher.phone = cleanPhone;
+    }
     if (college) {
       teacher.college = String(college).trim();
       session.college = teacher.college;
@@ -8002,8 +8676,46 @@ app.put('/api/teachers/profile', (req: Request, res: Response) => {
     if (Array.isArray(sectionsTaught)) {
       teacher.sectionsTaught = sectionsTaught.map(String);
     }
+    if (isGuideTeacher === true || isGuideTeacher === false) {
+      teacher.isGuideTeacher = isGuideTeacher;
+      if (isGuideTeacher === true && guideTeacherCohort && typeof guideTeacherCohort === 'object') {
+        const cohort = guideTeacherCohort as Record<string, unknown>;
+        const sem = Number(cohort.semester);
+        const gShift = cohort.shift === 'Day' ? 'Day' : cohort.shift === 'Morning' ? 'Morning' : null;
+        const gSection = ['A1', 'B1', 'A2', 'B2'].includes(String(cohort.section))
+          ? (String(cohort.section) as Section)
+          : null;
+        if (Number.isInteger(sem) && sem >= 1 && sem <= 8 && gShift && gSection) {
+          teacher.guideTeacherCohort = { semester: sem as SemesterNumber, shift: gShift, section: gSection };
+        }
+      } else if (isGuideTeacher === false) {
+        delete teacher.guideTeacherCohort;
+      }
+    }
 
     saveAcademicStore(academicStore);
+
+    // Supabase dual-write for the fields this endpoint owns. The
+    // update helper retries without the guide columns when the
+    // supabase-audit-batch-v1.0.29.sql ALTERs have not been run yet.
+    const teacherPatch: Parameters<typeof updateTeacherById>[1] = {};
+    if (name) teacherPatch.name = teacher.name;
+    if (college) teacherPatch.college = teacher.college;
+    if (department) teacherPatch.department = teacher.department;
+    if (designation) teacherPatch.designation = teacher.designation;
+    if (Array.isArray(teachingSubjects) && teachingSubjects.length > 0) teacherPatch.teaching_subjects = teacher.teachingSubjects;
+    if (Array.isArray(semestersTaught) && semestersTaught.length > 0) teacherPatch.semesters_taught = teacher.semestersTaught;
+    if (shift && ['Morning', 'Day', 'Both'].includes(String(shift))) teacherPatch.shift = teacher.shift;
+    if (Array.isArray(sectionsTaught)) teacherPatch.sections_taught = teacher.sectionsTaught;
+    if (typeof phone === 'string' && phone.trim()) teacherPatch.phone = teacher.phone;
+    if (isGuideTeacher === true || isGuideTeacher === false) {
+      teacherPatch.is_guide_teacher = teacher.isGuideTeacher ?? false;
+      teacherPatch.guide_teacher_cohort = teacher.guideTeacherCohort ?? null;
+    }
+    if (Object.keys(teacherPatch).length > 0) {
+      await persistTeacherProfileToSupabase(teacher.id, teacherPatch, 'TeacherProfileUpdate');
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Teacher profile and authorized scope updated on server.',
@@ -9288,6 +10000,70 @@ app.get('/api/attendance/monthly', async (req: Request, res: Response) => {
 });
 
 /**
+ * 10I. STUDENT'S OWN ATTENDANCE (`GET /api/attendance/mine`)
+ * Audit batch v1.0.29 (B17): students had no attendance view at all —
+ * both server GETs are teacher-cohort-gated (checkTeacherCohortAuthorization
+ * at server.ts:7805, applied to the sheets + monthly reads). This
+ * endpoint is student-scoped instead: it reads the same sheet shape
+ * (AttendanceSheet entries) but filters to entries whose boardRoll is
+ * the caller's own, so a student sees only their own rows on any
+ * device. Teachers/admins get 403 here — they keep using the
+ * cohort-gated GETs, whose gating is unchanged.
+ */
+app.get('/api/attendance/mine', requireAuth, (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { session: ServerSession }).session;
+    if (session.role !== 'student' && session.role !== 'class_captain') {
+      return res.status(403).json({ success: false, error: 'Forbidden: Only students can view their own attendance.' });
+    }
+    const boardRoll = session.boardRoll || '';
+    if (!boardRoll) {
+      return res.status(400).json({ success: false, error: 'No board roll on your session. Please sign in again.' });
+    }
+    const records: {
+      date: string;
+      subjectCode: string;
+      subjectName: string;
+      periodLabel: string;
+      status: AttendanceStatus;
+      studentName: string;
+      classRoll: string;
+      boardRoll: string;
+      regNumber: string;
+      remarks?: string;
+      updatedAt?: string;
+      sheetId: string;
+      teacherName: string;
+    }[] = [];
+    for (const sheet of academicStore.attendanceSheets) {
+      for (const entry of sheet.entries) {
+        if (entry.boardRoll !== boardRoll) continue;
+        records.push({
+          date: sheet.date,
+          subjectCode: sheet.subjectCode,
+          subjectName: sheet.subjectName,
+          periodLabel: sheet.periodLabel,
+          status: entry.status,
+          studentName: entry.studentName,
+          classRoll: entry.classRoll,
+          boardRoll: entry.boardRoll,
+          regNumber: entry.regNumber,
+          remarks: entry.remarks,
+          updatedAt: entry.updatedAt,
+          sheetId: sheet.id,
+          teacherName: sheet.teacherName
+        });
+      }
+    }
+    records.sort((a, b) => b.date.localeCompare(a.date) || (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    return res.status(200).json({ success: true, records });
+  } catch (error) {
+    console.error('Get my attendance error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load your attendance.' });
+  }
+});
+
+/**
  * ============================================================================
  * 10J. TEACHER & STUDENT NOTES AND ASSIGNMENTS + SUBMISSIONS ENGINE
  * ============================================================================
@@ -9570,6 +10346,8 @@ app.post('/api/notes', async (req: Request, res: Response) => {
 
     academicStore.notes.unshift(newNote);
     saveAcademicStore(academicStore);
+    // B19 dual-write.
+    await persistNoteToSupabase(newNote, 'NoteCreate');
 
     return res.status(201).json({
       success: true,
@@ -9770,6 +10548,8 @@ app.post('/api/assignments', async (req: Request, res: Response) => {
 
     academicStore.assignments.unshift(newAsg);
     saveAcademicStore(academicStore);
+    // B19 dual-write.
+    await persistAssignmentToSupabase(newAsg, 'AssignmentCreate');
 
     const enriched: AssignmentItem = {
       ...newAsg,
@@ -9961,6 +10741,8 @@ app.post('/api/assignments/:id/submit', async (req: Request, res: Response) => {
     }
 
     saveAcademicStore(academicStore);
+    // B19 dual-write (upsert: resubmissions update the same id).
+    await persistSubmissionToSupabase(savedSubmission, 'AssignmentSubmit');
 
     const updatedSummary = computeAssignmentSubmissionSummary(asg, session);
 
@@ -11473,6 +12255,8 @@ app.put('/api/my-semester-results', (req: Request, res: Response) => {
     }
 
     saveAcademicStore(academicStore);
+    // B19 dual-write (fire-and-forget: this handler is sync).
+    void persistSemesterRecordToSupabase(savedRecord, 'SemesterRecordSave');
 
     const userRecords = academicStore.savedSemesterCalculatorRecords.filter(
       (r) => r.ownerUserId === session.userId
@@ -11519,6 +12303,8 @@ app.delete('/api/my-semester-results/:id', (req: Request, res: Response) => {
 
     academicStore.savedSemesterCalculatorRecords.splice(idx, 1);
     saveAcademicStore(academicStore);
+    // B19 dual-write (fire-and-forget: this handler is sync).
+    void persistSemesterRecordDeleteToSupabase(target.id, 'SemesterRecordDelete');
 
     return res.status(200).json({
       success: true,
@@ -11685,6 +12471,62 @@ function resolveSessionAcademicGroup(session: ServerSession): ResolvedAcademicGr
 }
 
 /**
+ * Resolve the target cohort for a TEACHER-gated write (audit batch
+ * v1.0.29, B3/B5). Teachers have no single cohort: login mints only
+ * college + department on the session (they teach several semesters),
+ * so resolveSessionAcademicGroup() returns null for them and a
+ * purely session-derived audience is impossible. The cohort therefore
+ * comes from the request body — college/department defaulting to the
+ * session's, semester/shift/section required — and is validated
+ * against the teacher's server-side taught scope via
+ * checkTeacherCohortAuthorization, exactly the pattern POST
+ * /api/notes and POST /api/assignments already use. The body is
+ * never trusted on its own. Captains keep the session-derived cohort
+ * (their Approved captain record) and never use this helper.
+ */
+function resolveTeacherTargetCohort(
+  session: ServerSession,
+  body: Record<string, unknown>
+): { group?: ResolvedAcademicGroup; error?: string; status?: number } {
+  const college = typeof body.college === 'string' && body.college.trim() ? body.college.trim() : session.college;
+  const department = typeof body.department === 'string' && body.department.trim() ? body.department.trim() : session.department;
+  const semester = body.semester !== undefined ? Number(body.semester) : NaN;
+  const shift = typeof body.shift === 'string' ? body.shift : undefined;
+  const section = typeof body.section === 'string' ? body.section : undefined;
+  if (!college || !department) {
+    return { error: 'Could not determine your college/department.', status: 400 };
+  }
+  if (!Number.isInteger(semester) || semester < 1 || semester > 8 || !shift || !section) {
+    return { error: 'semester (1–8), shift and section are required to target a class cohort.', status: 400 };
+  }
+  const authCheck = checkTeacherCohortAuthorization(session, {
+    college,
+    department,
+    semester,
+    shift,
+    section
+  });
+  if (!authCheck.authorized) {
+    return { error: authCheck.error, status: authCheck.status };
+  }
+  const resolved = resolveExplicitAcademicGroupInput({
+    college,
+    department,
+    semester,
+    shift,
+    section,
+    regulation: typeof body.regulation === 'string' ? body.regulation : '2022'
+  });
+  if (!resolved.valid || !resolved.group) {
+    return {
+      error: `Invalid cohort: missing or unrecognized [${resolved.missingOrInvalidFields.join(', ')}].`,
+      status: 400
+    };
+  }
+  return { group: resolved.group };
+}
+
+/**
  * Helper: Count verified (`Approved`) Class Captains for an exact academic group.
  * Phase 4 migration 5: the filter lives in `filterApprovedCaptainsForGroup()`
  * so it can run over Postgres rows too. `getApprovedCaptainsForGroup()` keeps
@@ -11840,33 +12682,6 @@ async function persistEmailToSupabase(
 }
 
 /**
- * Enrolled-subjects dual-write (`PATCH /api/me/profile`). Same contract
- * as persistEmailToSupabase above: return early when Supabase is
- * unconfigured, never throw — on any query error log a warning and the
- * caller carries on with the JSON write. `students.enrolled_subjects`
- * (JSONB) is added by supabase-enrolled-subjects.sql; until that ALTER
- * runs, updateStudentById() retries without the column (see
- * supabaseClient.ts) and the subjects stay JSON-store only — a fresh
- * login from Postgres then has no subjects, and applyStudentSession
- * keeps the saved local selection instead of wiping it.
- */
-async function persistEnrolledSubjectsToSupabase(
-  accountId: string,
-  enrolledSubjects: { code: string; name: string }[],
-  logTag: string
-): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  try {
-    const updated = await updateStudentById(accountId, { enrolled_subjects: enrolledSubjects });
-    if (!updated) {
-      console.warn(`[${logTag}] Account ${accountId} not found in Postgres; subjects kept in JSON store only.`);
-    }
-  } catch (err) {
-    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
-  }
-}
-
-/**
  * Phase 4 — `POST /api/verification/teacher-approve` registry
  * dual-write. Same contract as the captain persist helpers above:
  * return early when Supabase is unconfigured, never throw — on any
@@ -11923,6 +12738,416 @@ async function persistCommunityMessageToSupabase(
   if (!isSupabaseConfigured()) return;
   try {
     await insertCommunityMessage(message);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Audit batch v1.0.29 (B19) dual-write helpers — one per record store
+ * that was JSON-only. Same contract as every persist helper above:
+ * return early when Supabase is unconfigured, never throw — on any
+ * query error log a warning and the caller carries on with the JSON
+ * write, so a record is never lost because Postgres is down. The
+ * JSON store stays the source of truth until the live path is
+ * verified. Tables that do not exist yet (support_tickets,
+ * account_deletion_requests, announcements, reminders,
+ * routine_documents) are created by supabase-audit-batch-v1.0.29.sql;
+ * until that SQL runs the insert throws "relation does not exist"
+ * and the record stays JSON-only.
+ */
+function toIsoOrUndefined(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return undefined;
+  return new Date(ms).toISOString();
+}
+
+async function persistStudentProfileToSupabase(
+  studentId: string,
+  patch: Parameters<typeof updateStudentById>[1],
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const updated = await updateStudentById(studentId, patch);
+    if (!updated) {
+      console.warn(`[${logTag}] Student ${studentId} not found in Postgres; profile kept in JSON store only.`);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistTeacherProfileToSupabase(
+  teacherId: string,
+  patch: Parameters<typeof updateTeacherById>[1],
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const updated = await updateTeacherById(teacherId, patch);
+    if (!updated) {
+      console.warn(`[${logTag}] Teacher ${teacherId} not found in Postgres; profile kept in JSON store only.`);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistAnnouncementToSupabase(ann: ServerAnnouncement, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertRecordToSupabase('announcements', {
+      id: ann.id,
+      author_id: ann.authorId,
+      author_name: ann.authorName,
+      author_role: ann.authorRole,
+      title: ann.title ?? null,
+      text: ann.text,
+      college: ann.college,
+      department: ann.department,
+      semester: ann.semester,
+      shift: ann.shift,
+      section: ann.section,
+      created_at: ann.createdAt
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistReminderToSupabase(
+  reminder: StoredReminder,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await upsertRecordToSupabase('reminders', {
+      id: reminder.id,
+      owner_id: reminder.ownerId,
+      title: reminder.title,
+      category: reminder.category,
+      due_date: toIsoOrUndefined(reminder.dueDate) ?? null,
+      due_time: reminder.dueTime ?? null,
+      priority: reminder.priority,
+      is_completed: reminder.isCompleted,
+      note: reminder.note ?? null,
+      college_id: reminder.college_id ?? null,
+      department_id: reminder.department_id ?? null,
+      semester: reminder.semester ?? null,
+      shift: reminder.shift ?? null,
+      section: reminder.section ?? null,
+      routine_id: reminder.routineId ?? null,
+      created_at: reminder.createdAt,
+      updated_at: reminder.updatedAt
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistReminderDeleteToSupabase(id: string, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await deleteRecordByIdToSupabase('reminders', id);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase delete failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistRoutineDocumentToSupabase(
+  doc: RoutineDocumentRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertRecordToSupabase('routine_documents', {
+      id: doc.id,
+      file_name: doc.fileName,
+      mime_type: doc.mimeType,
+      file_size_bytes: doc.fileSizeBytes,
+      day: doc.day ?? null,
+      subject_code: doc.subjectCode ?? null,
+      college: doc.college,
+      department: doc.department,
+      semester: doc.semester,
+      shift: doc.shift,
+      section: doc.section,
+      uploaded_by: doc.uploadedBy,
+      uploaded_by_id: doc.uploadedById,
+      uploaded_by_role: doc.uploadedByRole,
+      storage_path: doc.storage_path ?? null,
+      created_at: doc.createdAt
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistNoteToSupabase(note: NoteItem, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertRecordToSupabase('notes', {
+      id: note.id,
+      owner_id: note.uploadedById ?? null,
+      title: note.title,
+      content: note.summary ?? null,
+      file_url: note.mediaUrl ?? null,
+      file_name: note.mediaName ?? null,
+      file_type: note.fileType ?? null,
+      subject: note.subjectCode ?? null,
+      semester: note.semester ?? null,
+      college: note.college ?? null,
+      department: note.department ?? null
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistAssignmentToSupabase(asg: AssignmentItem, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertRecordToSupabase('assignments', {
+      id: asg.id,
+      teacher_id: asg.assignedById ?? null,
+      title: asg.title,
+      description: asg.description ?? null,
+      subject: asg.subjectCode ?? null,
+      semester: asg.semester ?? null,
+      shift: asg.shift ?? null,
+      section: asg.section ?? null,
+      college: asg.college ?? null,
+      department: asg.department ?? null,
+      due_date: toIsoOrUndefined(asg.dueDate) ?? null,
+      file_url: asg.attachmentUrl ?? null
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistSubmissionToSupabase(
+  sub: AssignmentSubmissionRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    // Upsert: a resubmission updates the same id (attemptCount +1).
+    await upsertRecordToSupabase('assignment_submissions', {
+      id: sub.id,
+      assignment_id: sub.assignmentId,
+      student_id: sub.studentId,
+      student_name: sub.studentName ?? null,
+      file_url: sub.attachmentUrl ?? null,
+      file_name: sub.attachmentName ?? null,
+      submitted_at: toIsoOrUndefined(sub.submittedAt) ?? new Date().toISOString()
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistJobToSupabase(job: JobCircular, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await upsertRecordToSupabase('jobs', {
+      id: job.id,
+      title: job.title,
+      company: job.company,
+      location: job.location ?? null,
+      type: job.type ?? null,
+      target_departments: job.targetDepartments ?? [],
+      published_at: toIsoOrUndefined(job.publishedAt) ?? null,
+      deadline: toIsoOrUndefined(job.deadline) ?? null,
+      stipend_or_salary: job.stipendOrSalary ?? null,
+      experience_requirements: job.experienceRequirements ?? null,
+      educational_qualifications: job.educationalQualifications ?? null,
+      description: job.description ?? null,
+      requirements: job.requirements ? [job.requirements] : [],
+      source_name: job.sourceName ?? null,
+      source_url: job.sourceUrl ?? null,
+      posted_by: job.postedBy ?? null,
+      posted_by_id: job.postedById ?? null,
+      posted_by_role: job.postedByRole ?? null,
+      apply_url: job.applyUrl ?? null,
+      application_method: job.applicationMethod ?? null,
+      media_type: job.mediaType ?? null,
+      media_name: job.mediaName ?? null,
+      status: 'active'
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistSemesterRecordToSupabase(
+  rec: SavedSemesterCalculatorRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await upsertRecordToSupabase('semester_calculator_records', {
+      id: rec.id,
+      owner_user_id: rec.ownerUserId,
+      owner_name: rec.ownerName,
+      owner_role: rec.ownerRole,
+      technology: rec.technology,
+      technology_key: rec.technologyKey,
+      regulation: rec.regulation,
+      semester: rec.semester,
+      subject_entries: rec.subjectEntries ?? [],
+      calculated_gpa: rec.calculatedGpa ?? null,
+      total_credits_counted: rec.totalCreditsCounted ?? null,
+      total_subjects_counted: rec.totalSubjectsCounted ?? null
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistSemesterRecordDeleteToSupabase(id: string, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await deleteRecordByIdToSupabase('semester_calculator_records', id);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase delete failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistJobDeleteToSupabase(id: string, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await deleteRecordByIdToSupabase('jobs', id);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase delete failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistSupportTicketToSupabase(ticket: SupportTicket, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertRecordToSupabase('support_tickets', {
+      id: ticket.id,
+      user_id: ticket.userId,
+      user_name: ticket.userName ?? null,
+      user_roll: ticket.userRoll ?? null,
+      subject: ticket.subject,
+      description: ticket.description,
+      category: ticket.category,
+      priority: ticket.priority,
+      status: ticket.status,
+      assignee_id: ticket.assigneeId ?? null,
+      created_at: ticket.createdAt,
+      updated_at: ticket.updatedAt
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistDeletionRequestToSupabase(
+  request: AccountDeletionRequest,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertRecordToSupabase('account_deletion_requests', {
+      id: request.id,
+      account_id: request.accountId,
+      account_type: request.accountType,
+      board_roll: request.boardRoll ?? null,
+      account_name: request.accountName,
+      status: request.status,
+      requested_at: request.requestedAt,
+      source: request.source,
+      reason: request.reason ?? null,
+      reviewed_at: request.reviewedAt ?? null,
+      reviewed_by: request.reviewedBy ?? null,
+      review_note: request.reviewNote ?? null
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistMembershipToSupabase(
+  mem: CommunityMembershipRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await upsertRecordToSupabase('community_memberships', {
+      id: mem.id,
+      community_id: mem.community_id,
+      user_id: mem.user_id,
+      user_name: mem.user_name ?? null,
+      user_role: mem.user_role ?? null,
+      college_id: mem.college_id ?? null,
+      department_id: mem.department_id ?? null,
+      semester: mem.semester ?? null,
+      shift: mem.shift ?? null,
+      section: mem.section ?? null,
+      membership_role: mem.membership_role ?? 'member',
+      status: mem.status ?? 'active',
+      is_muted: mem.is_muted ?? false,
+      joined_at: mem.joined_at ?? new Date().toISOString(),
+      updated_at: mem.updated_at ?? new Date().toISOString()
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistMembershipDeleteToSupabase(
+  membershipId: string,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await deleteRecordByIdToSupabase('community_memberships', membershipId);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase delete failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistCommunityMessageUpdateToSupabase(
+  msg: CommunityMessageRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await updateRecordByIdToSupabase('community_messages', msg.id, {
+      is_pinned: msg.is_pinned ?? false,
+      pinned_by: msg.pinned_by ?? null,
+      pinned_at: msg.pinned_at ?? null,
+      is_deleted: msg.is_deleted ?? false,
+      reports_count: msg.reports_count ?? 0
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+async function persistCommunityReportToSupabase(
+  report: CommunityReportRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertRecordToSupabase('community_reports', {
+      id: report.id,
+      community_id: report.community_id,
+      message_id: report.reported_message_id ?? null,
+      reporter_id: report.reported_by_id ?? null,
+      reported_user_id: report.reported_user_id ?? null,
+      reason: report.reason,
+      // Table default casing is 'Pending' (phase1); the JSON record
+      // uses lowercase — normalise so Postgres reads stay consistent.
+      status: report.status === 'resolved' ? 'Resolved' : report.status === 'dismissed' ? 'Dismissed' : 'Pending',
+      created_at: report.created_at
+    });
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
@@ -12871,6 +14096,236 @@ app.get('/api/routines/notifications', (req: Request, res: Response) => {
   } catch (err) {
     console.error('[Routines API] GET notifications error:', err);
     return res.status(500).json({ success: false, error: 'Failed to load routine notifications.' });
+  }
+});
+
+/**
+ * 14B-1. UPLOAD A SCANNED ROUTINE DOCUMENT (`POST /api/routines/documents`)
+ * Audit batch v1.0.29 (B3): the extracted periods already reach the
+ * server as routines (A11), but the scanned document itself never
+ * left the phone (localStorage `diplomamate_uploaded_routines`, and
+ * multi-MB data URLs can silently exceed the ~5 MB quota). This
+ * endpoint stores the bytes in the Supabase Storage `community-files`
+ * bucket (REUSED — no new bucket; the bucket already holds community
+ * attachments, and routine documents are the same kind of file) with
+ * a metadata row in the JSON store; when Storage is unconfigured or
+ * the upload fails the bytes stay on the record as `file_data`, so
+ * the upload is never lost. Same validation as community attachments
+ * (inspectUploadedFile: magic bytes, 10 MB cap / 15 MB video,
+ * HTML/script/executable rejection). Role-gated exactly like routine
+ * writes: Captain/Teacher for the cohort, via
+ * checkRoutinePublishAuthorization on the caller's cohort — the
+ * captain's cohort comes from their Approved captain record, the
+ * teacher's from body-supplied cohort fields validated against their
+ * taught scope (resolveTeacherTargetCohort; a teacher session carries
+ * no semester/shift/section). NOTE: declared before `/api/routines/:id` so `documents`
+ * is not matched as `:id`.
+ */
+app.post('/api/routines/documents', async (req: Request, res: Response) => {
+  try {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to upload routine documents.' });
+    }
+    let group: ResolvedAcademicGroup | null = null;
+    if (session.role === 'class_captain') {
+      group = resolveSessionAcademicGroup(session);
+      if (!group) {
+        return res.status(400).json({ success: false, error: 'Could not determine your class cohort.' });
+      }
+    } else if (session.role === 'teacher') {
+      const resolved = resolveTeacherTargetCohort(session, (req.body || {}) as Record<string, unknown>);
+      if (!resolved.group) {
+        return res.status(resolved.status || 400).json({ success: false, error: resolved.error || 'Could not determine the target cohort.' });
+      }
+      group = resolved.group;
+    } else {
+      return res.status(403).json({ success: false, error: 'Forbidden: Only teachers and class captains can upload routine documents.' });
+    }
+    const authCheck = checkRoutinePublishAuthorization(session, {
+      college_id: group.college_id,
+      department_id: group.department_id,
+      semester: group.semester,
+      shift: group.shift,
+      section: group.section,
+      regulation: group.regulation
+    });
+    if (!authCheck.authorized || !authCheck.verifiedGroup) {
+      return res.status(authCheck.status).json({ success: false, error: authCheck.error });
+    }
+    const verifiedGroup = authCheck.verifiedGroup;
+
+    const body = (req.body || {}) as Record<string, unknown>;
+    const fileName = typeof body.fileName === 'string' ? body.fileName.trim() : '';
+    if (!fileName || fileName.length > 200) {
+      return res.status(400).json({ success: false, error: 'fileName is required (max 200 characters).' });
+    }
+    const rawInput = typeof body.base64_data === 'string' ? body.base64_data.trim() : '';
+    if (!rawInput) {
+      return res.status(400).json({ success: false, error: 'base64_data is required: send the file bytes as a base64 data URL.' });
+    }
+    const dataUrl = rawInput.includes('base64,') ? rawInput : `data:application/octet-stream;base64,${rawInput}`;
+    let inspected: InspectedUpload;
+    try {
+      inspected = inspectUploadedFile(dataUrl, fileName);
+    } catch (err) {
+      return res.status(400).json({ success: false, error: (err as Error).message || 'Invalid file.' });
+    }
+    if (!inspected.fileData) {
+      return res.status(400).json({ success: false, error: 'No file bytes were sent.' });
+    }
+    const day = typeof body.day === 'string' && ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'].includes(body.day)
+      ? (body.day as WeekDay)
+      : undefined;
+    const subjectCode = typeof body.subjectCode === 'string' && body.subjectCode.trim()
+      ? body.subjectCode.trim().slice(0, 20)
+      : undefined;
+
+    const docId = `rtdoc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    // Bytes to Supabase Storage first (community-files bucket, reused).
+    // On any failure the bytes stay on the record as file_data.
+    let storagePath: string | null = null;
+    if (isSupabaseConfigured()) {
+      try {
+        storagePath = await uploadStorageFile(
+          'community-files',
+          `routine-documents/${docId}_${sanitizeStorageFileName(fileName)}`,
+          Buffer.from(inspected.fileData, 'base64'),
+          inspected.mimeType
+        );
+      } catch (err) {
+        console.warn('[Routine Document Upload] Supabase Storage upload failed, keeping bytes in JSON store:', err);
+        storagePath = null;
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const doc: RoutineDocumentRecord = {
+      id: docId,
+      fileName,
+      mimeType: inspected.mimeType,
+      fileSizeBytes: inspected.fileSizeBytes,
+      day,
+      subjectCode,
+      college: verifiedGroup.college,
+      department: verifiedGroup.department,
+      semester: verifiedGroup.semester,
+      shift: verifiedGroup.shift,
+      section: verifiedGroup.section,
+      uploadedBy: session.name,
+      uploadedById: session.userId,
+      uploadedByRole: session.role as AccountType,
+      ...(storagePath ? { storage_path: storagePath } : { file_data: inspected.fileData }),
+      createdAt: nowIso
+    };
+    academicStore.routineDocuments.unshift(doc);
+    saveAcademicStore(academicStore);
+    await persistRoutineDocumentToSupabase(doc, 'RoutineDocumentUpload');
+    const { file_data: _dropped, ...publicDoc } = doc;
+    return res.status(201).json({ success: true, document: publicDoc });
+  } catch (err) {
+    console.error('[Routines API] POST /api/routines/documents error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to upload the routine document.' });
+  }
+});
+
+/** 14B-2. LIST THE CALLER'S COHORT ROUTINE DOCUMENTS (`GET /api/routines/documents`). Metadata only — bytes are never returned in a list payload. */
+app.get('/api/routines/documents', (req: Request, res: Response) => {
+  try {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in.' });
+    }
+    let docs = [...academicStore.routineDocuments];
+    if (session.role === 'system_admin') {
+      // all
+    } else if (session.role === 'teacher') {
+      // College + department scope by canonical id (a teacher session
+      // carries no semester, so resolveSessionAcademicGroup() cannot
+      // be used here).
+      const teacherCol = resolveStrictCollege(session.college ?? null);
+      const teacherDept = resolveStrictTechnology(session.department ?? null);
+      if (!teacherCol || !teacherDept) {
+        return res.status(400).json({ success: false, error: 'Could not determine your college/department.' });
+      }
+      docs = docs.filter(
+        d =>
+          resolveStrictCollege(d.college)?.id === teacherCol.id &&
+          resolveStrictTechnology(d.department)?.id === teacherDept.id
+      );
+    } else {
+      const group = resolveSessionAcademicGroup(session);
+      if (!group) {
+        return res.status(400).json({ success: false, error: 'Could not determine your class cohort.' });
+      }
+      docs = docs.filter(
+        d =>
+          d.college === group.college &&
+          d.department === group.department &&
+          Number(d.semester) === Number(group.semester) &&
+          d.shift === group.shift &&
+          d.section === group.section
+      );
+    }
+    docs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const publicDocs = docs.map(({ file_data: _dropped, ...rest }) => rest);
+    return res.status(200).json({ success: true, documents: publicDocs });
+  } catch (err) {
+    console.error('[Routines API] GET /api/routines/documents error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to load routine documents.' });
+  }
+});
+
+/**
+ * 14B-3. DOWNLOAD ONE ROUTINE DOCUMENT (`GET /api/routines/documents/:id/file`).
+ * Serves Storage → JSON file_data → 503, never a fake PDF — the same
+ * pattern as the community file download.
+ */
+app.get('/api/routines/documents/:id/file', async (req: Request, res: Response) => {
+  try {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to download routine documents.' });
+    }
+    const doc = academicStore.routineDocuments.find(d => d.id === req.params.id);
+    if (!doc) {
+      return res.status(404).json({ success: false, error: 'Routine document not found.' });
+    }
+    const group = resolveSessionAcademicGroup(session);
+    const sameCohort =
+      !!group &&
+      doc.college === group.college &&
+      doc.department === group.department &&
+      Number(doc.semester) === Number(group.semester) &&
+      doc.shift === group.shift &&
+      doc.section === group.section;
+    // Teachers: college + department scope by canonical id (their
+    // session carries no semester, so the cohort check above cannot
+    // apply to them).
+    const teacherCol = session.role === 'teacher' ? resolveStrictCollege(session.college ?? null) : null;
+    const teacherDept = session.role === 'teacher' ? resolveStrictTechnology(session.department ?? null) : null;
+    const teacherScope =
+      session.role === 'teacher' &&
+      !!teacherCol &&
+      !!teacherDept &&
+      resolveStrictCollege(doc.college)?.id === teacherCol.id &&
+      resolveStrictTechnology(doc.department)?.id === teacherDept.id;
+    if (session.role !== 'system_admin' && !sameCohort && !teacherScope) {
+      return res.status(403).json({ success: false, error: 'Forbidden: This document belongs to another class cohort.' });
+    }
+    const served = await serveUploadedFile(res, {
+      fileName: doc.fileName,
+      mimeType: doc.mimeType,
+      bucket: 'community-files',
+      storagePath: doc.storage_path,
+      fileData: doc.file_data
+    });
+    if (!served) {
+      return res.status(503).json({ success: false, error: 'File temporarily unavailable. Please try again.' });
+    }
+  } catch (err) {
+    console.error('[Routines API] GET /api/routines/documents/:id/file error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to download the routine document.' });
   }
 });
 
@@ -14384,6 +15839,8 @@ app.post('/api/communities/:id/join', (req: Request, res: Response) => {
     }
 
     saveAcademicStore(academicStore);
+    // B19 dual-write (fire-and-forget: this handler is sync).
+    void persistMembershipToSupabase(membershipRecord, 'CommunityJoin');
 
     return res.status(200).json({
       success: true,
@@ -14415,9 +15872,12 @@ app.post('/api/communities/:id/leave', (req: Request, res: Response) => {
     );
 
     if (memIndex >= 0) {
+      const removed = academicStore.communityMemberships[memIndex];
       academicStore.communityMemberships.splice(memIndex, 1);
       comm.member_count = academicStore.communityMemberships.filter(m => m.community_id === comm.id && m.status === 'active').length;
       saveAcademicStore(academicStore);
+      // B19 dual-write (fire-and-forget: this handler is sync).
+      void persistMembershipDeleteToSupabase(removed.id, 'CommunityLeave');
     }
 
     return res.status(200).json({ success: true, message: `Left ${comm.name}.` });
@@ -14967,6 +16427,8 @@ app.post('/api/communities/:id/messages/:msgId/pin', (req: Request, res: Respons
     }
 
     saveAcademicStore(academicStore);
+    // B19 dual-write (fire-and-forget: this handler is sync).
+    void persistCommunityMessageUpdateToSupabase(msg, 'CommunityPin');
 
     return res.status(200).json({
       success: true,
@@ -15011,6 +16473,8 @@ app.delete('/api/communities/:id/messages/:msgId', (req: Request, res: Response)
     }
 
     saveAcademicStore(academicStore);
+    // B19 dual-write (fire-and-forget: this handler is sync).
+    void persistCommunityMessageUpdateToSupabase(msg, 'CommunityDeleteMsg');
 
     return res.status(200).json({ success: true, message: 'Message removed.' });
   } catch (err) {
@@ -15034,9 +16498,18 @@ app.put('/api/communities/:id/mute', (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Membership not found.' });
     }
 
-    mem.is_muted = !mem.is_muted;
+    // Audit batch v1.0.29 (B16): honour an explicit is_muted value.
+    // The old code always toggled, so a stale local membership (other
+    // device, re-login) flipped mute the wrong way. Absent body value
+    // keeps the old toggle behaviour (back-compat).
+    if (typeof req.body?.is_muted === 'boolean') {
+      mem.is_muted = req.body.is_muted;
+    } else {
+      mem.is_muted = !mem.is_muted;
+    }
     mem.updated_at = new Date().toISOString();
     saveAcademicStore(academicStore);
+    void persistMembershipToSupabase(mem, 'CommunityMute');
 
     return res.status(200).json({
       success: true,
@@ -15078,10 +16551,16 @@ app.post('/api/communities/:id/report', (req: Request, res: Response) => {
 
     if (reported_message_id) {
       const msg = academicStore.communityMessages.find(m => m.id === reported_message_id);
-      if (msg) msg.reports_count = (msg.reports_count || 0) + 1;
+      if (msg) {
+        msg.reports_count = (msg.reports_count || 0) + 1;
+        // B19 dual-write for the bumped counter (fire-and-forget).
+        void persistCommunityMessageUpdateToSupabase(msg, 'CommunityReport');
+      }
     }
 
     saveAcademicStore(academicStore);
+    // B19 dual-write (fire-and-forget: this handler is sync).
+    void persistCommunityReportToSupabase(report, 'CommunityReport');
 
     return res.status(201).json({
       success: true,
@@ -17261,6 +18740,8 @@ async function syncCareerjetJobs(): Promise<{
     let insertedCount = 0;
     let updatedCount = 0;
     const nowIso = new Date().toISOString();
+    // B19 dual-write: jobs changed by this sync, persisted below.
+    const changedJobs: JobCircular[] = [];
 
     for (const item of rawJobs) {
       const title = String(item.title || '').replace(/<[^>]+>/g, '').trim();
@@ -17291,10 +18772,11 @@ async function syncCareerjetJobs(): Promise<{
           applyUrl: jobUrl,
           updatedAt: nowIso
         };
+        changedJobs.push(academicStore.jobs[existingIdx]);
         updatedCount += 1;
       } else {
         insertedCount += 1;
-        academicStore.jobs.unshift({
+        const syncedJob: JobCircular = {
           id: `job_cj_${crypto.createHash('sha1').update(jobUrl).digest('hex').slice(0, 12)}`,
           title,
           company,
@@ -17315,13 +18797,19 @@ async function syncCareerjetJobs(): Promise<{
           postedBy: 'Careerjet Automated Sync',
           postedAt: pubDate,
           updatedAt: nowIso
-        });
+        };
+        academicStore.jobs.unshift(syncedJob);
+        changedJobs.push(syncedJob);
       }
     }
 
     lastJobsSyncAt = nowIso;
     lastJobsSyncStatusMsg = `Synchronized with Careerjet API v4 (${insertedCount} added, ${updatedCount} updated).`;
     saveAcademicStore(academicStore);
+    // B19 dual-write for the synced jobs.
+    for (const j of changedJobs) {
+      await persistJobToSupabase(j, 'JobSync');
+    }
 
     return {
       syncedFromApi: true,
@@ -17544,6 +19032,7 @@ app.post('/api/jobs', async (req: Request, res: Response) => {
     // employer application page cannot be verified, so it is not published.
     // Generic job-board search pages are not an apply link.
     const externalApply = String(applyUrl || '').trim();
+    const cleanSourceUrl = String(sourceUrl || '').trim();
     if (!externalApply || !/^https?:\/\//i.test(externalApply)) {
       return res.status(400).json({
         success: false,
@@ -17574,6 +19063,10 @@ app.post('/api/jobs', async (req: Request, res: Response) => {
       duplicate.experienceRequirements = experienceRequirements ? String(experienceRequirements).trim() : duplicate.experienceRequirements;
       duplicate.educationalQualifications = educationalQualifications ? String(educationalQualifications).trim() : duplicate.educationalQualifications;
       if (externalApply) duplicate.applyUrl = externalApply;
+      // Audit batch v1.0.29 (B13): keep a distinct sourceUrl when the
+      // caller sent one — it used to be overwritten with applyUrl on
+      // every path. Fall back to applyUrl only when absent.
+      if (cleanSourceUrl) duplicate.sourceUrl = cleanSourceUrl;
       // Uploads item: a re-attached circular file is validated +
       // stored on the record (`media_data`) like a fresh publish.
       if (mediaUrl !== undefined || base64_data !== undefined) {
@@ -17602,6 +19095,8 @@ app.post('/api/jobs', async (req: Request, res: Response) => {
       duplicate.updatedAt = nowIso;
       lastJobsSyncAt = nowIso;
       saveAcademicStore(academicStore);
+      // B19 dual-write.
+      await persistJobToSupabase(duplicate, 'JobUpdate');
 
       return res.status(200).json({
         success: true,
@@ -17647,7 +19142,9 @@ app.post('/api/jobs', async (req: Request, res: Response) => {
       description: String(description || requirements || '').trim(),
       requirements: String(requirements || description || '').trim(),
       sourceName: String(sourceName || 'Placement Cell / Admin Import').trim(),
-      sourceUrl: externalApply,
+      // Audit batch v1.0.29 (B13): a distinct sourceUrl when provided;
+      // applyUrl only as the fallback (it used to always overwrite).
+      sourceUrl: cleanSourceUrl || externalApply,
       applyUrl: externalApply,
       applicationMethod: 'external_url',
       postedBy: session.name,
@@ -17665,6 +19162,8 @@ app.post('/api/jobs', async (req: Request, res: Response) => {
     academicStore.jobs.unshift(newJob);
     lastJobsSyncAt = nowIso;
     saveAcademicStore(academicStore);
+    // B19 dual-write.
+    await persistJobToSupabase(newJob, 'JobCreate');
 
     return res.status(201).json({
       success: true,
@@ -17703,6 +19202,8 @@ app.post('/api/admin/jobs/import', requireSystemAdmin, (req: Request, res: Respo
     let updatedCount = 0;
     let skippedCount = 0;
     const nowIso = new Date().toISOString();
+    // B19 dual-write: jobs changed by this import, persisted below.
+    const changedJobs: JobCircular[] = [];
 
     for (const raw of jobsPayload) {
       const title = String(raw.title || '').trim();
@@ -17739,10 +19240,11 @@ app.post('/api/admin/jobs/import', requireSystemAdmin, (req: Request, res: Respo
           applyUrl: applyUrl || existing.applyUrl,
           updatedAt: nowIso
         };
+        changedJobs.push(academicStore.jobs[existingIdx]);
         updatedCount += 1;
       } else {
         insertedCount += 1;
-        academicStore.jobs.unshift({
+        const importedJob: JobCircular = {
           id: `job_imp_${Date.now()}_${insertedCount}`,
           title,
           company,
@@ -17769,12 +19271,18 @@ app.post('/api/admin/jobs/import', requireSystemAdmin, (req: Request, res: Respo
           postedByRole: session.role as AccountType,
           postedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
           updatedAt: nowIso
-        });
+        };
+        academicStore.jobs.unshift(importedJob);
+        changedJobs.push(importedJob);
       }
     }
 
     lastJobsSyncAt = nowIso;
     saveAcademicStore(academicStore);
+    // B19 dual-write (fire-and-forget: this handler is sync).
+    for (const j of changedJobs) {
+      void persistJobToSupabase(j, 'JobImport');
+    }
 
     return res.status(200).json({
       success: true,
@@ -17814,6 +19322,8 @@ app.delete('/api/jobs/:id', (req: Request, res: Response) => {
 
     academicStore.jobs = academicStore.jobs.filter(j => j.id !== req.params.id);
     saveAcademicStore(academicStore);
+    // B19 dual-write (fire-and-forget: this handler is sync).
+    void persistJobDeleteToSupabase(req.params.id, 'JobDelete');
 
     return res.status(200).json({
       success: true,

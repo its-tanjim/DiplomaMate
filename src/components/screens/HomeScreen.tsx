@@ -137,10 +137,11 @@ export const HomeScreen: React.FC = () => {
   const pendingAssignments = assignments.filter(a => a.status === 'Pending');
   const activeReminders = reminders.filter(r => !r.isCompleted);
 
-  const handlePostNotice = (e: React.FormEvent) => {
+  const handlePostNotice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noticeTitle.trim() || !noticeContent.trim()) return;
-    addAnnouncement(noticeTitle, noticeContent, noticePriority);
+    const res = await addAnnouncement(noticeTitle, noticeContent, noticePriority);
+    if (!res.success) return; // form stays open with the error toast
     setNoticeTitle('');
     setNoticeContent('');
     setShowNoticeModal(false);

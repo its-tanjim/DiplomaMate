@@ -100,6 +100,17 @@ export const SemesterScreen: React.FC = () => {
       if (res.ok && data.success && Array.isArray(data.records)) {
         setSavedRecords(data.records);
         localStorage.setItem(localStorageKey, JSON.stringify(data.records));
+        // Restore the per-semester manual GPA overrides the server
+        // stored, so the CGPA table shows them after a reload.
+        const overrides: Partial<Record<SemesterNumber, string>> = {};
+        for (const r of data.records as SavedSemesterCalculatorRecord[]) {
+          if (r.manualGpaOverride !== null && r.manualGpaOverride !== undefined) {
+            overrides[r.semester] = String(r.manualGpaOverride);
+          }
+        }
+        if (Object.keys(overrides).length > 0) {
+          setManualSemesterGpas(prev => ({ ...overrides, ...prev }));
+        }
       }
     } catch {
       // keep local records if offline
@@ -267,6 +278,12 @@ export const SemesterScreen: React.FC = () => {
     }
 
     setIsSavingRecord(true);
+    // B14: the per-semester manual GPA override goes to the server in
+    // the same PUT (the server already accepts + stores
+    // manualGpaOverride). The override keys match the server field
+    // name exactly — one override per saved semester record.
+    const manualOverrideRaw = (manualSemesterGpas[selectedSemester] || '').trim();
+    const manualOverrideNum = manualOverrideRaw === '' ? null : Number(manualOverrideRaw);
     const payload = {
       ownerUserId: userProfile.id,
       boardRoll: userProfile.boardRoll,
@@ -280,67 +297,41 @@ export const SemesterScreen: React.FC = () => {
       totalSubjectsCounted: gpaSummary.evaluatedSubjectCount,
       hasFailedSubject: gpaSummary.hasFailedSubject,
       isEstimate: gpaSummary.isEstimate,
-      estimateReasons: gpaSummary.limitations
+      estimateReasons: gpaSummary.limitations,
+      manualGpaOverride:
+        manualOverrideNum !== null && !Number.isNaN(manualOverrideNum) && manualOverrideNum >= 0 && manualOverrideNum <= 4.0
+          ? manualOverrideNum
+          : null
     };
 
     try {
       const tokenToUse = authToken || localStorage.getItem('diplomamate_auth_token');
-      if (tokenToUse) {
-        const res = await apiFetch('/api/my-semester-results', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${tokenToUse}`
-          },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (res.ok && data.success && Array.isArray(data.records)) {
-          setSavedRecords(data.records);
-          localStorage.setItem(localStorageKey, JSON.stringify(data.records));
-          showToast(data.message || `Semester ${selectedSemester} GPA saved!`);
-          setIsSavingRecord(false);
-          return;
-        }
+      if (!tokenToUse) {
+        // Fail loudly (B14-fallback): no token means no server save —
+        // never fall through to a local save with the same success toast.
+        showToast('Please sign in again to save your semester result.');
+        return;
       }
-
-      // Fallback local save for current user
-      const localRecord: SavedSemesterCalculatorRecord = {
-        id: `sem_calc_${userProfile.id}_${selectedRegulation}_s${selectedSemester}`,
-        ownerUserId: userProfile.id,
-        ownerName: userProfile.name,
-        ownerRole: accountType,
-        boardRoll: userProfile.boardRoll,
-        college: userProfile.college,
-        technology: selectedTechnology,
-        technologyKey: selectedTechnology,
-        regulation: selectedRegulation as CalculatorRegulation,
-        semester: selectedSemester,
-        subjectEntries,
-        calculatedGpa: gpaSummary.semesterGpa,
-        totalCreditsCounted: gpaSummary.totalCreditsCounted,
-        totalSubjectsCounted: gpaSummary.evaluatedSubjectCount,
-        hasFailedSubject: gpaSummary.hasFailedSubject,
-        isEstimate: gpaSummary.isEstimate,
-        estimateReasons: gpaSummary.limitations,
-        updatedAt: new Date().toISOString()
-      };
-
-      const nextRecords = [
-        ...savedRecords.filter(
-          r =>
-            !(
-              r.ownerUserId === userProfile.id &&
-              r.technology.toLowerCase() === selectedTechnology.toLowerCase() &&
-              r.regulation === selectedRegulation &&
-              r.semester === selectedSemester
-            )
-        ),
-        localRecord
-      ];
-      setSavedRecords(nextRecords);
-      localStorage.setItem(localStorageKey, JSON.stringify(nextRecords));
-      showToast(`Saved Semester ${selectedSemester} GPA result to your profile.`);
+      const res = await apiFetch('/api/my-semester-results', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tokenToUse}`
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success && Array.isArray(data.records)) {
+        setSavedRecords(data.records);
+        localStorage.setItem(localStorageKey, JSON.stringify(data.records));
+        showToast(data.message || `Semester ${selectedSemester} GPA saved!`);
+        return;
+      }
+      // Fail loudly (B14-fallback): a non-OK PUT must NOT fall through
+      // to a local save with the same "Saved … to your profile" toast.
+      showToast(data?.error || 'Could not save your semester result. Please try again.');
+    } catch {
+      showToast('Could not save your semester result — check your connection and try again.');
     } finally {
       setIsSavingRecord(false);
     }
@@ -348,27 +339,33 @@ export const SemesterScreen: React.FC = () => {
 
   const handleDeleteSavedRecord = async (record: SavedSemesterCalculatorRecord) => {
     const tokenToUse = authToken || localStorage.getItem('diplomamate_auth_token');
-    if (tokenToUse) {
-      try {
-        const res = await apiFetch(`/api/my-semester-results/${encodeURIComponent(record.id)}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${tokenToUse}` }
-        });
-        const data = await res.json();
-        if (res.ok && data.success && Array.isArray(data.records)) {
-          setSavedRecords(data.records);
-          localStorage.setItem(localStorageKey, JSON.stringify(data.records));
-          showToast(`Removed saved Semester ${record.semester} result.`);
-          return;
-        }
-      } catch {
-        // fallback to local removal
-      }
+    if (!tokenToUse) {
+      // No session: the record can only be local, so a local removal
+      // is the honest behaviour.
+      const next = savedRecords.filter(r => r.id !== record.id);
+      setSavedRecords(next);
+      localStorage.setItem(localStorageKey, JSON.stringify(next));
+      showToast(`Removed saved Semester ${record.semester} result.`);
+      return;
     }
-    const next = savedRecords.filter(r => r.id !== record.id);
-    setSavedRecords(next);
-    localStorage.setItem(localStorageKey, JSON.stringify(next));
-    showToast(`Removed saved Semester ${record.semester} result.`);
+    try {
+      const res = await apiFetch(`/api/my-semester-results/${encodeURIComponent(record.id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${tokenToUse}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success && Array.isArray(data.records)) {
+        setSavedRecords(data.records);
+        localStorage.setItem(localStorageKey, JSON.stringify(data.records));
+        showToast(`Removed saved Semester ${record.semester} result.`);
+        return;
+      }
+      // Fail loudly: a rejected DELETE must NOT remove the record
+      // locally and claim success — the server still has it.
+      showToast(data?.error || 'Could not delete the saved result. Please try again.');
+    } catch {
+      showToast('Could not delete the saved result — check your connection and try again.');
+    }
   };
 
   // Build Semester 1..8 GPA map for Overall Weighted CGPA Calculation

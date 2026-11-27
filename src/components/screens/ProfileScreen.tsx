@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { apiFetch } from '../../services/apiClient';
 import { 
@@ -38,12 +38,58 @@ export const ProfileScreen: React.FC = () => {
     authToken,
     logout,
     setActiveScreen,
-    showToast
+    showToast,
+    updateStudentProfileFields
   } = useApp();
 
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<StudentProfile>(userProfile);
   const [isSavingEmail, setIsSavingEmail] = useState(false);
+
+  // B17 — My Attendance (student view, GET /api/attendance/mine).
+  // Read-only: the student's own marks as recorded by their teachers.
+  const [myAttendance, setMyAttendance] = useState<Array<{
+    date: string;
+    subjectCode: string;
+    subjectName: string;
+    status: string;
+    periodLabel?: string;
+  }>>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceError, setAttendanceError] = useState('');
+
+  useEffect(() => {
+    if (accountType !== 'student' && accountType !== 'class_captain') return;
+    const tokenToUse = authToken || localStorage.getItem('diplomamate_auth_token');
+    if (!tokenToUse) return;
+    let cancelled = false;
+    setAttendanceLoading(true);
+    setAttendanceError('');
+    apiFetch('/api/attendance/mine', {
+      headers: { Authorization: `Bearer ${tokenToUse}` }
+    })
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok || !data.success || !Array.isArray(data.records)) {
+          setAttendanceError(data?.error || 'Could not load your attendance.');
+          return;
+        }
+        const records = [...data.records].sort((a, b) =>
+          String(b.date || '').localeCompare(String(a.date || ''))
+        );
+        setMyAttendance(records);
+      })
+      .catch(() => {
+        if (!cancelled) setAttendanceError('Could not load your attendance — check your connection.');
+      })
+      .finally(() => {
+        if (!cancelled) setAttendanceLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountType, authToken]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,44 +154,44 @@ export const ProfileScreen: React.FC = () => {
       }
     }
 
-    if (subjectsChanged) {
-      // Enrolled subjects are the other server-backed profile field:
-      // they go through PATCH /api/me/profile so a fresh login (or a
-      // login from another device) restores the selection instead of
-      // wiping it. Everything else stays local-only, as before.
+    // B1: name/phone/session/regulation/semester/shift/section (+ subjects) now
+    // live on the server via PATCH /api/me/profile. Only the fields
+    // that actually changed are sent. A 400/409 rejection (e.g. an
+    // Approved captain changing section/shift/semester) leaves the form open
+    // with the server message; a network failure keeps the values
+    // locally and says so honestly.
+    const profilePatch: {
+      name?: string;
+      phone?: string;
+      session?: string;
+      regulation?: string;
+      semester?: number;
+      shift?: Shift;
+      section?: Section;
+      enrolledSubjects?: { code: string; name: string }[];
+    } = {};
+    if ((formData.name || '').trim() !== (userProfile.name || '').trim()) profilePatch.name = (formData.name || '').trim();
+    if ((formData.phone || '').trim() !== (userProfile.phone || '').trim()) profilePatch.phone = (formData.phone || '').trim();
+    if ((formData.session || '') !== (userProfile.session || '')) profilePatch.session = formData.session;
+    if ((formData.regulation || '') !== (userProfile.regulation || '')) profilePatch.regulation = formData.regulation;
+    if (formData.semester !== userProfile.semester) profilePatch.semester = formData.semester;
+    if (formData.shift !== userProfile.shift) profilePatch.shift = formData.shift;
+    if (formData.section !== userProfile.section) profilePatch.section = formData.section;
+    if (subjectsChanged) profilePatch.enrolledSubjects = newSubjects;
+
+    if (Object.keys(profilePatch).length > 0) {
       if (!authToken) {
         setUserProfile(profileToSave);
         setIsEditing(false);
-        showToast('Profile saved on this device. Subjects could not be saved to the server — please sign in again.');
+        showToast('Profile saved on this device. These changes could not be saved to the server — please sign in again.');
         return;
       }
-      setIsSavingEmail(true);
-      try {
-        const res = await apiFetch('/api/me/profile', {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`
-          },
-          body: JSON.stringify({ enrolledSubjects: newSubjects })
-        });
-        const data = await res.json().catch(() => ({} as { error?: string; enrolledSubjects?: { code: string; name: string }[] }));
-        if (!res.ok) {
-          // Server rejected the subjects (bad code / too many): leave
-          // the form open so the user can fix the selection.
-          showToast(data?.error || 'Could not save your subjects. Please try again.');
-          return;
-        }
-        profileToSave.enrolledSubjects = data.enrolledSubjects || newSubjects;
-      } catch {
-        // Network failure: keep the new subjects locally and say the
-        // server save did not happen.
-        setUserProfile(profileToSave);
-        setIsEditing(false);
-        showToast('Profile saved on this device. Subjects could not be saved to the server — check your connection and try again.');
+      const res = await updateStudentProfileFields(profilePatch);
+      if (!res.success) {
+        // Server rejected the change (validation / captain cohort
+        // guard): keep the form open so the user can fix it.
+        showToast(res.message);
         return;
-      } finally {
-        setIsSavingEmail(false);
       }
     }
 
@@ -575,6 +621,51 @@ export const ProfileScreen: React.FC = () => {
           {(!userProfile.enrolledSubjects || userProfile.enrolledSubjects.length === 0) && (
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-xs text-slate-500">No semester subjects selected yet — tap Edit Profile to choose your subjects.</span>
+            </div>
+          )}
+
+          {/* My Attendance — read-only view of the student's own marks (B17) */}
+          {(accountType === 'student' || accountType === 'class_captain') && (
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+              <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                My Attendance
+              </span>
+              {attendanceLoading ? (
+                <span className="text-xs text-slate-500">Loading your attendance…</span>
+              ) : attendanceError ? (
+                <span className="text-xs text-rose-600">{attendanceError}</span>
+              ) : myAttendance.length === 0 ? (
+                <span className="text-xs text-slate-500">No attendance recorded for you yet.</span>
+              ) : (
+                <div className="space-y-1.5">
+                  {myAttendance.slice(0, 10).map((rec, idx) => (
+                    <div key={`${rec.date}_${rec.subjectCode}_${idx}`} className="flex items-center justify-between gap-2 text-xs bg-surface rounded-lg border border-slate-100 px-2.5 py-1.5">
+                      <div className="min-w-0">
+                        <span className="font-semibold text-text-primary block truncate">
+                          {rec.subjectName || rec.subjectCode}
+                          {rec.subjectCode ? ` (${rec.subjectCode})` : ''}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          {rec.date}
+                          {rec.periodLabel ? ` · ${rec.periodLabel}` : ''}
+                        </span>
+                      </div>
+                      <span className={`shrink-0 px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                        rec.status === 'present'
+                          ? 'bg-teal-100 text-teal-700'
+                          : rec.status === 'absent'
+                            ? 'bg-rose-100 text-rose-700'
+                            : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {rec.status === 'present' ? 'Present' : rec.status === 'absent' ? 'Absent' : 'Not marked'}
+                      </span>
+                    </div>
+                  ))}
+                  {myAttendance.length > 10 && (
+                    <span className="text-[11px] text-slate-500">Showing the 10 most recent records.</span>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

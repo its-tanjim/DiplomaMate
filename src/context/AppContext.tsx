@@ -23,6 +23,7 @@ import {
   CaptainApplication,
   JobCircular,
   UploadedRoutineDocument,
+  ServerRoutineDocument,
   CaptainVerificationStatus,
   SystemAdminProfile,
   ShiftScheduleConfig,
@@ -124,7 +125,9 @@ interface AppContextType {
   
   // Routine Documents & OCR
   uploadedRoutines: UploadedRoutineDocument[];
-  uploadRoutineDocument: (fileName: string, fileType: 'IMAGE' | 'PDF', dataUrl: string) => UploadedRoutineDocument;
+  routineDocuments: ServerRoutineDocument[];
+  loadRoutineDocuments: () => Promise<void>;
+  uploadRoutineDocument: (fileName: string, fileType: 'IMAGE' | 'PDF', dataUrl: string, cohort?: { semester: StudentProfile['semester']; shift: Shift; section: Section }) => Promise<UploadedRoutineDocument | null>;
   analyzeRoutineOCR: (
     docId: string,
     directDoc?: UploadedRoutineDocument,
@@ -167,11 +170,12 @@ interface AppContextType {
   setNotesInitialTab: (tab: 'notices' | 'jobs' | 'assignments' | 'notes') => void;
   openNotesSection: (tab: 'notices' | 'jobs' | 'assignments' | 'notes') => void;
   
-  // Reminders
+  // Reminders (server-synced via /api/reminders; see B2)
   reminders: ReminderItem[];
-  addReminder: (reminder: Omit<ReminderItem, 'id' | 'isCompleted'>) => void;
-  toggleReminder: (id: string) => void;
-  deleteReminder: (id: string) => void;
+  addReminder: (reminder: Omit<ReminderItem, 'id' | 'isCompleted'>) => Promise<{ success: boolean; message: string }>;
+  toggleReminder: (id: string) => Promise<{ success: boolean; message: string }>;
+  deleteReminder: (id: string) => Promise<{ success: boolean; message: string }>;
+  loadReminders: () => Promise<boolean>;
   
   // Teacher Contact access. Payments are currently disabled, so contacts are free for everyone.
   teachers: TeacherContact[];
@@ -199,9 +203,25 @@ interface AppContextType {
   adminRevokeApplication: (appId: string, reason: string) => Promise<boolean>;
   getVerifiedCaptainsCount: (college: string, department: string, semester: number, shift: Shift, section: Section) => number;
   
-  // Announcements (for Class Captain)
+  // Announcements (for Class Captain) — server-backed (POST/GET
+  // /api/announcements); addAnnouncement only reports success when the
+  // server stored the post.
   announcements: ClassAnnouncement[];
-  addAnnouncement: (title: string, content: string, priority: 'Important' | 'Normal') => void;
+  addAnnouncement: (title: string, content: string, priority: 'Important' | 'Normal', cohort?: { semester: number; shift: Shift; section: Section }) => Promise<{ success: boolean; message: string }>;
+  loadAnnouncements: () => Promise<boolean>;
+
+  // Student profile fields (B1): save name/phone/session/regulation/
+  // shift/section (+ subjects, notifications) via PATCH /api/me/profile.
+  updateStudentProfileFields: (fields: {
+    name?: string;
+    phone?: string;
+    session?: string;
+    regulation?: string;
+    shift?: Shift;
+    section?: Section;
+    enrolledSubjects?: { code: string; name: string }[];
+    notifications?: NotificationPreferences;
+  }) => Promise<{ success: boolean; message: string }>;
   
   // Settings
   notifications: NotificationPreferences;
@@ -351,6 +371,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}uploaded_routines`);
     return saved ? JSON.parse(saved) : [];
   });
+  // Server-side routine documents (GET /api/routines/documents) — the
+  // durable list; uploadedRoutines above keeps the in-memory bytes for
+  // this session's OCR + original-viewer.
+  const [routineDocuments, setRoutineDocuments] = useState<ServerRoutineDocument[]>([]);
   const uploadedRoutinesRef = useRef<UploadedRoutineDocument[]>(uploadedRoutines);
   useEffect(() => {
     uploadedRoutinesRef.current = uploadedRoutines;
@@ -677,8 +701,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!isLoggedIn) return;
     void loadCaptainApplications();
-    // loadCaptainApplications is defined below; the effect callback only
-    // runs after the render completes, so the reference is initialized.
+    void loadAnnouncements();
+    // loadCaptainApplications / loadAnnouncements are defined below; the
+    // effect callback only runs after the render completes, so the
+    // references are initialized.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn, authToken, userProfile.accountType, currentTeacherProfile?.id]);
 
@@ -742,6 +768,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setRoutineNotifications(notifData.notifications);
         }
       }
+
+      // Server-side routine documents list (B3).
+      if (tokenToUse) void loadRoutineDocuments();
     } catch {
       // Fallback to local group-filtered state if offline
     }
@@ -948,9 +977,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       boardRoll: account.boardRoll,
       regNumber: account.regNumber,
       semester: Number(account.semester) as StudentProfile['semester'],
-      section: account.section,
-      shift: account.shift,
-      session: sameAccount && savedProfile ? savedProfile.session : '',
+      // Server value wins when present; a missing server value keeps the
+      // saved local one for the same account — never wipe (B1, same
+      // merge discipline as enrolled subjects in v1.0.28).
+      section: account.section || (sameAccount && savedProfile ? savedProfile.section : 'A1'),
+      shift: account.shift || (sameAccount && savedProfile ? savedProfile.shift : 'Morning'),
+      session:
+        account.session ||
+        (sameAccount && savedProfile ? savedProfile.session : ''),
+      regulation:
+        account.regulation ||
+        (sameAccount && savedProfile ? savedProfile.regulation : undefined),
       accountType: data.session.role,
       captainVerificationStatus: account.captainVerificationStatus,
       isTeacherContactUnlocked: sameAccount && Boolean(savedProfile?.isTeacherContactUnlocked),
@@ -963,8 +1000,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       enrolledSubjects: Array.isArray(account.enrolledSubjects)
         ? account.enrolledSubjects
         : (sameAccount && savedProfile ? savedProfile.enrolledSubjects : undefined),
-      phone: account.phone || ''
+      phone:
+        account.phone ||
+        (sameAccount && savedProfile ? savedProfile.phone || '' : '')
     };
+
+    // Notification preferences (B6): install the server copy when the
+    // account carries one; otherwise keep the local preferences.
+    if (account.notifications && typeof account.notifications === 'object') {
+      setNotifications(prev => ({ ...prev, ...account.notifications }));
+    }
 
     setIsServerVerifiedAdmin(false);
     setSystemAdminProfile(null);
@@ -1361,6 +1406,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Teacher profile save (B7): the server PUT is the source of truth
+  // for phone / isGuideTeacher / guideTeacherCohort. The local profile
+  // is only updated AFTER the server accepts the save — a 400/409
+  // rejection or a network failure returns success:false and the screen
+  // keeps the form open with the server message instead of claiming
+  // the profile was saved.
   const updateTeacherProfile = async (
     profileUpdates: Partial<TeacherProfile>,
     contactDetails?: { room?: string; consultingHours?: string }
@@ -1374,6 +1425,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...profileUpdates,
       isProfileComplete: true
     };
+
+    // Sync teacher profile with server-side teacher store FIRST.
+    if (authToken) {
+      try {
+        const profileRes = await apiFetch('/api/teachers/profile', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`
+          },
+          body: JSON.stringify(profileUpdates)
+        });
+        const profileData = await profileRes.json().catch(() => ({} as { error?: string }));
+        if (!profileRes.ok) {
+          return {
+            success: false,
+            message: profileData?.error || 'Could not save your teacher profile. Please try again.'
+          };
+        }
+      } catch {
+        return {
+          success: false,
+          message: 'Could not reach the server. Your teacher profile was not saved — check your connection and try again.'
+        };
+      }
+    }
 
     setCurrentTeacherProfile(mergedTeacher);
     localStorage.setItem(`${STORAGE_KEY_PREFIX}current_teacher`, JSON.stringify(mergedTeacher));
@@ -1391,22 +1468,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       semestersTaught: mergedTeacher.semestersTaught,
       shift: mergedTeacher.shift === 'Both' ? 'Morning' : mergedTeacher.shift
     }));
-
-    // Sync teacher profile with server-side teacher store
-    try {
-      if (authToken) {
-        await apiFetch('/api/teachers/profile', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`
-          },
-          body: JSON.stringify(profileUpdates)
-        });
-      }
-    } catch (e) {
-      console.warn('Teacher server profile sync error:', e);
-    }
 
     // Sync or create corresponding contact in Faculty Directory to prevent duplication
     try {
@@ -2081,32 +2142,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast(data.message || 'Routine period published!');
       return { success: true, message: data.message || 'Routine period published!' };
     } catch {
-      const colObj = resolveStrictCollege(targetCollege);
-      const deptObj = resolveStrictTechnology(targetDept);
-      if (!colObj || !deptObj || !targetSemester) {
-        const msg = 'Cannot publish routine: valid college, department, and semester are required.';
-        showToast(msg);
-        return { success: false, message: msg };
-      }
-      const newPeriod: RoutinePeriod = {
-        ...period,
-        id: `r_${Date.now()}`,
-        college_id: colObj.id,
-        college: colObj.name,
-        department_id: deptObj.id,
-        technology_id: deptObj.id,
-        department: deptObj.name,
-        semester: targetSemester,
-        created_by: userProfile.id,
-        created_by_name: userProfile.name,
-        created_by_role: userProfile.accountType,
-        publication_status: period.publication_status || 'published',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      setAllStoredRoutines(prev => [...prev, newPeriod]);
-      showToast('Routine period added!');
-      return { success: true, message: 'Routine period added.' };
+      // Fail loudly (B4): a network failure must NOT save the period
+      // locally and report success — the next feed refresh would wipe
+      // it anyway. Keep the form/state unchanged and say so.
+      const msg = 'Could not publish the routine period — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
     }
   };
 
@@ -2136,9 +2177,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast(data.message || 'Routine period updated!');
       return { success: true, message: data.message || 'Routine period updated.' };
     } catch {
-      setAllStoredRoutines(prev => prev.map(r => (r.id === id ? { ...r, ...updates, updated_at: new Date().toISOString() } : r)));
-      showToast('Routine period updated.');
-      return { success: true, message: 'Routine period updated.' };
+      // Fail loudly (B4): do not apply the edit locally on network
+      // failure — it would be discarded by the next feed refresh.
+      const msg = 'Could not update the routine period — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
     }
   };
 
@@ -2163,9 +2206,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast(data.message || 'Routine period removed.');
       return { success: true, message: data.message || 'Routine period removed.' };
     } catch {
-      setAllStoredRoutines(prev => prev.filter(p => p.id !== id));
-      showToast('Routine period removed.');
-      return { success: true, message: 'Routine period removed.' };
+      // Fail loudly (B4): do not remove the period locally on network
+      // failure — the server still has it.
+      const msg = 'Could not delete the routine period — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
     }
   };
 
@@ -2173,33 +2218,102 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAllStoredRoutines(sanitizeStoredRoutineList(periods));
   };
 
-  const uploadRoutineDocument = (
-    fileName: string, 
-    fileType: 'IMAGE' | 'PDF', 
-    dataUrl: string
-  ): UploadedRoutineDocument => {
-    const colObj = resolveStrictCollege(userProfile.college);
-    const deptObj = resolveStrictTechnology(userProfile.department);
-    const newDoc: UploadedRoutineDocument = {
-      id: `doc_${Date.now()}`,
-      fileName,
-      fileType,
-      dataUrl,
-      uploadedAt: `${new Date().toLocaleDateString('en-GB')}, ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-      uploadedBy: userProfile.name,
-      extractedPeriodsCount: 0,
-      isConfirmed: false,
-      college_id: colObj?.id || null,
-      department_id: deptObj?.id || null,
-      semester: userProfile.semester,
-      shift: selectedShift,
-      section: selectedSection
-    };
+  // Server-side routine documents (B3): list the stored documents for
+  // this cohort. A failed load keeps the previous list silently — the
+  // list is a read view, never wiped by a failed load.
+  const loadRoutineDocuments = async (): Promise<void> => {
+    const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+    if (!tokenToUse) return;
+    try {
+      const res = await apiFetch('/api/routines/documents', {
+        headers: { Authorization: `Bearer ${tokenToUse}` }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success && Array.isArray(data.documents)) {
+        setRoutineDocuments(data.documents as ServerRoutineDocument[]);
+      }
+    } catch {
+      // keep the previous list
+    }
+  };
 
-    uploadedRoutinesRef.current = [newDoc, ...uploadedRoutinesRef.current];
-    setUploadedRoutines(prev => [newDoc, ...prev]);
-    showToast(`Routine file "${fileName}" uploaded. Scanning document...`);
-    return newDoc;
+  const uploadRoutineDocument = async (
+    fileName: string,
+    fileType: 'IMAGE' | 'PDF',
+    dataUrl: string,
+    cohort?: { semester: StudentProfile['semester']; shift: Shift; section: Section }
+  ): Promise<UploadedRoutineDocument | null> => {
+    const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+    if (!tokenToUse) {
+      showToast('Please sign in again to upload a routine file.');
+      return null;
+    }
+    const mimeMatch = dataUrl.match(/^data:([^;,]+)[;,]/);
+    const mimeType =
+      fileType === 'PDF'
+        ? 'application/pdf'
+        : mimeMatch?.[1] || 'image/jpeg';
+    const base64Data = dataUrl.includes(',') ? dataUrl.split(',').slice(1).join(',') : dataUrl;
+    // The cohort the document belongs to: the caller passes the
+    // currently-displayed cohort (ClassRoutineScreen). Teachers MUST
+    // send it — their session carries no cohort, so the server 400s
+    // without semester/shift/section. Captains are session-derived.
+    const docSemester = cohort?.semester ?? userProfile.semester;
+    const docShift = cohort?.shift ?? selectedShift;
+    const docSection = cohort?.section ?? selectedSection;
+    try {
+      const res = await apiFetch('/api/routines/documents', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tokenToUse}`
+        },
+        body: JSON.stringify({ fileName, mimeType, base64_data: base64Data, semester: docSemester, shift: docShift, section: docSection })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success || !data.document) {
+        const errMsg = data?.error || 'Could not upload the routine file. Please try again.';
+        showToast(errMsg);
+        return null;
+      }
+      const serverDoc = data.document as ServerRoutineDocument;
+      const colObj = resolveStrictCollege(userProfile.college);
+      const deptObj = resolveStrictTechnology(userProfile.department);
+      // The local copy keeps the bytes in memory for this session's OCR
+      // and original-viewer; the id is now the server id and the
+      // downloadUrl fetches the stored bytes back later.
+      const newDoc: UploadedRoutineDocument = {
+        id: serverDoc.id,
+        fileName: serverDoc.fileName,
+        fileType,
+        dataUrl,
+        uploadedAt: serverDoc.createdAt
+          ? new Date(serverDoc.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : `${new Date().toLocaleDateString('en-GB')}, ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        uploadedBy: userProfile.name,
+        extractedPeriodsCount: 0,
+        isConfirmed: false,
+        college_id: colObj?.id || null,
+        department_id: deptObj?.id || null,
+        semester: docSemester,
+        shift: docShift,
+        section: docSection,
+        downloadUrl: serverDoc.downloadUrl,
+        sizeBytes: serverDoc.sizeBytes
+      };
+
+      uploadedRoutinesRef.current = [newDoc, ...uploadedRoutinesRef.current];
+      setUploadedRoutines(prev => [newDoc, ...prev]);
+      setRoutineDocuments(prev => [serverDoc, ...prev.filter(d => d.id !== serverDoc.id)]);
+      showToast(`Routine file "${fileName}" uploaded. Scanning document...`);
+      return newDoc;
+    } catch {
+      // Fail loudly (B3): do not add the document to the list on a
+      // network failure — the server never got the bytes.
+      const msg = 'Could not upload the routine file — check your connection and try again.';
+      showToast(msg);
+      return null;
+    }
   };
 
   const analyzeRoutineOCR = async (
@@ -2321,22 +2435,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast(data.message || '✅ Confirmed timetable published for your academic group!');
       return { success: true, message: data.message || 'Confirmed routine published.' };
     } catch {
-      const stamped = sanitizeStoredRoutineList(
-        periods.map(p => ({
-          ...p,
-          college: userProfile.college,
-          department: userProfile.department,
-          semester: userProfile.semester,
-          shift: selectedShift || userProfile.shift,
-          section: selectedSection || userProfile.section,
-          created_by: userProfile.id,
-          publication_status: 'published'
-        }))
-      );
-      setAllStoredRoutines(stamped);
-      setUploadedRoutines(prev => prev.map(d => d.id === docId ? { ...d, isConfirmed: true } : d));
-      showToast('✅ Confirmed timetable saved for your academic group!');
-      return { success: true, message: 'Confirmed routine saved.' };
+      // Fail loudly (audit fail-loudly family): a publish-batch
+      // failure must NOT save locally and claim success — the server
+      // never got the periods, and the next feed refresh would discard
+      // them. The form/state stays unchanged so the user can retry.
+      const msg = 'Could not publish the confirmed timetable — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
     }
   };
 
@@ -2367,14 +2472,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast('New study notes published!');
       return { success: true, message: data.message || 'Study note published.' };
     } catch {
-      const newNote: NoteItem = {
-        ...noteData,
-        id: `note_${Date.now()}`,
-        uploadedDate: 'Just now'
-      };
-      setNotes(prev => [newNote, ...prev]);
-      showToast('New study notes published!');
-      return { success: true, message: 'Study note published.' };
+      // Fail loudly (B11): do not invent a local note and claim it was
+      // published — the server never got it and the next feed refresh
+      // would wipe it. Keep the form open (the caller decides that from
+      // the returned success:false).
+      const msg = 'Could not publish the note — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
     }
   };
 
@@ -2402,14 +2506,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast('New assignment published to class feed!');
       return { success: true, message: data.message || 'Assignment published.' };
     } catch {
-      const newAsg: AssignmentItem = {
-        ...asgData,
-        id: `asg_${Date.now()}`,
-        status: 'Pending'
-      };
-      setAssignments(prev => [newAsg, ...prev]);
-      showToast('New assignment added to class feed!');
-      return { success: true, message: 'Assignment added.' };
+      // Fail loudly (B12): no local asg_* record, no success toast.
+      const msg = 'Could not publish the assignment — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
     }
   };
 
@@ -2456,21 +2556,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast(data.message || 'Assignment submitted successfully!');
       return { success: true, message: data.message || 'Assignment submitted.' };
     } catch {
-      const now = new Date();
-      const formatted = `${now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-      setAssignments(prev => prev.map(a => {
-        if (a.id === id) {
-          return {
-            ...a,
-            status: 'Submitted',
-            submittedAt: formatted,
-            submissionNote: note || 'Completed and submitted through student portal.'
-          };
-        }
-        return a;
-      }));
-      showToast('Assignment submitted successfully!');
-      return { success: true, message: 'Assignment submitted.' };
+      // Fail loudly (B12): do not flip the local assignment to
+      // 'Submitted' — the server never recorded the submission.
+      const msg = 'Could not submit the assignment — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
     }
   };
 
@@ -2499,44 +2589,198 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast(data.message || 'Job & Internship circular published!');
       return { success: true, message: data.message || 'Published!' };
     } catch {
-      const newJob: JobCircular = {
-        ...jobData,
-        id: `job_${Date.now()}`,
-        postedBy: userProfile.name,
-        postedAt: 'Today'
-      };
-      setJobs(prev => [newJob, ...prev]);
-      showToast('Job & Internship circular published!');
-      return { success: true, message: 'Published!' };
+      // Fail loudly (B13): no local job_* record — the list the screen
+      // renders comes from the server, so a local-only job would be
+      // simultaneously "published" and invisible.
+      const msg = 'Could not publish the job circular — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
     }
   };
 
-  // 5. REMINDERS & TEACHERS
-  const addReminder = (remData: Omit<ReminderItem, 'id' | 'isCompleted'>) => {
+  // 5. REMINDERS & TEACHERS — server-synced (B2). The server is the
+  // source of truth after the first sync; localStorage is only a cache
+  // so reminders survive offline. On first login, local-only reminders
+  // are uploaded (matched by id) so none are lost. Every mutation goes
+  // through the server first and fails loudly on network failure —
+  // never silently kept local-only.
+  const reminderAuthHeaders = (): Record<string, string> => {
+    const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+    return {
+      'Content-Type': 'application/json',
+      ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
+    };
+  };
+
+  const normalizeReminder = (raw: any): ReminderItem | null => {
+    if (!raw || typeof raw !== 'object' || !raw.id || !raw.title) return null;
+    return {
+      id: String(raw.id),
+      title: String(raw.title),
+      category: raw.category || 'Personal',
+      dueDate: String(raw.dueDate || ''),
+      dueTime: String(raw.dueTime || ''),
+      priority: raw.priority || 'Normal',
+      isCompleted: Boolean(raw.isCompleted),
+      note: raw.note,
+      college_id: raw.college_id,
+      department_id: raw.department_id,
+      semester: raw.semester,
+      shift: raw.shift,
+      section: raw.section,
+      routineId: raw.routineId
+    };
+  };
+
+  const loadReminders = async (): Promise<boolean> => {
+    const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+    if (!tokenToUse) return false;
+    try {
+      const res = await apiFetch('/api/reminders', { headers: reminderAuthHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success || !Array.isArray(data.reminders)) {
+        showToast('Could not load your reminders from the server — showing this device’s copy.');
+        return false;
+      }
+      const serverReminders = (data.reminders as any[])
+        .map(normalizeReminder)
+        .filter((r): r is ReminderItem => r !== null);
+      const serverIds = new Set(serverReminders.map(r => r.id));
+      // First-login upload: any reminder that only exists on this
+      // device is POSTed to the server (matched by id) so it is not lost.
+      let localOnly: ReminderItem[] = [];
+      try {
+        const savedRaw = localStorage.getItem(`${STORAGE_KEY_PREFIX}reminders`);
+        if (savedRaw) {
+          localOnly = (JSON.parse(savedRaw) as ReminderItem[]).filter(
+            r => r && r.id && !serverIds.has(r.id)
+          );
+        }
+      } catch {
+        localOnly = [];
+      }
+      const uploaded: ReminderItem[] = [];
+      let uploadFailures = 0;
+      for (const local of localOnly) {
+        try {
+          const upRes = await apiFetch('/api/reminders', {
+            method: 'POST',
+            headers: reminderAuthHeaders(),
+            body: JSON.stringify(local)
+          });
+          const upData = await upRes.json().catch(() => ({}));
+          if (upRes.ok && upData.success) {
+            uploaded.push(normalizeReminder(upData.reminder || local) || local);
+          } else {
+            uploadFailures += 1;
+            uploaded.push(local);
+          }
+        } catch {
+          uploadFailures += 1;
+          uploaded.push(local);
+        }
+      }
+      if (uploadFailures > 0) {
+        showToast('Some reminders could not be uploaded to the server yet — they are kept on this device.');
+      }
+      setReminders([...serverReminders, ...uploaded]);
+      return true;
+    } catch {
+      showToast('Could not load your reminders from the server — showing this device’s copy.');
+      return false;
+    }
+  };
+
+  // Sync reminders once per signed-in account (login + session restore).
+  const remindersSyncKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isLoggedIn || !authToken || !userProfile.id) return;
+    const key = `${userProfile.id}:${authToken.slice(-8)}`;
+    if (remindersSyncKeyRef.current === key) return;
+    remindersSyncKeyRef.current = key;
+    void loadReminders();
+    // loadReminders is defined above; the effect only runs after render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn, authToken, userProfile.id]);
+
+  const addReminder = async (
+    remData: Omit<ReminderItem, 'id' | 'isCompleted'>
+  ): Promise<{ success: boolean; message: string }> => {
     const newRem: ReminderItem = {
       ...remData,
       id: `rem_${Date.now()}`,
       isCompleted: false
     };
-    setReminders(prev => [newRem, ...prev]);
-    nativeService.scheduleCustomReminder(remData.title, remData.note || remData.title, remData.dueDate);
-    showToast('Reminder scheduled!');
-  };
-
-  const toggleReminder = (id: string) => {
-    setReminders(prev => prev.map(r => {
-      if (r.id === id) {
-        const next = !r.isCompleted;
-        showToast(next ? 'Marked as completed!' : 'Marked as pending.');
-        return { ...r, isCompleted: next };
+    try {
+      const res = await apiFetch('/api/reminders', {
+        method: 'POST',
+        headers: reminderAuthHeaders(),
+        body: JSON.stringify(newRem)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        const errMsg = data?.error || 'Could not save the reminder. Please try again.';
+        showToast(errMsg);
+        return { success: false, message: errMsg };
       }
-      return r;
-    }));
+      const saved = normalizeReminder(data.reminder) || newRem;
+      setReminders(prev => [saved, ...prev.filter(r => r.id !== saved.id)]);
+      nativeService.scheduleCustomReminder(saved.title, saved.note || saved.title, saved.dueDate);
+      showToast('Reminder scheduled!');
+      return { success: true, message: 'Reminder scheduled.' };
+    } catch {
+      const msg = 'Could not save the reminder — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
+    }
   };
 
-  const deleteReminder = (id: string) => {
-    setReminders(prev => prev.filter(p => p.id !== id));
-    showToast('Reminder deleted.');
+  const toggleReminder = async (id: string): Promise<{ success: boolean; message: string }> => {
+    const current = reminders.find(r => r.id === id);
+    if (!current) return { success: false, message: 'Reminder not found.' };
+    const next = !current.isCompleted;
+    try {
+      const res = await apiFetch(`/api/reminders/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: reminderAuthHeaders(),
+        body: JSON.stringify({ ...current, isCompleted: next })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        const errMsg = data?.error || 'Could not update the reminder. Please try again.';
+        showToast(errMsg);
+        return { success: false, message: errMsg };
+      }
+      setReminders(prev => prev.map(r => (r.id === id ? { ...r, isCompleted: next } : r)));
+      showToast(next ? 'Marked as completed!' : 'Marked as pending.');
+      return { success: true, message: 'Reminder updated.' };
+    } catch {
+      const msg = 'Could not update the reminder — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
+    }
+  };
+
+  const deleteReminder = async (id: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await apiFetch(`/api/reminders/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: reminderAuthHeaders()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        const errMsg = data?.error || 'Could not delete the reminder. Please try again.';
+        showToast(errMsg);
+        return { success: false, message: errMsg };
+      }
+      setReminders(prev => prev.filter(p => p.id !== id));
+      showToast('Reminder deleted.');
+      return { success: true, message: 'Reminder deleted.' };
+    } catch {
+      const msg = 'Could not delete the reminder — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
+    }
   };
 
   const addTeacher = async (teacherData: Omit<TeacherContact, 'id'>): Promise<{ success: boolean; message: string }> => {
@@ -2586,15 +2830,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       showToast(data.message || 'Teacher contact added to directory!');
       return { success: true, message: data.message };
-    } catch (err) {
-      // Resilient local fallback
-      const newTch: TeacherContact = {
-        ...teacherData,
-        id: `tch_${Date.now()}`
-      };
-      setTeachers(prev => [...prev, newTch]);
-      showToast('Teacher contact added to directory!');
-      return { success: true, message: 'Added contact.' };
+    } catch {
+      // Fail loudly (audit fail-loudly family): a failed create must
+      // NOT add a local-only contact and claim success — the server
+      // never got it, and the next directory refresh would drop it.
+      const msg = 'Could not add the teacher contact — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
     }
   };
 
@@ -2714,25 +2956,201 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const addAnnouncement = (title: string, content: string, priority: 'Important' | 'Normal') => {
-    const newAnn: ClassAnnouncement = {
-      id: `ann_${Date.now()}`,
-      authorName: userProfile.name,
-      authorRole: `${userProfile.accountType === 'class_captain' ? 'Class Captain' : 'Student'} - Sec ${userProfile.section}`,
-      title,
-      content,
-      postedAt: 'Just now',
-      priority,
-      isPinned: priority === 'Important'
+  // Announcements (B5): real server posts (POST /api/announcements,
+  // teacher/class_captain only) + cohort feed (GET /api/announcements).
+  // The old local-only addAnnouncement + its success toast are gone:
+  // success is only reported when the server stores the post.
+  const normalizeAnnouncement = (raw: any, fallbackPriority: 'Important' | 'Normal' = 'Normal'): ClassAnnouncement | null => {
+    if (!raw || typeof raw !== 'object' || !raw.id) return null;
+    const created = raw.createdAt ? new Date(raw.createdAt) : null;
+    return {
+      id: String(raw.id),
+      authorName: String(raw.authorName || 'Class Captain'),
+      authorRole: String(raw.authorRole || ''),
+      title: String(raw.title || 'Notice'),
+      content: String(raw.text ?? raw.content ?? ''),
+      postedAt:
+        created && !Number.isNaN(created.getTime())
+          ? `${created.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, ${created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+          : String(raw.postedAt || 'Just now'),
+      priority: fallbackPriority,
+      isPinned: Boolean(raw.isPinned)
     };
-    setAnnouncements(prev => [newAnn, ...prev]);
-    nativeService.broadcastAnnouncementAlert(title, content, userProfile.name);
-    showToast('Announcement broadcasted to class!');
   };
 
+  const loadAnnouncements = async (): Promise<boolean> => {
+    const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+    if (!tokenToUse) return false;
+    try {
+      const res = await apiFetch('/api/announcements', {
+        headers: { Authorization: `Bearer ${tokenToUse}` }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success || !Array.isArray(data.announcements)) return false;
+      const serverAnns = (data.announcements as any[])
+        .map(a => normalizeAnnouncement(a))
+        .filter((a): a is ClassAnnouncement => a !== null);
+      setAnnouncements(serverAnns);
+      return true;
+    } catch {
+      // Keep the local cache on a failed load — never wipe the feed.
+      return false;
+    }
+  };
+
+  const addAnnouncement = async (
+    title: string,
+    content: string,
+    priority: 'Important' | 'Normal',
+    cohort?: { semester: number; shift: Shift; section: Section }
+  ): Promise<{ success: boolean; message: string }> => {
+    const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+    if (!tokenToUse) {
+      const msg = 'Please sign in again to publish an announcement.';
+      showToast(msg);
+      return { success: false, message: msg };
+    }
+    try {
+      const res = await apiFetch('/api/announcements', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tokenToUse}`
+        },
+        // Teachers must target a cohort explicitly (their session
+        // carries no cohort — the server 400s without semester/shift/
+        // section). Captains are session-derived and ignore these.
+        body: JSON.stringify({ title, text: content, ...(cohort ? { semester: cohort.semester, shift: cohort.shift, section: cohort.section } : {}) })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success || !data.announcement) {
+        const errMsg = data?.error || 'Could not publish the announcement. Please try again.';
+        showToast(errMsg);
+        return { success: false, message: errMsg };
+      }
+      const posted = normalizeAnnouncement(data.announcement, priority) || {
+        id: String(data.announcement.id),
+        authorName: userProfile.name,
+        authorRole: `${userProfile.accountType === 'class_captain' ? 'Class Captain' : 'Student'} - Sec ${userProfile.section}`,
+        title,
+        content,
+        postedAt: 'Just now',
+        priority,
+        isPinned: priority === 'Important'
+      };
+      setAnnouncements(prev => [posted, ...prev.filter(a => a.id !== posted.id)]);
+      nativeService.broadcastAnnouncementAlert(title, content, userProfile.name);
+      showToast('Announcement published to your class!');
+      return { success: true, message: data.message || 'Announcement published.' };
+    } catch {
+      const msg = 'Could not publish the announcement — check your connection and try again.';
+      showToast(msg);
+      return { success: false, message: msg };
+    }
+  };
+
+  // Student profile fields (B1): one PATCH /api/me/profile call for
+  // name/phone/session/regulation/shift/section (+ subjects /
+  // notifications). Returns success:false with the server message on
+  // 400/409 (e.g. an Approved captain changing section/shift) and on
+  // network failure; the caller keeps the form open.
+  const updateStudentProfileFields = async (fields: {
+    name?: string;
+    phone?: string;
+    session?: string;
+    regulation?: string;
+    semester?: number;
+    shift?: Shift;
+    section?: Section;
+    enrolledSubjects?: { code: string; name: string }[];
+    notifications?: NotificationPreferences;
+  }): Promise<{ success: boolean; message: string }> => {
+    const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+    if (!tokenToUse) {
+      return { success: false, message: 'Please sign in again to save your profile.' };
+    }
+    try {
+      const res = await apiFetch('/api/me/profile', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tokenToUse}`
+        },
+        body: JSON.stringify(fields)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        return {
+          success: false,
+          message: data?.error || 'Could not save your profile. Please try again.'
+        };
+      }
+      const saved = (data.profile || {}) as Record<string, unknown>;
+      setUserProfile(prev => ({
+        ...prev,
+        ...(fields.name !== undefined ? { name: fields.name } : {}),
+        ...(fields.phone !== undefined ? { phone: fields.phone } : {}),
+        ...(fields.session !== undefined ? { session: fields.session } : {}),
+        ...(fields.regulation !== undefined ? { regulation: fields.regulation as StudentProfile['regulation'] } : {}),
+        ...(fields.semester !== undefined ? { semester: fields.semester as StudentProfile['semester'] } : {}),
+        ...(fields.shift !== undefined ? { shift: fields.shift } : {}),
+        ...(fields.section !== undefined ? { section: fields.section } : {}),
+        ...(fields.enrolledSubjects !== undefined ? { enrolledSubjects: fields.enrolledSubjects } : {}),
+        ...(typeof saved.name === 'string' ? { name: saved.name } : {}),
+        ...(typeof saved.phone === 'string' ? { phone: saved.phone } : {}),
+        ...(typeof saved.session === 'string' ? { session: saved.session } : {}),
+        ...(typeof saved.semester === 'number' ? { semester: saved.semester as StudentProfile['semester'] } : {}),
+        ...(typeof saved.shift === 'string' ? { shift: saved.shift as Shift } : {}),
+        ...(typeof saved.section === 'string' ? { section: saved.section as Section } : {}),
+        ...(Array.isArray(saved.enrolledSubjects)
+          ? { enrolledSubjects: saved.enrolledSubjects as { code: string; name: string }[] }
+          : {})
+      }));
+      if (fields.notifications) {
+        setNotifications(prev => ({ ...prev, ...fields.notifications }));
+      } else if (saved.notifications && typeof saved.notifications === 'object') {
+        setNotifications(prev => ({ ...prev, ...(saved.notifications as Partial<NotificationPreferences>) }));
+      }
+      return { success: true, message: data.message || 'Profile updated.' };
+    } catch {
+      return {
+        success: false,
+        message: 'Could not reach the server. Your profile was not saved — check your connection and try again.'
+      };
+    }
+  };
+
+  // Notification preferences (B6): apply locally at once, then persist
+  // the merged preferences via PATCH /api/me/profile (debounced, so
+  // dragging the lead-time slider does not fire a request per step).
+  // A failed save keeps the local choice and says so honestly.
+  const notificationsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const updateNotifications = (updates: Partial<NotificationPreferences>) => {
-    setNotifications(prev => ({ ...prev, ...updates }));
+    const merged = { ...notifications, ...updates };
+    setNotifications(merged);
     showToast('Notification preferences updated.');
+    if (notificationsSaveTimer.current) clearTimeout(notificationsSaveTimer.current);
+    notificationsSaveTimer.current = setTimeout(() => {
+      const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+      if (!tokenToUse) return;
+      apiFetch('/api/me/profile', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tokenToUse}`
+        },
+        body: JSON.stringify({ notifications: merged })
+      })
+        .then(async res => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.success) {
+            showToast(data?.error || 'Could not save notification preferences to the server — they are saved on this device only.');
+          }
+        })
+        .catch(() => {
+          showToast('Could not save notification preferences to the server — they are saved on this device only.');
+        });
+    }, 600);
   };
 
   const getShiftSchedule = (shift: Shift): ShiftScheduleConfig => {
@@ -2899,6 +3317,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteRoutinePeriod,
         setFullRoutine,
         uploadedRoutines,
+        routineDocuments,
+        loadRoutineDocuments,
         uploadRoutineDocument,
         analyzeRoutineOCR,
         saveConfirmedRoutine,
@@ -2917,6 +3337,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addReminder,
         toggleReminder,
         deleteReminder,
+        loadReminders,
         teachers,
         addTeacher,
         updateTeacherContact,
@@ -2935,6 +3356,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getVerifiedCaptainsCount,
         announcements,
         addAnnouncement,
+        loadAnnouncements,
+        updateStudentProfileFields,
         notifications,
         updateNotifications,
         selectedShift,

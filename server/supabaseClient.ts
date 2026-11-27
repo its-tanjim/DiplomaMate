@@ -78,6 +78,7 @@ import type {
   CaptainRecord,
   CommunityMembershipRecord,
   CommunityMessageRecord,
+  NotificationPreferences,
   RoutinePeriod,
 } from '../src/types';
 
@@ -184,6 +185,60 @@ function isMissingColumnError(error: unknown, column: string): boolean {
   );
 }
 
+/**
+ * Generic record helpers (audit batch v1.0.29, B19). The record stores
+ * that had no typed helper yet (notes, assignments, submissions, jobs,
+ * semester records, support tickets, deletion requests, announcements,
+ * reminders, routine documents, community memberships/reports/messages)
+ * share one contract: insert / upsert / update-by-id / delete-by-id
+ * against a named table, throwing on any query error so the server.ts
+ * persist wrappers can catch, warn, and keep the JSON-store write.
+ * RLS is not enabled on these tables yet (Phase 3 note), and the
+ * server uses the service_role key, so these calls are not blocked
+ * by row policies. Tables that do not exist yet (announcements,
+ * reminders, support_tickets, account_deletion_requests,
+ * routine_documents) are created by
+ * supabase-audit-batch-v1.0.29.sql; until that SQL runs these helpers
+ * throw "relation does not exist" and the JSON path carries the write.
+ */
+export async function insertRecordToSupabase(
+  table: string,
+  row: Record<string, unknown>,
+): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client.from(table).insert(row);
+  throwIfError(error, `insertRecord(${table})`);
+}
+
+export async function upsertRecordToSupabase(
+  table: string,
+  row: Record<string, unknown>,
+): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client.from(table).upsert(row, { onConflict: 'id' });
+  throwIfError(error, `upsertRecord(${table})`);
+}
+
+export async function updateRecordByIdToSupabase(
+  table: string,
+  id: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  // No automatic updated_at: not every table has one
+  // (community_messages does not), and an unknown column fails the
+  // whole update. Callers that target a table with updated_at pass it
+  // in the patch themselves.
+  const client = getSupabaseClient();
+  const { error } = await client.from(table).update(patch).eq('id', id);
+  throwIfError(error, `updateRecord(${table})`);
+}
+
+export async function deleteRecordByIdToSupabase(table: string, id: string): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client.from(table).delete().eq('id', id);
+  throwIfError(error, `deleteRecord(${table})`);
+}
+
 // ---------------------------------------------------------------------------
 // Postgres row types (exact columns in supabase-schema-phase1.sql,
 // plus `students.email`, added by supabase-migration-phase2.sql)
@@ -214,6 +269,13 @@ export interface StudentRow {
   // for the current semester. Read by toStudent(); written by
   // updateStudentById() via persistEnrolledSubjectsToSupabase in server.ts.
   enrolled_subjects: unknown | null;
+  // Added by supabase-audit-batch-v1.0.29.sql; null until that ALTER is
+  // run. Academic session (e.g. '2024-2025', from the app's SESSIONS
+  // list), BTEB regulation ('2016' | '2022'), and the notification
+  // preferences object — all written by PATCH /api/me/profile.
+  academic_session: string | null;
+  regulation: string | null;
+  notification_preferences: unknown | null;
   failed_pin_attempts: number | null;
   lockout_until: string | null;
   is_registered_account: boolean | null;
@@ -239,6 +301,11 @@ export interface TeacherRow {
   pin_hash: string | null;
   // Added by supabase-schema-phase4.sql; null until that ALTER is run.
   pin_hash_version: number | null;
+  // Added by supabase-audit-batch-v1.0.29.sql; null until that ALTER is
+  // run. Guide-teacher flag + the cohort the teacher guides
+  // ({ semester, shift, section }) — written by PUT /api/teachers/profile.
+  is_guide_teacher: boolean | null;
+  guide_teacher_cohort: unknown | null;
   failed_pin_attempts: number | null;
   lockout_until: string | null;
   admin_notes: string | null;
@@ -269,6 +336,14 @@ export interface TeacherAccount {
   createdAt: string;
   adminNotes?: string;
   isRegisteredAccount?: boolean;
+  // Guide-teacher flag + cohort ({ semester, shift, section }); added by
+  // supabase-audit-batch-v1.0.29.sql, undefined until that ALTER runs.
+  isGuideTeacher?: boolean;
+  guideTeacherCohort?: {
+    semester: number;
+    shift: string;
+    section: string;
+  };
 }
 
 export interface CaptainRow {
@@ -416,6 +491,7 @@ export interface CampusNoticeRow {
 // ---------------------------------------------------------------------------
 
 export function toStudent(row: StudentRow): EnrolledStudent {
+  const parsedNotifications = parseNotificationPreferences(row.notification_preferences);
   return {
     id: row.id,
     name: row.name,
@@ -447,6 +523,35 @@ export function toStudent(row: StudentRow): EnrolledStudent {
     // which applyStudentSession treats as "no server value" and keeps
     // the saved local selection instead of wiping it.
     enrolledSubjects: parseEnrolledSubjects(row.enrolled_subjects),
+    // academic_session / regulation / notification_preferences are
+    // added by supabase-audit-batch-v1.0.29.sql. EnrolledStudent (src)
+    // carries no such fields, so they ride as an extension (same
+    // pattern as the consent fields in server.ts) — spread, never a
+    // type change in src/.
+    ...(row.academic_session ? { session: row.academic_session } : {}),
+    ...(row.regulation === '2016' || row.regulation === '2022'
+      ? { regulation: row.regulation }
+      : {}),
+    ...(parsedNotifications ? { notifications: parsedNotifications } : {}),
+  };
+}
+
+/** Parse the `notification_preferences` JSONB value into a validated NotificationPreferences object. */
+function parseNotificationPreferences(value: unknown): NotificationPreferences | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const v = value as Record<string, unknown>;
+  const boolKeys = ['routineAlerts', 'assignmentAlerts', 'crAnnouncements', 'btebNotices', 'soundVibration'] as const;
+  for (const k of boolKeys) {
+    if (typeof v[k] !== 'boolean') return undefined;
+  }
+  if (typeof v.routineLeadMinutes !== 'number' || !Number.isFinite(v.routineLeadMinutes)) return undefined;
+  return {
+    routineAlerts: v.routineAlerts as boolean,
+    routineLeadMinutes: v.routineLeadMinutes as number,
+    assignmentAlerts: v.assignmentAlerts as boolean,
+    crAnnouncements: v.crAnnouncements as boolean,
+    btebNotices: v.btebNotices as boolean,
+    soundVibration: v.soundVibration as boolean,
   };
 }
 
@@ -488,7 +593,24 @@ export function toTeacher(row: TeacherRow): TeacherAccount {
     lockoutUntil: row.lockout_until ? Date.parse(row.lockout_until) : null,
     createdAt: row.created_at ?? '',
     adminNotes: row.admin_notes ?? undefined,
+    // is_guide_teacher / guide_teacher_cohort are added by
+    // supabase-audit-batch-v1.0.29.sql; undefined until that ALTER runs.
+    isGuideTeacher: row.is_guide_teacher ?? undefined,
+    guideTeacherCohort: parseGuideTeacherCohort(row.guide_teacher_cohort),
   };
+}
+
+/** Parse the `guide_teacher_cohort` JSONB value ({ semester, shift, section }). */
+function parseGuideTeacherCohort(
+  value: unknown,
+): TeacherAccount['guideTeacherCohort'] {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const v = value as Record<string, unknown>;
+  const semester = Number(v.semester);
+  if (!Number.isInteger(semester) || semester < 1 || semester > 8) return undefined;
+  if (v.shift !== 'Morning' && v.shift !== 'Day') return undefined;
+  if (!['A1', 'A2', 'B1', 'B2'].includes(String(v.section))) return undefined;
+  return { semester, shift: String(v.shift), section: String(v.section) };
 }
 
 export function toCaptain(row: CaptainRow): CaptainRecord {
@@ -843,10 +965,29 @@ export async function updateStudentById(
   if (error && 'enrolled_subjects' in patch && isMissingColumnError(error, 'enrolled_subjects')) {
     // The supabase-enrolled-subjects.sql ALTER has not been run yet:
     // retry without the column so the rest of the patch still applies,
-    // and the caller (persistEnrolledSubjectsToSupabase) warns that
+    // and the caller (persistStudentProfileToSupabase) warns that
     // subjects are JSON-store only until the ALTER runs.
     const { enrolled_subjects: _droppedSubjects, ...patchWithoutSubjects } = patch;
     ({ data, error } = await runUpdate(patchWithoutSubjects));
+  }
+  if (
+    error &&
+    ('academic_session' in patch || 'regulation' in patch || 'notification_preferences' in patch) &&
+    (isMissingColumnError(error, 'academic_session') ||
+      isMissingColumnError(error, 'regulation') ||
+      isMissingColumnError(error, 'notification_preferences'))
+  ) {
+    // The supabase-audit-batch-v1.0.29.sql ALTERs have not been run
+    // yet: retry without the new profile columns so the rest of the
+    // patch still applies, and the caller warns that the profile
+    // fields are JSON-store only until the ALTERs run.
+    const {
+      academic_session: _droppedSession,
+      regulation: _droppedRegulation,
+      notification_preferences: _droppedNotifications,
+      ...patchWithoutProfile
+    } = patch;
+    ({ data, error } = await runUpdate(patchWithoutProfile));
   }
   throwIfError(error, 'updateStudentById');
   return data ? toStudent(data as StudentRow) : null;
@@ -894,6 +1035,11 @@ export async function insertStudent(student: EnrolledStudent): Promise<EnrolledS
     // New registrations carry no subjects (they are chosen later in
     // Profile → Edit Profile); null until PATCH /api/me/profile writes.
     enrolled_subjects: student.enrolledSubjects?.length ? student.enrolledSubjects : null,
+    // New registrations carry no profile-extension fields either; null
+    // until PATCH /api/me/profile writes them (audit batch v1.0.29).
+    academic_session: null,
+    regulation: null,
+    notification_preferences: null,
     failed_pin_attempts: 0,
     lockout_until: null,
     is_registered_account: student.isRegisteredAccount ?? false,
@@ -988,6 +1134,22 @@ export async function updateTeacherById(
   if (error && 'pin_hash_version' in patch && isMissingColumnError(error, 'pin_hash_version')) {
     const { pin_hash_version: _dropped, ...patchWithoutVersion } = patch;
     ({ data, error } = await runUpdate(patchWithoutVersion));
+  }
+  if (
+    error &&
+    ('is_guide_teacher' in patch || 'guide_teacher_cohort' in patch) &&
+    (isMissingColumnError(error, 'is_guide_teacher') ||
+      isMissingColumnError(error, 'guide_teacher_cohort'))
+  ) {
+    // The supabase-audit-batch-v1.0.29.sql ALTERs have not been run
+    // yet: retry without the guide-teacher columns so the rest of the
+    // patch still applies.
+    const {
+      is_guide_teacher: _droppedGuide,
+      guide_teacher_cohort: _droppedCohort,
+      ...patchWithoutGuide
+    } = patch;
+    ({ data, error } = await runUpdate(patchWithoutGuide));
   }
   throwIfError(error, 'updateTeacherById');
   return data ? toTeacher(data as TeacherRow) : null;

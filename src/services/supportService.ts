@@ -116,16 +116,27 @@ export async function createSupportTicket(input: CreateSupportTicketInput): Prom
   return ticket;
 }
 
+// B18: failures must surface (throw) so SupportScreen can show its
+// error state — returning [] here used to render the misleading
+// "You have not submitted any tickets yet" empty state on failure.
 export async function fetchMySupportTickets(): Promise<SupportTicket[]> {
-  try {
-    const res = await apiFetch('/api/support/tickets/mine', {
-      headers: authHeaders()
-    });
-    const contentType = res.headers.get('content-type') || '';
-    if (!res.ok || !contentType.includes('application/json')) return [];
-    const data = await res.json();
-    return normalizeList(data);
-  } catch {
-    return [];
+  const res = await apiFetch('/api/support/tickets/mine', {
+    headers: authHeaders()
+  });
+  const contentType = res.headers.get('content-type') || '';
+  if (!res.ok) {
+    let message = 'Could not load your tickets. Please try again.';
+    if (contentType.includes('application/json')) {
+      const data = await res.json().catch(() => null);
+      if (data && typeof data === 'object' && typeof (data as Record<string, unknown>).error === 'string') {
+        message = (data as Record<string, unknown>).error as string;
+      }
+    }
+    throw new Error(message);
   }
+  if (!contentType.includes('application/json')) {
+    throw new Error('Could not load your tickets. Please try again.');
+  }
+  const data = await res.json();
+  return normalizeList(data);
 }

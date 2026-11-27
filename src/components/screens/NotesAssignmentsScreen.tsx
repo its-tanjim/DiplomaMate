@@ -257,7 +257,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
     subjectCode: '66664',
     subjectName: 'Database Management System',
     assignedBy: isTeacher ? userProfile.name : 'Engr. Mahbubur Rahman',
-    dueDate: '2026-11-10',
+    dueDate: '',
     description: '',
     marks: '',
     submissionMethod: '',
@@ -310,7 +310,32 @@ export const NotesAssignmentsScreen: React.FC = () => {
   // Shared Document Intelligence State
   const [isScanningDoc, setIsScanningDoc] = useState(false);
   const [scanStageText, setScanStageText] = useState<string | null>(null);
-  const [activeScanResult, setActiveScanResult] = useState<DocumentScanResult | null>(null);
+  // B15-S — keep the last document-scan result in localStorage as a
+  // device-bound cache (restore it when reopening the scan flow; clear
+  // on publish). No server history UI is built. The result is plain
+  // JSON (text + structured fields, no file bytes).
+  const scanCacheKey = `diplomamate_last_scan_${userProfile.id || 'guest'}`;
+  const [activeScanResult, setActiveScanResult] = useState<DocumentScanResult | null>(() => {
+    try {
+      const raw = localStorage.getItem(scanCacheKey);
+      return raw ? (JSON.parse(raw) as DocumentScanResult) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (activeScanResult) {
+        localStorage.setItem(scanCacheKey, JSON.stringify(activeScanResult));
+      } else {
+        localStorage.removeItem(scanCacheKey);
+      }
+    } catch {
+      // Quota/full storage: the in-memory result still works this session.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeScanResult]);
   const [scanErrorMsg, setScanErrorMsg] = useState<string | null>(null);
   const [pdfPageStart, setPdfPageStart] = useState<string>('');
   const [pdfPageEnd, setPdfPageEnd] = useState<string>('');
@@ -943,6 +968,12 @@ export const NotesAssignmentsScreen: React.FC = () => {
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAsgData.title.trim()) return;
+    // B-minor: an explicit due date is required — the old stale
+    // '2026-11-10' default used to ship as a past date when forgotten.
+    if (!newAsgData.dueDate) {
+      showToast('Please pick a due date for the assignment.');
+      return;
+    }
 
     const subjectCode = newAsgData.subjectCode || '66664';
     const parsedQuestions = newAsgData.questionsText
@@ -981,7 +1012,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
         subjectCode: '66664',
         subjectName: 'Database Management System',
         assignedBy: isTeacher ? userProfile.name : 'Engr. Mahbubur Rahman',
-        dueDate: '2026-11-10',
+        dueDate: '',
         description: '',
         marks: '',
         submissionMethod: '',
@@ -1069,7 +1100,10 @@ export const NotesAssignmentsScreen: React.FC = () => {
 
     const res = await addJobCircular({
       ...newJobData,
-      sourceUrl: newJobData.applyUrl.trim(),
+      // B13: send the form's own sourceUrl when one was given; the
+      // form has no separate source input, so the apply link is the
+      // source fallback — do not invent a new input.
+      sourceUrl: newJobData.sourceUrl.trim() || newJobData.applyUrl.trim(),
       description: newJobData.description || newJobData.requirements,
       requirements: newJobData.requirements || newJobData.description,
       mediaUrl: attachedFile?.dataUrl,

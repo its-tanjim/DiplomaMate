@@ -638,8 +638,14 @@ export const AdminManagementScreen: React.FC = () => {
                         </div>
                         <p className="mt-1 truncate text-xs text-slate-500">
                           Requested {req.requestedAt || req.createdAt ? new Date(String(req.requestedAt || req.createdAt)).toLocaleString() : 'date unknown'}
-                          {req.reason ? ` · ${req.reason}` : ''}
                         </p>
+                        {req.reason ? (
+                          <p className="mt-1 text-xs text-slate-700">
+                            <span className="font-semibold">Reason: </span>{req.reason}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs text-slate-400">No reason given.</p>
+                        )}
                       </div>
                       <div className="flex shrink-0 gap-2">
                         <button type="button" onClick={() => void decideDeletionRequest(req, 'reject')} disabled={saving} className="rounded-xl border border-slate-200 bg-surface px-4 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">Reject</button>

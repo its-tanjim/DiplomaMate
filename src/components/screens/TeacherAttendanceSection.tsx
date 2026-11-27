@@ -1,5 +1,5 @@
 import { apiFetch } from '../../services/apiClient';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Calendar,
@@ -194,6 +194,111 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
     };
   };
 
+  // B9 — unsaved attendance drafts (device-bound localStorage cache,
+  // no server draft endpoint exists). The key is cohort+date+subject+
+  // period, so a draft never leaks into another class. Drafts restore
+  // on return/reload/app kill and are cleared on successful Save/Merge.
+  // A draft only wins over a saved server sheet when it is newer than
+  // that sheet's updatedAt — a save from another device still wins.
+  const getAttendanceDraftKey = () =>
+    [
+      'diplomamate_attendance_draft',
+      selectedCollege,
+      selectedDept,
+      selectedSemester,
+      selectedShift,
+      selectedSection,
+      attendanceDate,
+      selectedSubjectCode,
+      selectedPeriodLabel
+    ]
+      .map(part => encodeURIComponent(String(part)))
+      .join('|');
+
+  const readAttendanceDraft = (key: string): { entries: AttendanceRecordEntry[]; savedAt: number } | null => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.entries)) return null;
+      return { entries: parsed.entries as AttendanceRecordEntry[], savedAt: Number(parsed.savedAt || 0) };
+    } catch {
+      return null;
+    }
+  };
+
+  const suppressDraftWriteRef = useRef(false);
+
+  // Persist unsaved marks as they change (not only on Save).
+  useEffect(() => {
+    if (sheetEntries.length === 0) return;
+    if (suppressDraftWriteRef.current) {
+      suppressDraftWriteRef.current = false;
+      return;
+    }
+    try {
+      localStorage.setItem(
+        getAttendanceDraftKey(),
+        JSON.stringify({ entries: sheetEntries, savedAt: Date.now() })
+      );
+    } catch {
+      // Quota/full storage: the in-memory marks still work this session.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    sheetEntries,
+    selectedCollege,
+    selectedDept,
+    selectedSemester,
+    selectedShift,
+    selectedSection,
+    attendanceDate,
+    selectedSubjectCode,
+    selectedPeriodLabel
+  ]);
+
+  // Unmerged OCR edits: same key family, ':ocr' suffix.
+  const getOcrDraftKey = () => `${getAttendanceDraftKey()}|ocr`;
+  useEffect(() => {
+    if (ocrCandidates.length === 0) return;
+    try {
+      localStorage.setItem(
+        getOcrDraftKey(),
+        JSON.stringify({ candidates: ocrCandidates, savedAt: Date.now() })
+      );
+    } catch {
+      // ignore quota errors
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    ocrCandidates,
+    selectedCollege,
+    selectedDept,
+    selectedSemester,
+    selectedShift,
+    selectedSection,
+    attendanceDate,
+    selectedSubjectCode,
+    selectedPeriodLabel
+  ]);
+
+  // Restore unmerged OCR edits when the OCR modal reopens.
+  useEffect(() => {
+    if (!showOcrModal || ocrCandidates.length > 0) return;
+    try {
+      const raw = localStorage.getItem(getOcrDraftKey());
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.candidates) && parsed.candidates.length > 0) {
+        setOcrCandidates(parsed.candidates as OcrExtractedStudentCandidate[]);
+        showToast('Restored your unmerged roster edits from this device.');
+      }
+    } catch {
+      // ignore corrupt drafts
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showOcrModal]);
+
   // Load cohort roster & existing sheets for selected cohort/date/subject/period
   const loadRosterAndSheet = async () => {
     setIsLoadingRoster(true);
@@ -237,8 +342,11 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
           sh.periodLabel.toLowerCase() === selectedPeriodLabel.toLowerCase()
       );
 
+      let loadedEntries: AttendanceRecordEntry[];
+      let sheetUpdatedAtMs = 0;
       if (matchedSheet) {
         setExistingSheet(matchedSheet);
+        sheetUpdatedAtMs = Date.parse(matchedSheet.updatedAt || '') || 0;
         const recordByRoll = new Map<string, AttendanceRecordEntry>();
         matchedSheet.entries.forEach(r => {
           recordByRoll.set(r.boardRoll, r);
@@ -264,11 +372,11 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
           }
         });
 
-        setSheetEntries(mergedEntries);
+        loadedEntries = mergedEntries;
       } else {
         setExistingSheet(null);
         // Initialize every student as 'not_marked' (never silently Present or Absent!)
-        const initialEntries: AttendanceRecordEntry[] = students.map((st: any) => ({
+        loadedEntries = students.map((st: any) => ({
           studentId: st.id,
           studentName: st.name,
           classRoll: st.classRoll,
@@ -276,8 +384,28 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
           regNumber: st.regNumber,
           status: 'not_marked' as AttendanceStatus
         }));
-        setSheetEntries(initialEntries);
       }
+
+      // B9: restore unsaved marks from this device when the draft is
+      // newer than the saved server sheet (or no sheet exists yet).
+      // Draft rows only apply to students on the current roster.
+      const draft = readAttendanceDraft(getAttendanceDraftKey());
+      if (draft && draft.savedAt > sheetUpdatedAtMs && draft.entries.length > 0) {
+        const draftByRoll = new Map(draft.entries.map(e => [e.boardRoll, e]));
+        const restored = loadedEntries.map(entry => draftByRoll.get(entry.boardRoll) || entry);
+        const hasUnsavedMarks = restored.some(
+          (entry, idx) => entry.status !== loadedEntries[idx].status
+        );
+        if (hasUnsavedMarks) {
+          setSheetEntries(restored);
+          setSaveFeedback({
+            type: 'warning',
+            message: 'Restored unsaved attendance marks from this device — remember to Save Attendance.'
+          });
+          return;
+        }
+      }
+      setSheetEntries(loadedEntries);
     } catch {
       setSaveFeedback({
         type: 'error',
@@ -449,6 +577,15 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
         message: data.message || 'Attendance sheet saved and verified!'
       });
       showToast(data.message || 'Attendance sheet saved!');
+      // B9: the marks are saved — clear the device draft so it cannot
+      // resurrect stale marks, and skip the one persist write that the
+      // reload below would otherwise trigger.
+      suppressDraftWriteRef.current = true;
+      try {
+        localStorage.removeItem(getAttendanceDraftKey());
+      } catch {
+        // ignore storage errors
+      }
       loadRosterAndSheet();
     } catch {
       setSaveFeedback({
@@ -635,6 +772,12 @@ export const TeacherAttendanceSection: React.FC<TeacherAttendanceSectionProps> =
       setOcrDataUrl('');
       setOcrRawText('');
       setOcrFileName('');
+      // B9: merged — clear the unmerged-OCR draft for this class.
+      try {
+        localStorage.removeItem(getOcrDraftKey());
+      } catch {
+        // ignore storage errors
+      }
       await loadRosterAndSheet();
     } catch {
       setOcrError('Network error while merging student roster.');
