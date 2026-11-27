@@ -1,0 +1,16 @@
+{
+  "admins": [
+    {
+      "id": "sysadmin_1792821774886",
+      "name": "Academic System Administrator",
+      "email": "its.tanjim.06@gmail.com",
+      "passwordHash": "49ad7c71f415d48b5a2bfaea15dbdcfeb864f7f191a9e6c894c14da4e15e77fc",
+      "passwordSalt": "62be2118c8f3d2e0305be1f06cfff390",
+      "role": "system_admin",
+      "failedAttempts": 1,
+      "lockoutUntil": null,
+      "createdAt": "2026-10-24T06:02:54.886Z",
+      "lastLoginAt": "2026-10-31T08:49:35.628Z"
+    }
+  ]
+}
