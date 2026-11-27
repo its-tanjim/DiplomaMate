@@ -2597,7 +2597,23 @@ app.post('/api/admin/pin-verify', authRateLimiter, authIpRateLimiter, (req: Requ
  * 2E. SYSTEM ADMINISTRATOR PROVISIONING STATUS (`GET /api/admin/bootstrap-status`)
  * Reports whether an initial system_admin has been provisioned (never exposes tokens or passwords).
  */
-app.get('/api/admin/bootstrap-status', (_req: Request, res: Response) => {
+app.get('/api/admin/bootstrap-status', async (_req: Request, res: Response) => {
+  // Stage 2: the JSON store files were removed from the repo, so the disk
+  // copy is empty on a fresh deploy — the disk count no longer answers
+  // whether an admin exists. Postgres is the source of truth now; the
+  // disk count is only a fallback when Postgres cannot be reached.
+  if (isSupabaseConfigured()) {
+    try {
+      const pgAdmins = await listSystemAdmins();
+      return res.status(200).json({
+        success: true,
+        isBootstrapped: pgAdmins.length > 0,
+        adminCount: pgAdmins.length
+      });
+    } catch (err) {
+      console.warn('[Admin Bootstrap] Postgres admin count failed, falling back to JSON store:', err);
+    }
+  }
   systemAdmins = loadSystemAdminsFromDisk();
   return res.status(200).json({
     success: true,
