@@ -307,6 +307,42 @@
   "deletedAccountIds": [],
   "adminAuditLogs": [
     {
+      "id": "audit_f8d2ad09-03d3-4279-a622-6126b1b34a8b",
+      "adminId": "sysadmin_1792821774886",
+      "action": "admin_login_success",
+      "targetId": "sysadmin_1792821774886",
+      "targetName": "its.tanjim.06@gmail.com",
+      "timestamp": "2026-11-27T11:02:46.514Z",
+      "details": "Administrator signed in."
+    },
+    {
+      "id": "audit_80acdfcd-c7a6-48d9-a9c5-4248d9e1f175",
+      "adminId": "sysadmin_1792821774886",
+      "action": "admin_login_failed",
+      "targetId": "sysadmin_1792821774886",
+      "targetName": "its.tanjim.06@gmail.com",
+      "timestamp": "2026-11-27T11:02:36.329Z",
+      "details": "Failed login attempt (3/5)."
+    },
+    {
+      "id": "audit_0c80b49b-bbb9-4043-a6ca-3c3b54f5723b",
+      "adminId": "sysadmin_1792821774886",
+      "action": "admin_login_failed",
+      "targetId": "sysadmin_1792821774886",
+      "targetName": "its.tanjim.06@gmail.com",
+      "timestamp": "2026-11-27T11:02:07.777Z",
+      "details": "Failed login attempt (2/5)."
+    },
+    {
+      "id": "audit_075428c0-3b0b-41ea-ac1d-6bb634b307b9",
+      "adminId": "system",
+      "action": "admin_pin_verified",
+      "targetId": "admin-pin-gate",
+      "targetName": "Admin Panel PIN",
+      "timestamp": "2026-11-27T11:01:47.662Z",
+      "details": "Admin panel PIN verified; login form unlocked for 15 minutes."
+    },
+    {
       "id": "audit_068f5755-9362-4aea-95d7-c2cb3b9e0f17",
       "adminId": "sysadmin_1792821774886",
       "action": "admin_login_success",
