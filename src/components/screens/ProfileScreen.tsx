@@ -51,6 +51,9 @@ export const ProfileScreen: React.FC = () => {
     const newEmail = (formData.email || '').trim();
     const oldEmail = (userProfile.email || '').trim();
     const emailChanged = newEmail.toLowerCase() !== oldEmail.toLowerCase();
+    const newSubjects = formData.enrolledSubjects || [];
+    const oldSubjects = userProfile.enrolledSubjects || [];
+    const subjectsChanged = JSON.stringify(newSubjects) !== JSON.stringify(oldSubjects);
 
     // Client-side format check before hitting the server.
     if (emailChanged && newEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
@@ -58,12 +61,18 @@ export const ProfileScreen: React.FC = () => {
       return;
     }
 
+    // The profile to keep locally once every server save succeeds.
+    const profileToSave: StudentProfile = {
+      ...formData,
+      accountType: userProfile.accountType
+    };
+
     if (emailChanged) {
-      // Email is the one profile field that lives on the server (it is
-      // what Google sign-in links by), so a changed email goes through
-      // PATCH /api/me/email. Everything else stays local-only, as before.
+      // Email is one of the two profile fields that live on the server
+      // (it is what Google sign-in links by), so a changed email goes
+      // through PATCH /api/me/email.
       if (!authToken) {
-        setUserProfile({ ...formData, accountType: userProfile.accountType });
+        setUserProfile(profileToSave);
         setIsEditing(false);
         showToast('Profile saved on this device. Email could not be saved to the server — please sign in again.');
         return;
@@ -86,29 +95,61 @@ export const ProfileScreen: React.FC = () => {
           showToast(data?.error || 'Could not save your email. Please try again.');
           return;
         }
-        setUserProfile({
-          ...formData,
-          email: data.email || newEmail,
-          accountType: userProfile.accountType
-        });
-        setIsEditing(false);
-        showToast('Profile updated successfully!');
+        profileToSave.email = data.email || newEmail;
       } catch {
         // Network failure: keep the new email locally and say the
         // server save did not happen.
-        setUserProfile({ ...formData, accountType: userProfile.accountType });
+        setUserProfile(profileToSave);
         setIsEditing(false);
         showToast('Profile saved on this device. Email could not be saved to the server — check your connection and try again.');
+        return;
       } finally {
         setIsSavingEmail(false);
       }
-      return;
     }
 
-    setUserProfile({
-      ...formData,
-      accountType: userProfile.accountType
-    });
+    if (subjectsChanged) {
+      // Enrolled subjects are the other server-backed profile field:
+      // they go through PATCH /api/me/profile so a fresh login (or a
+      // login from another device) restores the selection instead of
+      // wiping it. Everything else stays local-only, as before.
+      if (!authToken) {
+        setUserProfile(profileToSave);
+        setIsEditing(false);
+        showToast('Profile saved on this device. Subjects could not be saved to the server — please sign in again.');
+        return;
+      }
+      setIsSavingEmail(true);
+      try {
+        const res = await apiFetch('/api/me/profile', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ enrolledSubjects: newSubjects })
+        });
+        const data = await res.json().catch(() => ({} as { error?: string; enrolledSubjects?: { code: string; name: string }[] }));
+        if (!res.ok) {
+          // Server rejected the subjects (bad code / too many): leave
+          // the form open so the user can fix the selection.
+          showToast(data?.error || 'Could not save your subjects. Please try again.');
+          return;
+        }
+        profileToSave.enrolledSubjects = data.enrolledSubjects || newSubjects;
+      } catch {
+        // Network failure: keep the new subjects locally and say the
+        // server save did not happen.
+        setUserProfile(profileToSave);
+        setIsEditing(false);
+        showToast('Profile saved on this device. Subjects could not be saved to the server — check your connection and try again.');
+        return;
+      } finally {
+        setIsSavingEmail(false);
+      }
+    }
+
+    setUserProfile(profileToSave);
     setIsEditing(false);
     showToast('Profile updated successfully!');
   };
@@ -529,6 +570,11 @@ export const ProfileScreen: React.FC = () => {
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+          {(!userProfile.enrolledSubjects || userProfile.enrolledSubjects.length === 0) && (
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <span className="text-xs text-slate-500">No semester subjects selected yet — tap Edit Profile to choose your subjects.</span>
             </div>
           )}
 

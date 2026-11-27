@@ -209,6 +209,11 @@ export interface StudentRow {
   pin_salt: string | null;
   // Added by supabase-schema-phase4.sql; null until that ALTER is run.
   pin_hash_version: number | null;
+  // Added by supabase-enrolled-subjects.sql; null until that ALTER is run.
+  // JSONB array of { code, name } — the subjects a student enrolled in
+  // for the current semester. Read by toStudent(); written by
+  // updateStudentById() via persistEnrolledSubjectsToSupabase in server.ts.
+  enrolled_subjects: unknown | null;
   failed_pin_attempts: number | null;
   lockout_until: string | null;
   is_registered_account: boolean | null;
@@ -437,7 +442,25 @@ export function toStudent(row: StudentRow): EnrolledStudent {
     // v2 iteration count for students, so a missing value changes
     // nothing for students.
     pinHashVersion: row.pin_hash_version ?? undefined,
+    // enrolled_subjects is added by supabase-enrolled-subjects.sql.
+    // Until that ALTER runs the column is absent and this is undefined,
+    // which applyStudentSession treats as "no server value" and keeps
+    // the saved local selection instead of wiping it.
+    enrolledSubjects: parseEnrolledSubjects(row.enrolled_subjects),
   };
+}
+
+/** Parse the `enrolled_subjects` JSONB value into validated { code, name } pairs. */
+function parseEnrolledSubjects(value: unknown): { code: string; name: string }[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const parsed = value
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .map((item) => ({
+      code: String(item.code || '').trim(),
+      name: String(item.name || '').trim(),
+    }))
+    .filter((s) => /^\d{4,6}$/.test(s.code) && s.name.length > 0 && s.name.length <= 120);
+  return parsed.slice(0, 15);
 }
 
 export function toTeacher(row: TeacherRow): TeacherAccount {
@@ -817,6 +840,14 @@ export async function updateStudentById(
     const { pin_hash_version: _dropped, ...patchWithoutVersion } = patch;
     ({ data, error } = await runUpdate(patchWithoutVersion));
   }
+  if (error && 'enrolled_subjects' in patch && isMissingColumnError(error, 'enrolled_subjects')) {
+    // The supabase-enrolled-subjects.sql ALTER has not been run yet:
+    // retry without the column so the rest of the patch still applies,
+    // and the caller (persistEnrolledSubjectsToSupabase) warns that
+    // subjects are JSON-store only until the ALTER runs.
+    const { enrolled_subjects: _droppedSubjects, ...patchWithoutSubjects } = patch;
+    ({ data, error } = await runUpdate(patchWithoutSubjects));
+  }
   throwIfError(error, 'updateStudentById');
   return data ? toStudent(data as StudentRow) : null;
 }
@@ -860,6 +891,9 @@ export async function insertStudent(student: EnrolledStudent): Promise<EnrolledS
     pin_hash: student.pinHash ?? null,
     pin_salt: student.pinSalt ?? null,
     pin_hash_version: student.pinHashVersion ?? null,
+    // New registrations carry no subjects (they are chosen later in
+    // Profile → Edit Profile); null until PATCH /api/me/profile writes.
+    enrolled_subjects: student.enrolledSubjects?.length ? student.enrolledSubjects : null,
     failed_pin_attempts: 0,
     lockout_until: null,
     is_registered_account: student.isRegisteredAccount ?? false,

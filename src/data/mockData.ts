@@ -189,6 +189,10 @@ export interface EnrolledStudent {
   pinHash?: string;
   pinSalt?: string;
   pinHashVersion?: number;
+  // Enrolled semester subjects, chosen in Profile → Edit Profile.
+  // Persisted on the server (PATCH /api/me/profile); the client merges
+  // them in applyStudentSession so a fresh login never wipes a selection.
+  enrolledSubjects?: { code: string; name: string }[];
 }
 
 // No seeded students (compliance audit 2026-11-26, §6 item 1).

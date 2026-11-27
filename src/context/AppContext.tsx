@@ -954,6 +954,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       accountType: data.session.role,
       captainVerificationStatus: account.captainVerificationStatus,
       isTeacherContactUnlocked: sameAccount && Boolean(savedProfile?.isTeacherContactUnlocked),
+      // Enrolled subjects: the server value wins when present — even an
+      // empty list, because the user may have cleared all subjects.
+      // When the server has no value yet (older record, or a Postgres
+      // read from before the enrolled_subjects column exists), keep the
+      // saved local selection for the same account instead of wiping it.
+      // A missing server value must never destroy a local selection.
+      enrolledSubjects: Array.isArray(account.enrolledSubjects)
+        ? account.enrolledSubjects
+        : (sameAccount && savedProfile ? savedProfile.enrolledSubjects : undefined),
       phone: account.phone || ''
     };
 

@@ -7662,6 +7662,56 @@ app.patch('/api/me/email', requireAuth, async (req: Request, res: Response) => {
 });
 
 /**
+ * Update the session's own enrolled semester subjects
+ * (`PATCH /api/me/profile`). Students only — teachers do not have
+ * enrolled subjects. Before this endpoint existed, subjects lived only
+ * in the client's localStorage, and `applyStudentSession` rebuilt the
+ * profile from the server account on every fresh login, wiping the
+ * selection (and the localStorage sync then overwrote the saved copy).
+ * Storing them on the student record makes a fresh login — or a login
+ * from another device — restore the selection.
+ */
+app.patch('/api/me/profile', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { session: ServerSession }).session;
+    if (session.role !== 'student' && session.role !== 'class_captain') {
+      return res.status(403).json({ success: false, error: 'Forbidden: Only students can update enrolled subjects.' });
+    }
+    const raw = req.body?.enrolledSubjects;
+    if (!Array.isArray(raw)) {
+      return res.status(400).json({ success: false, error: 'enrolledSubjects must be a list of subjects.' });
+    }
+    if (raw.length > 15) {
+      return res.status(400).json({ success: false, error: 'You can enrol in at most 15 subjects.' });
+    }
+    const enrolledSubjects: { code: string; name: string }[] = [];
+    for (const item of raw) {
+      if (typeof item !== 'object' || item === null) {
+        return res.status(400).json({ success: false, error: 'Each subject must have a code and a name.' });
+      }
+      const code = String((item as Record<string, unknown>).code || '').trim();
+      const name = String((item as Record<string, unknown>).name || '').trim();
+      if (!/^\d{4,6}$/.test(code) || !name || name.length > 120) {
+        return res.status(400).json({ success: false, error: 'Each subject needs a 4–6 digit code and a name.' });
+      }
+      enrolledSubjects.push({ code, name });
+    }
+    const student = academicStore.students.find(s => s.id === session.userId);
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Account not found.' });
+    }
+    student.enrolledSubjects = enrolledSubjects;
+    appendSystemAudit('profile_subjects_updated', student.id, student.name, `Enrolled subjects updated (${enrolledSubjects.length} subjects)`, session.userId);
+    saveAcademicStore(academicStore);
+    await persistEnrolledSubjectsToSupabase(session.userId, enrolledSubjects, 'SubjectsUpdate');
+    return res.status(200).json({ success: true, enrolledSubjects });
+  } catch (error) {
+    console.error('Update enrolled subjects error:', error);
+    return res.status(500).json({ success: false, error: 'Could not save your subjects. Please try again.' });
+  }
+});
+
+/**
  * Admin: list all deletion requests, newest first, with the account's
  * board roll and name snapshot.
  */
@@ -11783,6 +11833,33 @@ async function persistEmailToSupabase(
       : await updateStudentById(accountId, patch);
     if (!updated) {
       console.warn(`[${logTag}] Account ${accountId} not found in Postgres; email kept in JSON store only.`);
+    }
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Enrolled-subjects dual-write (`PATCH /api/me/profile`). Same contract
+ * as persistEmailToSupabase above: return early when Supabase is
+ * unconfigured, never throw — on any query error log a warning and the
+ * caller carries on with the JSON write. `students.enrolled_subjects`
+ * (JSONB) is added by supabase-enrolled-subjects.sql; until that ALTER
+ * runs, updateStudentById() retries without the column (see
+ * supabaseClient.ts) and the subjects stay JSON-store only — a fresh
+ * login from Postgres then has no subjects, and applyStudentSession
+ * keeps the saved local selection instead of wiping it.
+ */
+async function persistEnrolledSubjectsToSupabase(
+  accountId: string,
+  enrolledSubjects: { code: string; name: string }[],
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const updated = await updateStudentById(accountId, { enrolled_subjects: enrolledSubjects });
+    if (!updated) {
+      console.warn(`[${logTag}] Account ${accountId} not found in Postgres; subjects kept in JSON store only.`);
     }
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
