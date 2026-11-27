@@ -307,6 +307,24 @@
   "deletedAccountIds": [],
   "adminAuditLogs": [
     {
+      "id": "audit_b1f4a96c-188b-4ad1-a21b-066c7a87dafe",
+      "adminId": "sysadmin_1792821774886",
+      "action": "admin_login_success",
+      "targetId": "sysadmin_1792821774886",
+      "targetName": "its.tanjim.06@gmail.com",
+      "timestamp": "2026-11-27T10:52:04.631Z",
+      "details": "Administrator signed in."
+    },
+    {
+      "id": "audit_63702e50-3036-47e3-a969-39ae3d0aeff7",
+      "adminId": "system",
+      "action": "admin_pin_verified",
+      "targetId": "admin-pin-gate",
+      "targetName": "Admin Panel PIN",
+      "timestamp": "2026-11-27T10:51:44.660Z",
+      "details": "Admin panel PIN verified; login form unlocked for 15 minutes."
+    },
+    {
       "id": "audit_905695fc-d34c-4c63-a1db-0392cdec6036",
       "adminId": "std_4bdf8ad5-de93-45e1-ba60-64925b2520d5",
       "action": "email_updated",
@@ -560,6 +578,9 @@
   "jobs": [],
   "campusNotices": [],
   "campusNoticeReports": [],
+  "announcements": [],
+  "reminders": [],
+  "routineDocuments": [],
   "adminNotifications": [],
   "featureFlags": {
     "notes_upload": {
@@ -600,5 +621,7 @@
     "failedAttempts": 0,
     "lockedUntil": null
   },
-  "pendingTeacherEndorsements": {}
+  "adminPinGateWasEnabled": true,
+  "pendingTeacherEndorsements": {},
+  "studentLoginFailures": {}
 }
