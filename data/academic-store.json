@@ -3,7 +3,7 @@
     {
       "id": "std_4bdf8ad5-de93-45e1-ba60-64925b2520d5",
       "name": "Tanjim Khan",
-      "email": "student@polytechnic.edu.bd",
+      "email": "its.mahafuj.07@gmail.com",
       "classRoll": "06",
       "boardRoll": "843906",
       "regNumber": "1502342950",
@@ -306,6 +306,15 @@
   "accountDeletionRequests": [],
   "deletedAccountIds": [],
   "adminAuditLogs": [
+    {
+      "id": "audit_905695fc-d34c-4c63-a1db-0392cdec6036",
+      "adminId": "std_4bdf8ad5-de93-45e1-ba60-64925b2520d5",
+      "action": "email_updated",
+      "targetId": "std_4bdf8ad5-de93-45e1-ba60-64925b2520d5",
+      "targetName": "Tanjim Khan",
+      "timestamp": "2026-11-27T07:27:21.505Z",
+      "details": "Email changed to its.mahafuj.07@gmail.com"
+    },
     {
       "id": "audit_1fb827db-df4a-48b2-9e02-0ca4f3d472b0",
       "adminId": "std_4bdf8ad5-de93-45e1-ba60-64925b2520d5",
