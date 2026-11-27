@@ -8,3 +8,7 @@ coverage/
 .env*
 !.env.example
 release/
+# S3: the one-time first-admin bootstrap token (server.ts
+# BOOTSTRAP_TOKEN_FILE). A live admin-creation token must never reach
+# the public repo via `git add -A` on a fresh instance.
+data/.admin-bootstrap-token

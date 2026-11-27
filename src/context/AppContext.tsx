@@ -1,9 +1,4 @@
 import { apiFetch } from '../services/apiClient';
-import {
-  fetchWithNetworkRetry,
-  NETWORK_ERROR_MESSAGE,
-  type NetworkRetryOptions
-} from '../services/networkRetry';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { 
   StudentProfile, 
@@ -101,8 +96,10 @@ interface AppContextType {
   systemAdminProfile: SystemAdminProfile | null;
   isServerVerifiedAdmin: boolean;
   isCheckingAdminSession: boolean;
-  adminLogin: (email: string, password: string, pinToken?: string, options?: Pick<NetworkRetryOptions, 'onRetry'>) => Promise<{ success: boolean; message: string }>;
-  adminBootstrap: (bootstrapToken: string, name: string, email: string, password: string, pinToken?: string) => Promise<{ success: boolean; message: string }>;
+  // A6: the admin sign-in/bootstrap HTTP calls live in the admin-only
+  // module src/admin/adminAuth.ts now. AppContext only applies a verified
+  // admin session to shared state; it carries no /api/admin/* callers.
+  applyAdminSession: (admin: SystemAdminProfile, sessionToken: string) => void;
   verifyServerAdminSession: () => Promise<boolean>;
 
   // Teacher Authentication & Institutional Faculty State
@@ -557,9 +554,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const ensureSession = async (attempt: number): Promise<void> => {
       if (cancelled) return;
       try {
+        // AU1: session refresh presents the stored token — a fresh mint
+        // without a valid token now requires a PIN, so the token must
+        // travel with the request (this is the app-start / reopen path).
+        const tokenToPresent =
+          authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+        if (!tokenToPresent) {
+          // Logged in with no token at all: nothing valid to refresh.
+          invalidateStudentSession();
+          return;
+        }
         const res = await apiFetch('/api/auth/session', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${tokenToPresent}`
+          },
           body: JSON.stringify({
             userId: userProfile.id,
             role: userProfile.accountType,
@@ -1210,7 +1220,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // SYSTEM ADMINISTRATOR AUTHENTICATION & BOOTSTRAP
-  const applyAuthenticatedSystemAdmin = (admin: SystemAdminProfile, sessionToken: string) => {
+  const applyAdminSession = (admin: SystemAdminProfile, sessionToken: string) => {
     setAuthToken(sessionToken);
     setSystemAdminProfile(admin);
     setIsServerVerifiedAdmin(true);
@@ -1238,73 +1248,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsLoggedIn(true);
     setActiveScreen('admin_portal');
     showToast(`Authenticated as System Administrator (${admin.email})`);
-  };
-
-  const adminLogin = async (
-    email: string,
-    password: string,
-    pinToken?: string,
-    options?: Pick<NetworkRetryOptions, 'onRetry'>
-  ): Promise<{ success: boolean; message: string }> => {
-    try {
-      // Render free tier sleeps after ~15 min idle: the first login attempt
-      // often fails at the network level. Retry network failures only (2
-      // more attempts, ~3s then ~8s); HTTP error responses (401/403/...)
-      // are real answers and are never retried.
-      const response = await fetchWithNetworkRetry(
-        () =>
-          apiFetch('/api/admin/login', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ email, password, ...(pinToken ? { pinToken } : {}) })
-          }),
-        { onRetry: options?.onRetry }
-      );
-      const data = await response.json();
-      if (!response.ok || !data.success || !data.sessionToken || !data.admin) {
-        return { success: false, message: data.error || 'System Administrator authentication failed.' };
-      }
-
-      applyAuthenticatedSystemAdmin(data.admin, data.sessionToken);
-      return { success: true, message: data.message || 'Authenticated as System Administrator.' };
-        } catch (error) {
-      console.error('Admin authentication error:', error);
-      // Never surface a raw JS error string (e.g. "Failed to fetch") to
-      // the admin: after all retries, report a human-readable message.
-      return {
-        success: false,
-        message: NETWORK_ERROR_MESSAGE
-      };
-    }
-  };
-
-  const adminBootstrap = async (
-    bootstrapToken: string,
-    name: string,
-    email: string,
-    password: string,
-    pinToken?: string
-  ): Promise<{ success: boolean; message: string }> => {
-    try {
-      const response = await apiFetch('/api/admin/bootstrap', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ bootstrapToken, name, email, password, ...(pinToken ? { pinToken } : {}) })
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success || !data.sessionToken || !data.admin) {
-        return { success: false, message: data.error || 'Administrator provisioning failed.' };
-      }
-
-      applyAuthenticatedSystemAdmin(data.admin, data.sessionToken);
-      return { success: true, message: data.message || 'First System Administrator provisioned and signed in.' };
-    } catch {
-      return { success: false, message: 'Could not connect to administrator provisioning service.' };
-    }
   };
 
   // TEACHER AUTHENTICATION & MANAGEMENT
@@ -1406,12 +1349,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Teacher profile save (B7): the server PUT is the source of truth
-  // for phone / isGuideTeacher / guideTeacherCohort. The local profile
-  // is only updated AFTER the server accepts the save — a 400/409
-  // rejection or a network failure returns success:false and the screen
-  // keeps the form open with the server message instead of claiming
-  // the profile was saved.
+  // Teacher profile save (B7 + RBAC audit fix R1): the server PUT is
+  // the source of truth for name / phone / designation /
+  // teachingSubjects ONLY. The taught scope (college, department,
+  // semestersTaught, shift, sectionsTaught, isGuideTeacher,
+  // guideTeacherCohort) is set at registration and is no longer
+  // accepted by the server — the client still keeps those fields
+  // locally (mergedTeacher below) because the setup form collects
+  // them, but they are never sent, so a teacher cannot widen their
+  // own cohort access. The local profile is only updated AFTER the
+  // server accepts the save — a 400/409 rejection or a network
+  // failure returns success:false and the screen keeps the form open
+  // with the server message instead of claiming the profile was saved.
   const updateTeacherProfile = async (
     profileUpdates: Partial<TeacherProfile>,
     contactDetails?: { room?: string; consultingHours?: string }
@@ -1427,15 +1376,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     // Sync teacher profile with server-side teacher store FIRST.
+    // R1: send only the non-scope fields the server accepts — scope
+    // fields are kept locally only (see the comment above).
     if (authToken) {
       try {
+        const serverProfileUpdates = {
+          name: profileUpdates.name,
+          phone: profileUpdates.phone,
+          designation: profileUpdates.designation,
+          teachingSubjects: profileUpdates.teachingSubjects
+        };
         const profileRes = await apiFetch('/api/teachers/profile', {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${authToken}`
           },
-          body: JSON.stringify(profileUpdates)
+          body: JSON.stringify(serverProfileUpdates)
         });
         const profileData = await profileRes.json().catch(() => ({} as { error?: string }));
         if (!profileRes.ok) {
@@ -1494,11 +1451,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
         },
         body: JSON.stringify({
-          requesterRole: 'teacher',
-          requesterId: mergedTeacher.id,
-          requesterName: mergedTeacher.name,
-          requesterCollege: mergedTeacher.college,
-          requesterDepartment: mergedTeacher.department,
           contact: contactPayload
         })
       });
@@ -2799,11 +2751,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
         },
         body: JSON.stringify({
-          requesterRole: userProfile.accountType,
-          requesterId: userProfile.id,
-          requesterName: userProfile.name,
-          requesterCollege: userProfile.college,
-          requesterDepartment: userProfile.department,
           contact: {
             ...teacherData,
             college: teacherData.collegeName || userProfile.college,
@@ -2855,11 +2802,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
         },
         body: JSON.stringify({
-          requesterRole: userProfile.accountType,
-          requesterId: userProfile.id,
-          requesterName: userProfile.name,
-          requesterCollege: userProfile.college,
-          requesterDepartment: userProfile.department,
           reason
         })
       });
@@ -2912,11 +2854,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
         },
         body: JSON.stringify({
-          requesterRole: userProfile.accountType,
-          requesterId: userProfile.id,
-          requesterName: userProfile.name,
-          requesterCollege: userProfile.college,
-          requesterDepartment: userProfile.department,
           updates: {
             name: updates.name,
             designation: updates.designation,
@@ -3195,35 +3132,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       [shift]: localUpdated
     }));
 
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
-      if (tokenToUse) {
-        headers.Authorization = `Bearer ${tokenToUse}`;
+    // RBAC audit fix (R2): the shared schedule config is founder-only
+    // on the server now, so only an admin session syncs it. Everyone
+    // else keeps the change local (period timings still drive their own
+    // routine forms) and is told so honestly instead of hitting a 403.
+    if (userProfile.accountType === 'system_admin') {
+      try {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+        if (tokenToUse) {
+          headers.Authorization = `Bearer ${tokenToUse}`;
+        }
+        const res = await apiFetch('/api/schedule-config', {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({
+            ...localUpdated,
+            scopeKey: localUpdated.scopeKey || 'default',
+            forceResetAllManual: Boolean(config.forceResetAllManual)
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.schedule) {
+          setShiftSchedules(prev => ({
+            ...prev,
+            [shift]: data.schedule
+          }));
+          showToast(`${shift} Shift period schedule saved.`);
+          return data.schedule;
+        }
+      } catch {
+        // Fallback to localUpdated
       }
-      const res = await apiFetch('/api/schedule-config', {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({
-          ...localUpdated,
-          scopeKey: localUpdated.scopeKey || 'default',
-          forceResetAllManual: Boolean(config.forceResetAllManual)
-        })
-      });
-      const data = await res.json();
-      if (res.ok && data.success && data.schedule) {
-        setShiftSchedules(prev => ({
-          ...prev,
-          [shift]: data.schedule
-        }));
-        showToast(`${shift} Shift period schedule saved.`);
-        return data.schedule;
-      }
-    } catch {
-      // Fallback to localUpdated
     }
 
-    showToast(`${shift} Shift period schedule updated.`);
+    showToast(
+      userProfile.accountType === 'system_admin'
+        ? `${shift} Shift period schedule updated.`
+        : `${shift} Shift period schedule updated on this device only — only the admin can change the shared schedule.`
+    );
     return localUpdated;
   };
 
@@ -3241,37 +3188,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       [targetShift]: localReset
     }));
 
-    try {
-      const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
-      const res = await apiFetch('/api/schedule-config/reset', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
-        },
-        body: JSON.stringify({
-          shift: targetShift,
-          scopeKey: current.scopeKey || 'default',
-          periodNumber
-        })
-      });
-      const data = await res.json();
-      if (res.ok && data.success && data.schedule) {
-        setShiftSchedules(prev => ({
-          ...prev,
-          [targetShift]: data.schedule
-        }));
-        showToast(data.message || `${targetShift} Shift schedule reset.`);
-        return data.schedule;
+    // RBAC audit fix (R2): the shared schedule config is founder-only
+    // on the server now — only an admin session syncs a reset. Everyone
+    // else resets locally and is told so honestly instead of hitting
+    // a 403.
+    if (userProfile.accountType === 'system_admin') {
+      try {
+        const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+        const res = await apiFetch('/api/schedule-config/reset', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : {})
+          },
+          body: JSON.stringify({
+            shift: targetShift,
+            scopeKey: current.scopeKey || 'default',
+            periodNumber
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.schedule) {
+          setShiftSchedules(prev => ({
+            ...prev,
+            [targetShift]: data.schedule
+          }));
+          showToast(data.message || `${targetShift} Shift schedule reset.`);
+          return data.schedule;
+        }
+      } catch {
+        // Fallback to localReset
       }
-    } catch {
-      // Fallback to localReset
     }
 
     showToast(
-      periodNumber
-        ? `Period ${periodNumber} reset to suggested timing.`
-        : `${targetShift} Shift reset to default (${SHIFT_DEFAULT_START_TIME[targetShift]}, ${DEFAULT_PERIOD_DURATION_MINUTES} min).`
+      userProfile.accountType === 'system_admin'
+        ? periodNumber
+          ? `Period ${periodNumber} reset to suggested timing.`
+          : `${targetShift} Shift reset to default (${SHIFT_DEFAULT_START_TIME[targetShift]}, ${DEFAULT_PERIOD_DURATION_MINUTES} min).`
+        : `Timings reset on this device only — only the admin can change the shared schedule.`
     );
     return localReset;
   };
@@ -3299,8 +3254,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         systemAdminProfile,
         isServerVerifiedAdmin,
         isCheckingAdminSession,
-        adminLogin,
-        adminBootstrap,
+        applyAdminSession,
         verifyServerAdminSession,
         currentTeacherProfile,
         teachersList,

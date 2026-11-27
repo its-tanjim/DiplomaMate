@@ -167,9 +167,11 @@ import {
   anonymizeCaptainRecordsByStudentId,
   anonymizeCommunitiesByCreator,
   anonymizeCommunityMessagesBySenderId,
+  anonymizeRecordsByColumnToSupabase,
   deleteAttendanceSheetById,
   deleteCampusNoticeById,
   deleteMembershipsByUserId,
+  deleteRecordsByColumnToSupabase,
   deleteRoutineById,
   deleteStudentById,
   deleteTeacherById,
@@ -188,6 +190,7 @@ import {
   insertRecordToSupabase,
   insertRoutine,
   insertStudent,
+  insertTeacher,
   isUniqueViolationError,
   listAllCaptainRecords,
   listAttendanceSheets,
@@ -197,6 +200,7 @@ import {
   listMembershipsForUser,
   listRoutines,
   listStudentsByCohort,
+  ROUTINE_DOCUMENTS_BUCKET,
   sanitizeStorageFileName,
   toAttendanceSheetRow,
   toCampusNoticeRow,
@@ -211,9 +215,11 @@ import {
   updateTeacherById,
   deleteRecordByIdToSupabase,
   uploadCommunityFile,
+  uploadRoutineDocumentFile,
   uploadStorageFile,
   upsertPendingTeacherEndorsement,
-  upsertRecordToSupabase
+  upsertRecordToSupabase,
+  type TeacherAccount
 } from './server/supabaseClient';
 
 dotenv.config();
@@ -319,17 +325,44 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // ---------------------------------------------------------------------------
 // In-memory rate limiting (no new dependencies).
-// The client IP comes from X-Forwarded-For when a trusted proxy sets it
-// (Render does); otherwise it falls back to the socket address. Note the
-// VPS nginx template does not forward the client IP yet, so anonymous
-// traffic from the VPS currently shares one bucket — see the deployment
-// note in the summary; authenticated traffic is keyed by session token
-// and is unaffected.
+// The client IP comes from X-Forwarded-For ONLY when the direct peer is a
+// trusted proxy (AU2): Render terminates TLS and appends the real client
+// IP as the LAST value in the chain, so a client-supplied first value is
+// never trusted — taking the last value is what defeats XFF spoofing.
+// Trust is decided from the socket peer, not from the header itself:
+//   - TRUST_PROXY=true (set on Render) trusts the last XFF value, or
+//   - the peer is an RFC 1918 private address (Render's proxy reaches
+//     the service over its private network), or
+//   - TRUSTED_PROXY_IPS (comma-separated) lists the peer explicitly.
+// Otherwise (direct connection, e.g. local dev) the header is ignored
+// and the socket address is used, so a spoofed XFF cannot dodge a
+// per-IP bucket. Authenticated traffic is keyed by session token and
+// is unaffected.
 // ---------------------------------------------------------------------------
+function isTrustedProxyPeer(req: Request): boolean {
+  if ((process.env.TRUST_PROXY || '').trim().toLowerCase() === 'true') return true;
+  const peer = (req.socket?.remoteAddress || '').trim();
+  const allowList = (process.env.TRUSTED_PROXY_IPS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (peer && allowList.includes(peer)) return true;
+  // RFC 1918 private ranges only — loopback (127.0.0.1) is deliberately
+  // NOT trusted, so a local direct connection cannot spoof its IP.
+  return (
+    /^10\./.test(peer) ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(peer) ||
+    /^192\.168\./.test(peer)
+  );
+}
+
 function getClientIp(req: Request): string {
   const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.trim()) {
-    return forwarded.split(',')[0].trim();
+  if (isTrustedProxyPeer(req) && typeof forwarded === 'string' && forwarded.trim()) {
+    // Last value = the one appended by the trusted proxy (the real
+    // client IP as the proxy saw it); earlier values are client claims.
+    const parts = forwarded.split(',').map(s => s.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1];
   }
   return req.socket?.remoteAddress || 'unknown';
 }
@@ -394,18 +427,26 @@ function apiRateLimitMiddleware(req: Request, res: Response, next: NextFunction)
     : anonymousApiRateLimiter(req, res, next);
 }
 
-// Strict limit for login / PIN / auth endpoints: 5 attempts / 15 min per
-// (client IP + account identifier), so one attacker's guessing against many
+// Strict limit for login / PIN / auth endpoints: 10 attempts / 15 min per
+// (client IP + account identifier) (AU5). The limit is deliberately looser
+// than the 5-failure account lockout, so the limiter can never eat the
+// 5th guess and mask the lockout (a registration + 5 wrong PINs from one
+// IP must still lock the account). One attacker's guessing against many
 // accounts still hits the IP bucket while a single account is protected.
 const authRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 10,
   key: (req) => {
     const body = (req.body || {}) as Record<string, unknown>;
-    const identifier = String(
-      body.email || body.phoneOrEmail || body.boardRoll || body.teacherId || body.userId || ''
-    ).trim().toLowerCase() || 'unknown';
-    return `auth:${getClientIp(req)}:${identifier}`;
+    // AU14: /api/auth/session's bucket is keyed on boardRoll, not the
+    // caller-controlled body.userId (rotating userIds dodged the bucket).
+    const identifier =
+      req.path === '/api/auth/session'
+        ? String(body.boardRoll || '').trim().toLowerCase()
+        : String(
+            body.email || body.phoneOrEmail || body.boardRoll || body.teacherId || body.userId || ''
+          ).trim().toLowerCase();
+    return `auth:${getClientIp(req)}:${identifier || 'unknown'}`;
   },
   message: 'Too many login attempts. Please wait 15 minutes and try again.'
 });
@@ -449,8 +490,10 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
-// System administrators and verified teachers only. The schedule config
-// (and other admin/teacher writes) must not be changeable by students.
+// System administrators and verified teachers only. Retained for
+// admin/teacher writes other than the schedule config (which is now
+// founder-only, see R2 below) — the schedule config must not be
+// changeable by students.
 function requireAdminOrTeacher(req: Request, res: Response, next: NextFunction) {
   const existing = (req as unknown as { session?: ServerSession }).session;
   const session = existing || getAuthenticatedSession(req);
@@ -476,6 +519,7 @@ const PUBLIC_MUTATING_ROUTES = new Set([
   'POST /api/auth/session',
   'POST /api/auth/logout',
   'POST /api/students/login',
+  'POST /api/students/setup-pin', // AU10: 410-only, performs no state change — must stay reachable unauthenticated
   'POST /api/admin/bootstrap',
   'POST /api/admin/login',
   'POST /api/admin/pin-verify', // admin PIN gate: pre-auth step, rate-limited + 5h lockout internally
@@ -529,6 +573,10 @@ export interface StoredSystemAdmin {
 }
 
 export interface ServerSession {
+  // Opaque, non-secret session identifier (UUID) used as the revoke key
+  // (A1). The bearer token is NEVER exposed outside this process; the
+  // list endpoint returns only this id plus a short token fingerprint.
+  id: string;
   token: string;
   userId: string;
   role: AccountType | AdminRole;
@@ -574,6 +622,37 @@ function upgradeAdminPasswordHash(admin: StoredSystemAdmin, password: string): v
   admin.passwordSalt = salt;
   admin.passwordHash = hashAdminPassword(password, salt, ADMIN_PASSWORD_ITERATIONS_V2);
   admin.passwordHashVersion = 2;
+}
+
+// A3 — admin password helpers. The invite flow mints v2 (600k) hashes;
+// password changes/resets must do the same, and must clear any lockout
+// so a reset also unlocks the account.
+const ADMIN_PASSWORD_MIN_LENGTH = 8;
+
+/** Verify a sub-admin password against the hash scheme its record uses. */
+function verifySubAdminPassword(password: string, account: AdminAccount): boolean {
+  const iterations = account.passwordHashVersion === 2 ? ADMIN_PASSWORD_ITERATIONS_V2 : 10000;
+  return hashAdminPassword(password, account.passwordSalt, iterations) === account.passwordHash;
+}
+
+/** Set a new v2 (600k-iteration) password on a founder record. */
+function setSystemAdminPassword(admin: StoredSystemAdmin, newPassword: string): void {
+  const salt = generateSalt();
+  admin.passwordSalt = salt;
+  admin.passwordHash = hashAdminPassword(newPassword, salt, ADMIN_PASSWORD_ITERATIONS_V2);
+  admin.passwordHashVersion = 2;
+  admin.failedAttempts = 0;
+  admin.lockoutUntil = null;
+}
+
+/** Set a new v2 (600k-iteration) password on a sub-admin record. */
+function setSubAdminPassword(account: AdminAccount, newPassword: string): void {
+  const salt = generateSalt();
+  account.passwordSalt = salt;
+  account.passwordHash = hashAdminPassword(newPassword, salt, ADMIN_PASSWORD_ITERATIONS_V2);
+  account.passwordHashVersion = 2;
+  account.failedAttempts = 0;
+  account.lockoutUntil = null;
 }
 
 function sanitizeSystemAdmin(admin: StoredSystemAdmin): SystemAdminProfile {
@@ -722,6 +801,42 @@ const studentLoginFailures = new Map<string, StudentLoginFailure>();
 const STUDENT_LOGIN_MAX_FAILURES = 5;
 const STUDENT_LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
 
+// AU7: student login lockout state is persisted in the JSON store (and
+// reloaded into this Map by loadAcademicStore), like the teacher lockout
+// — a restart/deploy must not clear it. There is no Supabase table or
+// column for per-account login-failure state, so there is no dual-write
+// for this state (JSON store only); the PIN itself is still dual-written
+// by the reset-pin / register paths.
+function persistStudentLoginFailures(): void {
+  try {
+    saveAcademicStore(academicStore);
+  } catch (err) {
+    console.error('[StudentLogin] Failed to persist login-failure state:', err);
+  }
+}
+
+// Records one failed login for lockoutKey. Returns true when this failure
+// trips the 15-minute lockout. Persists on every call (AU7).
+function recordStudentLoginFailure(lockoutKey: string): boolean {
+  const current = studentLoginFailures.get(lockoutKey) || { count: 0, lockoutUntil: null };
+  current.count += 1;
+  if (current.count >= STUDENT_LOGIN_MAX_FAILURES) {
+    current.lockoutUntil = Date.now() + STUDENT_LOGIN_LOCKOUT_MS;
+    studentLoginFailures.set(lockoutKey, current);
+    persistStudentLoginFailures();
+    return true;
+  }
+  studentLoginFailures.set(lockoutKey, current);
+  persistStudentLoginFailures();
+  return false;
+}
+
+// Clears the failure state for lockoutKey (successful login / PIN reset).
+// Persists only when something was actually cleared.
+function clearStudentLoginFailure(lockoutKey: string): void {
+  if (studentLoginFailures.delete(lockoutKey)) persistStudentLoginFailures();
+}
+
 function createServerSession(params: {
   userId: string;
   role: AccountType | AdminRole;
@@ -739,6 +854,7 @@ function createServerSession(params: {
   const token = crypto.randomBytes(32).toString('hex');
   const now = Date.now();
   const session: ServerSession = {
+    id: crypto.randomUUID(),
     token,
     userId: params.userId,
     role: params.role,
@@ -758,6 +874,39 @@ function createServerSession(params: {
   };
   serverSessions.set(token, session);
   return session;
+}
+
+// A1 — session lookup/revoke helpers. The bearer token is the map key
+// internally, but nothing outside this process ever sees it: the admin
+// list endpoint exposes only `session.id` (opaque UUID) plus a truncated
+// fingerprint, and revoke takes that opaque id. A raw token is still
+// accepted as a revoke key for older admin clients that stored one, but
+// only a caller who already holds the full token can use it — a listed
+// fingerprint (8 chars) can never be used as a bearer token.
+function tokenFingerprint(token: string): string {
+  return `${token.slice(0, 8)}…`;
+}
+
+function findSessionByRevokeId(revokeId: string): { token: string; session: ServerSession } | null {
+  for (const [token, session] of serverSessions) {
+    if (session.id === revokeId) return { token, session };
+  }
+  // Back-compat: a full bearer token also revokes its own session.
+  const byToken = serverSessions.get(revokeId);
+  if (byToken) return { token: revokeId, session: byToken };
+  return null;
+}
+
+/** Delete every live session belonging to one user (password changes, resets). */
+function revokeAllSessionsForUser(userId: string): number {
+  let revoked = 0;
+  for (const [token, session] of serverSessions) {
+    if (session.userId === userId) {
+      serverSessions.delete(token);
+      revoked += 1;
+    }
+  }
+  return revoked;
 }
 
 function extractBearerToken(req: Request): string | null {
@@ -977,7 +1126,9 @@ async function sendSms(phone: string, message: string): Promise<boolean> {
   const provider = (process.env.SMS_PROVIDER || '').trim().toLowerCase();
   if (!provider) return false;
   if (provider === 'log') {
-    console.log(`[SMS:log] to ${phone}: ${message}`);
+    // S4: never log the message body — it contains the OTP code. Log
+    // only a masked phone + the fact that the log provider handled it.
+    console.log(`[SMS:log] OTP sent (log mode) to ${maskPhone(phone)}`);
     return true;
   }
   const url = (process.env.SMS_API_URL || '').trim();
@@ -1071,10 +1222,25 @@ function hashPinWithSalt(pin: string, salt: string, iterations = 1000): string {
   return crypto.pbkdf2Sync(pin.trim(), salt, iterations, 32, 'sha256').toString('hex');
 }
 
+// Constant-time comparison of two hex digests (AU8): PIN hash comparison
+// must not leak, via timing, how many leading hex chars matched. Same
+// pattern as the admin PIN gate (timingSafeEqual on decoded buffers).
+// A length mismatch is a definite non-match (no early-exit oracle on the
+// digest itself — lengths are fixed 64-hex for stored hashes).
+function constantTimeHexEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(String(a || ''), 'hex');
+  const bufB = Buffer.from(String(b || ''), 'hex');
+  if (bufA.length !== bufB.length || bufA.length === 0) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 // Verify a teacher PIN against the hash scheme the stored record uses.
-function verifyTeacherPin(pin: string, teacher: ServerTeacher): boolean {
+function verifyTeacherPin(
+  pin: string,
+  teacher: { pinHash: string; pinSalt: string; pinHashVersion?: number }
+): boolean {
   const iterations = teacher.pinHashVersion === 2 ? TEACHER_PIN_ITERATIONS_V2 : 1000;
-  return hashPinWithSalt(pin, teacher.pinSalt, iterations) === teacher.pinHash;
+  return constantTimeHexEqual(hashPinWithSalt(pin, teacher.pinSalt, iterations), teacher.pinHash);
 }
 
 // Transparently upgrade a legacy PIN hash to v2 after a successful login.
@@ -1122,9 +1288,12 @@ function hashStudentPin(pin: string, salt: string): string {
   return hashPinWithSalt(pin, salt, STUDENT_PIN_ITERATIONS_V2);
 }
 
-function verifyStudentPin(pin: string, student: EnrolledStudent): boolean {
+function verifyStudentPin(
+  pin: string,
+  student: { pinHash?: string; pinSalt?: string }
+): boolean {
   if (!student.pinHash || !student.pinSalt) return false;
-  return hashPinWithSalt(pin, student.pinSalt, STUDENT_PIN_ITERATIONS_V2) === student.pinHash;
+  return constantTimeHexEqual(hashPinWithSalt(pin, student.pinSalt, STUDENT_PIN_ITERATIONS_V2), student.pinHash);
 }
 
 function setStudentPin(student: EnrolledStudent, pin: string): void {
@@ -1142,15 +1311,27 @@ function sanitizeStudent(student: EnrolledStudent) {
   };
 }
 
+// S5: roster view of OTHER students. Contact details (phone, email,
+// regNumber) are only for teachers/admins — students and captains must
+// never harvest classmates' contacts from a roster response. The
+// /api/roster handler already 403s non-teacher/non-admin callers; this
+// is the second layer, so a future gate regression cannot leak contacts.
+function sanitizeStudentForRoster(student: EnrolledStudent, includeContactDetails: boolean) {
+  const safe = sanitizeStudent(student);
+  if (includeContactDetails) return safe;
+  const { phone: _phone, email: _email, regNumber: _regNumber, ...rest } = safe;
+  return rest;
+}
+
 // Signup consent fields, stored on account records (compliance audit §5).
-// ServerTeacher carries these as optional fields above; EnrolledStudent
-// carries them as an extension (that type lives in src/data/mockData.ts,
-// so student records take them via Object.assign instead of a type
-// change). Supabase has NO consent columns — checked against
-// supabase-schema-phase1.sql, supabase-migration-phase2.sql and
-// supabase-schema-phase4.sql, none of which defines a `consent_*` column
-// on `students` or `teacher_accounts` — so consent is JSON-store only and
-// must NOT be added to any Supabase row payload (no migration invented).
+// D7 (security audit 2026-11-27): consent IS dual-written to Supabase
+// now — the columns exist in supabase-consent-columns-phase5.sql
+// (consent_accepted / consent_version / consent_at on `students` and
+// `teacher_accounts`), insertStudent / insertTeacher / updateStudentById /
+// updateTeacherById carry them, and the register paths pass them through.
+// Until that phase-5 SQL is run the write helpers retry without the
+// columns (PGRST204 grace) and consent stays JSON-store only — see the
+// D13 checklist in the audit report.
 interface ConsentFields {
   consentAccepted?: boolean;
   consentVersion?: string;
@@ -1430,6 +1611,19 @@ app.post('/api/teachers/register', authRateLimiter, authIpRateLimiter, async (re
     serverTeachers.set(teacherId, newTeacher);
     saveAcademicStore(academicStore);
 
+    // D7 (security audit 2026-11-27): dual-write the new teacher to
+    // Postgres, including the signup consent (insertTeacher). Teacher
+    // registration was JSON-only until now — there was no Postgres
+    // insert path for teachers at all. Warn-and-continue: a Postgres
+    // failure never fails the registration.
+    if (isSupabaseConfigured()) {
+      try {
+        await insertTeacher(newTeacher);
+      } catch (err) {
+        console.warn('[TeacherRegister] Supabase write failed, continuing with JSON store:', err);
+      }
+    }
+
     return res.status(201).json({
       success: true,
       message: 'Teacher registration submitted. Your account is pending departmental administrator approval.',
@@ -1445,8 +1639,18 @@ app.post('/api/teachers/register', authRateLimiter, authIpRateLimiter, async (re
  * 2B. PUBLIC SESSION ISSUANCE FOR STUDENT & CLASS CAPTAIN ACCOUNTS
  * Strictly forbids issuing `system_admin` or `teacher` sessions via public client state.
  */
-app.post('/api/auth/session', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
+app.post('/api/auth/session', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
   try {
+    // Turnstile (AU6) — only enforced when TURNSTILE_SECRET_KEY is configured.
+    try {
+      const turnstile = await enforceTurnstileIfConfigured(req);
+      if (!turnstile.ok) {
+        return res.status(403).json({ success: false, error: turnstile.error });
+      }
+    } catch {
+      return res.status(503).json({ success: false, error: 'Security check is unavailable. Please try again.' });
+    }
+
     const { userId, role } = req.body;
 
     // Never allow public session creation to grant system_admin or teacher privileges
@@ -1488,37 +1692,79 @@ app.post('/api/auth/session', authRateLimiter, authIpRateLimiter, (req: Request,
     // (canUseCaptainRole); requesting 'class_captain' without approval
     // is still rejected with 403 above.
     const safeRole: AccountType = role === 'class_captain' || canUseCaptainRole ? 'class_captain' : 'student';
-    const session = createServerSession({
-      userId: sessionUserId,
-      role: safeRole,
-      name: persistedStudent!.name,
-      email: persistedStudent!.email || '',
-      college: persistedStudent!.college,
-      department: persistedStudent!.department,
-      boardRoll: persistedStudent!.boardRoll,
-      classRoll: persistedStudent!.classRoll,
-      regNumber: persistedStudent!.regNumber,
-      semester: Number(persistedStudent!.semester) as SemesterNumber,
-      shift: persistedStudent!.shift,
-      section: persistedStudent!.section
-    });
 
-    return res.status(200).json({
-      success: true,
-      sessionToken: session.token,
-      session: {
-        userId: session.userId,
-        role: session.role,
-        name: session.name,
-        email: session.email,
-        college: session.college,
-        department: session.department,
-        boardRoll: session.boardRoll,
-        semester: session.semester,
-        shift: session.shift,
-        section: session.section
+    const mintSession = () =>
+      createServerSession({
+        userId: sessionUserId,
+        role: safeRole,
+        name: persistedStudent!.name,
+        email: persistedStudent!.email || '',
+        college: persistedStudent!.college,
+        department: persistedStudent!.department,
+        boardRoll: persistedStudent!.boardRoll,
+        classRoll: persistedStudent!.classRoll,
+        regNumber: persistedStudent!.regNumber,
+        semester: Number(persistedStudent!.semester) as SemesterNumber,
+        shift: persistedStudent!.shift,
+        section: persistedStudent!.section
+      });
+    const sessionResponse = (session: ServerSession) =>
+      res.status(200).json({
+        success: true,
+        sessionToken: session.token,
+        session: {
+          userId: session.userId,
+          role: session.role,
+          name: session.name,
+          email: session.email,
+          college: session.college,
+          department: session.department,
+          boardRoll: session.boardRoll,
+          semester: session.semester,
+          shift: session.shift,
+          section: session.section
+        }
+      });
+
+    // AU1 — refresh path: a valid existing token for THIS account proves
+    // a prior PIN login, so it refreshes (rotates) the session without
+    // asking for the PIN again. This is the app-start / reopen path: the
+    // client sends `Authorization: Bearer <stored token>` (see the
+    // session effect in src/context/AppContext.tsx).
+    const existingSession = getAuthenticatedSession(req);
+    if (
+      existingSession &&
+      existingSession.userId === sessionUserId &&
+      (existingSession.role === 'student' || existingSession.role === 'class_captain')
+    ) {
+      const session = mintSession();
+      serverSessions.delete(existingSession.token); // rotate: the old token dies
+      return sessionResponse(session);
+    }
+
+    // AU1 — fresh path: no valid token was presented, so a PIN is
+    // required. Board roll + registration number alone no longer mint a
+    // session (that was the AU1 bypass). Failures count toward the
+    // student lockout (AU7-persisted) and use the same generic message
+    // as /api/students/login (AU3).
+    const pin = String((req.body as Record<string, unknown> | undefined)?.pin || '').trim();
+    const lockoutKey = `student:${sessionUserId}`;
+    const failure = studentLoginFailures.get(lockoutKey);
+    if (failure?.lockoutUntil && Date.now() < failure.lockoutUntil) {
+      const remainingMinutes = Math.ceil((failure.lockoutUntil - Date.now()) / 60000);
+      return res.status(429).json({
+        success: false,
+        error: `Security Lockout: Too many failed login attempts. Try again in ${remainingMinutes} minute(s).`
+      });
+    }
+    if (!persistedStudent || !pin || !verifyStudentPin(pin, persistedStudent)) {
+      if (recordStudentLoginFailure(lockoutKey)) {
+        return res.status(429).json({ success: false, error: 'Maximum failed login attempts exceeded (5/5). Account locked for 15 minutes.' });
       }
-    });
+      return res.status(401).json({ success: false, error: 'Invalid Board Roll or PIN.' });
+    }
+    clearStudentLoginFailure(lockoutKey);
+    return sessionResponse(mintSession());
   } catch (error) {
     console.error('Auth session creation error:', error);
     return res.status(500).json({ success: false, error: 'Failed to create session.' });
@@ -1567,8 +1813,10 @@ app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: 
       account => account.boardRoll === boardRoll && account.isRegisteredAccount === true
     ) ?? null;
   }
-  // Lockout key: the student id once the account is found, otherwise the
-  // board roll, so unknown roll+reg pairs cannot be enumerated freely.
+  // AU11: the lockout key is the student id once the account is found.
+  // Unknown rolls are never lockout-recorded (no targeted login denial
+  // for a roll an attacker invents) — they get the same generic 401 as
+  // a wrong PIN (AU3).
   const lockoutKey = student ? `student:${student.id}` : `roll:${boardRoll}`;
   const failure = studentLoginFailures.get(lockoutKey);
   if (failure?.lockoutUntil && Date.now() < failure.lockoutUntil) {
@@ -1578,23 +1826,9 @@ app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: 
       error: `Security Lockout: Too many failed login attempts. Try again in ${remainingMinutes} minute(s).`
     });
   }
-  const recordLoginFailure = (): boolean => {
-    const current = studentLoginFailures.get(lockoutKey) || { count: 0, lockoutUntil: null };
-    current.count += 1;
-    if (current.count >= STUDENT_LOGIN_MAX_FAILURES) {
-      current.lockoutUntil = Date.now() + STUDENT_LOGIN_LOCKOUT_MS;
-      studentLoginFailures.set(lockoutKey, current);
-      return true;
-    }
-    studentLoginFailures.set(lockoutKey, current);
-    return false;
-  };
 
   if (!student) {
-    if (recordLoginFailure()) {
-      return res.status(429).json({ success: false, error: 'Maximum failed login attempts exceeded (5/5). Account locked for 15 minutes.' });
-    }
-    return res.status(401).json({ success: false, error: 'No registered account matches those credentials.' });
+    return res.status(401).json({ success: false, error: 'Invalid Board Roll or PIN.' });
   }
   if (deletedAccountIds.has(student.id)) {
     return res.status(403).json({ success: false, error: 'This account has been deactivated.' });
@@ -1607,27 +1841,33 @@ app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: 
     return res.status(403).json({ success: false, error: 'Class Captain access requires administrator approval.' });
   }
 
+  // RBAC audit fix (R8): the session role is derived server-side from
+  // the account — an Approved captain gets a captain session even when
+  // the client sends no role (or 'student'). body.role is ignored for
+  // the decision (still accepted harmlessly); a Pending captain asking
+  // for 'class_captain' is still rejected 403 above.
+  const derivedSessionRole: AccountType =
+    student.accountType === 'class_captain' && student.captainVerificationStatus === 'Approved'
+      ? 'class_captain'
+      : 'student';
+
   // Credential check. Login is Board Roll + PIN only — the registration
-  // number is never accepted as a credential. Accounts created before
-  // PINs existed that still have no PIN cannot sign in: there is no
-  // self-service PIN setup (roll+reg used to mint a PIN-setup token,
-  // which let anyone who knew a roll+reg hijack the account), so the
-  // owner must ask an administrator to set a PIN for the account.
-  if (student.pinHash) {
-    if (!pin) {
-      return res.status(400).json({ success: false, error: 'Please enter your PIN.' });
+  // number is never accepted as a credential. AU3: one identical generic
+  // message for unknown-identifier, wrong-PIN, missing-PIN and PIN-less
+  // accounts — no enumeration oracle, and no attempts-remaining is ever
+  // appended to an unauthenticated response. (A PIN-less account still
+  // cannot sign in; the owner must ask an administrator to set a PIN.)
+  if (!student.pinHash) {
+    return res.status(401).json({ success: false, error: 'Invalid Board Roll or PIN.' });
+  }
+  if (!pin || !verifyStudentPin(pin, student)) {
+    if (recordStudentLoginFailure(lockoutKey)) {
+      return res.status(429).json({ success: false, error: 'Maximum failed login attempts exceeded (5/5). Account locked for 15 minutes.' });
     }
-    if (!verifyStudentPin(pin, student)) {
-      if (recordLoginFailure()) {
-        return res.status(429).json({ success: false, error: 'Maximum failed login attempts exceeded (5/5). Account locked for 15 minutes.' });
-      }
-      return res.status(401).json({ success: false, error: 'Incorrect Board Roll or PIN.' });
-    }
-  } else {
-    return res.status(401).json({ success: false, error: 'This account does not have a PIN yet. Please contact your administrator to set a PIN for this account.' });
+    return res.status(401).json({ success: false, error: 'Invalid Board Roll or PIN.' });
   }
 
-  studentLoginFailures.delete(lockoutKey);
+  clearStudentLoginFailure(lockoutKey);
 
   // SMS code verification (only when the feature flag is on). When the
   // flag is on but no provider is configured, login FAILS with a clear
@@ -1640,12 +1880,12 @@ app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: 
     if (!phone) {
       return res.status(403).json({ success: false, error: 'No phone number is linked to this account. Please ask your administrator to add one before signing in.' });
     }
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = String(crypto.randomInt(100000, 1000000)); // AU9: crypto RNG, not Math.random()
     const challengeId = crypto.randomBytes(16).toString('hex');
     smsChallenges.set(challengeId, {
       id: challengeId,
       studentId: student.id,
-      role: requestedRole,
+      role: derivedSessionRole,
       phone,
       code,
       expiresAt: Date.now() + SMS_CODE_TTL_MS,
@@ -1665,7 +1905,7 @@ app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: 
     });
   }
 
-  const sessionRole: AccountType = requestedRole === 'class_captain' ? 'class_captain' : 'student';
+  const sessionRole: AccountType = derivedSessionRole;
   const session = createServerSession({
     userId: student.id,
     role: sessionRole,
@@ -1767,8 +2007,12 @@ app.post('/api/students/sms/verify', authRateLimiter, authIpRateLimiter, (req: R
   if (!student || student.isRegisteredAccount !== true || deletedAccountIds.has(student.id)) {
     return res.status(404).json({ success: false, error: 'Account not found.' });
   }
+  // RBAC audit fix (R8): derive the role from the account, not from
+  // the role stored on the challenge (which came from the login
+  // request body) — an Approved captain completes SMS login as a
+  // captain even if the client asked for a plain student session.
   const role: AccountType =
-    challenge.role === 'class_captain' && student.accountType === 'class_captain' && student.captainVerificationStatus === 'Approved'
+    student.accountType === 'class_captain' && student.captainVerificationStatus === 'Approved'
       ? 'class_captain'
       : 'student';
   const session = mintStudentSession(student, role);
@@ -1795,7 +2039,7 @@ app.post('/api/students/sms/resend', authRateLimiter, authIpRateLimiter, async (
     smsChallenges.delete(challengeId);
     return res.status(401).json({ success: false, error: 'This SMS verification has expired. Please sign in again.' });
   }
-  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const code = String(crypto.randomInt(100000, 1000000)); // AU9: crypto RNG, not Math.random()
   challenge.code = code;
   challenge.attempts = 0;
   challenge.expiresAt = Date.now() + SMS_CODE_TTL_MS;
@@ -1850,12 +2094,27 @@ app.post('/api/auth/google', authRateLimiter, authIpRateLimiter, async (req: Req
   if (!idToken) {
     return res.status(400).json({ success: false, error: 'Google sign-in token is required.' });
   }
+  // Turnstile (AU6) — only enforced when TURNSTILE_SECRET_KEY is configured.
+  try {
+    const turnstile = await enforceTurnstileIfConfigured(req);
+    if (!turnstile.ok) {
+      return res.status(403).json({ success: false, error: turnstile.error });
+    }
+  } catch {
+    return res.status(503).json({ success: false, error: 'Security check is unavailable. Please try again.' });
+  }
   const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
   if (!clientId) {
     return res.status(503).json({ success: false, error: 'Google sign-in is not configured yet.' });
   }
   try {
-    const verification = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+    // AU12: the ID token travels in the POST body, never in a URL query
+    // string (query strings can land in proxy/server logs).
+    const verification = await fetch('https://oauth2.googleapis.com/tokeninfo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ id_token: idToken }).toString()
+    });
     if (!verification.ok) {
       return res.status(401).json({ success: false, error: 'Google sign-in verification failed.' });
     }
@@ -1874,8 +2133,10 @@ app.post('/api/auth/google', authRateLimiter, authIpRateLimiter, async (req: Req
       return res.status(resolved.status || 401).json({ success: false, error: resolved.error });
     }
     const student = resolved.student;
+    // R8: session role derived server-side from the account, as in
+    // POST /api/students/login — body.role is ignored for the decision.
     const role: AccountType =
-      requestedRole === 'class_captain' && student.accountType === 'class_captain' && student.captainVerificationStatus === 'Approved'
+      student.accountType === 'class_captain' && student.captainVerificationStatus === 'Approved'
         ? 'class_captain'
         : 'student';
     const session = mintStudentSession(student, role);
@@ -1903,6 +2164,15 @@ app.post('/api/auth/facebook', authRateLimiter, authIpRateLimiter, async (req: R
   const requestedRole = req.body?.role === 'class_captain' ? 'class_captain' : 'student';
   if (!accessToken) {
     return res.status(400).json({ success: false, error: 'Facebook sign-in token is required.' });
+  }
+  // Turnstile (AU6) — only enforced when TURNSTILE_SECRET_KEY is configured.
+  try {
+    const turnstile = await enforceTurnstileIfConfigured(req);
+    if (!turnstile.ok) {
+      return res.status(403).json({ success: false, error: turnstile.error });
+    }
+  } catch {
+    return res.status(503).json({ success: false, error: 'Security check is unavailable. Please try again.' });
   }
   const appId = (process.env.FACEBOOK_APP_ID || '').trim();
   const appSecret = (process.env.FACEBOOK_APP_SECRET || '').trim();
@@ -1935,8 +2205,10 @@ app.post('/api/auth/facebook', authRateLimiter, authIpRateLimiter, async (req: R
       return res.status(resolved.status || 401).json({ success: false, error: resolved.error });
     }
     const student = resolved.student;
+    // R8: session role derived server-side from the account, as in
+    // POST /api/students/login — body.role is ignored for the decision.
     const role: AccountType =
-      requestedRole === 'class_captain' && student.accountType === 'class_captain' && student.captainVerificationStatus === 'Approved'
+      student.accountType === 'class_captain' && student.captainVerificationStatus === 'Approved'
         ? 'class_captain'
         : 'student';
     const session = mintStudentSession(student, role);
@@ -2010,6 +2282,11 @@ app.post('/api/auth/logout', (req: Request, res: Response) => {
 //   exactly as before) and a loud startup warning is logged — the gate must
 //   never silently lock the real admin out. Set it on Render (see
 //   .env.example). The correct PIN also resets the failure counter.
+//   A4: once the gate has ever been observed enabled, the store keeps an
+//   `adminPinGateWasEnabled` flag; if the env var later goes missing,
+//   GET /api/admin/pin-status reports `gateMisconfigured: true` and
+//   startup logs a loud error, so the silent fail-open is impossible to
+//   miss (login still works — failing closed would lock the admin out).
 // - A correct PIN issues a token valid for 15 minutes. The token only
 //   unlocks the login/bootstrap endpoints; it is NOT a session and grants
 //   no admin access by itself. It is consumed on a successful admin login.
@@ -2065,6 +2342,16 @@ function isValidAdminPinToken(token: unknown): boolean {
   return true;
 }
 
+// A5: a PIN token unlocks ONE successful sign-in. Consume it on ANY
+// successful admin login — founder, sub-admin, or first-admin bootstrap
+// (previously only the founder branch deleted it, so a token survived a
+// sub-admin sign-in and could be reused for further login attempts
+// within its 15 minutes). Failed password attempts leave it valid.
+function consumeUsedAdminPinToken(req: Request): void {
+  const usedPinToken = req.headers['x-admin-pin-token'] || (req.body as Record<string, unknown> | undefined)?.pinToken;
+  if (typeof usedPinToken === 'string') adminPinTokens.delete(usedPinToken);
+}
+
 /** Shared gate check for POST /api/admin/login and POST /api/admin/bootstrap. */
 function requireAdminPinToken(req: Request, res: Response): boolean {
   if (!ADMIN_PIN_GATE_ENABLED) return true;
@@ -2092,6 +2379,10 @@ app.get('/api/admin/pin-status', (_req: Request, res: Response) => {
   return res.status(200).json({
     success: true,
     pinGateEnabled: ADMIN_PIN_GATE_ENABLED,
+    // A4: true when the gate was previously enabled but ADMIN_PANEL_PIN
+    // is now unset — the gate is failing open (password-only login) and
+    // the admin UI must warn loudly. See the startup flag logic.
+    gateMisconfigured: !ADMIN_PIN_GATE_ENABLED && academicStore.adminPinGateWasEnabled === true,
     locked,
     lockedUntil,
     attemptsRemaining: ADMIN_PIN_GATE_ENABLED && !locked
@@ -3032,7 +3323,7 @@ app.post('/api/admin/admins/invite', requireSystemAdmin, (req: Request, res: Res
     return res.status(201).json({
       success: true,
       admin: sanitizeAdminAccount(account),
-      setupNote: `Share the initial password with ${account.name} (${account.email}) once, over a trusted channel — it is not emailed and is not shown again. Ask them to sign in at the admin panel and change their password after first sign-in.`
+      setupNote: `Share the initial password with ${account.name} (${account.email}) once, over a trusted channel — it is not emailed and is not shown again. Ask them to sign in at the admin panel and change their password after first sign-in (Settings → Change Password).`
     });
   } catch (err) {
     console.error('[Admin Admins] POST invite error:', err);
@@ -3060,6 +3351,19 @@ app.patch('/api/admin/admins/:id', requireSystemAdmin, (req: Request, res: Respo
       }
       if (body.status !== account.status) { account.status = body.status as 'active' | 'deactivated'; changed = true; }
     }
+    if (typeof body.newPassword !== 'undefined') {
+      // A3: founder-only sub-admin password reset. Same rules as the
+      // invite flow (min 8 chars, v2 600k hash); the sub-admin's live
+      // sessions are revoked by the `changed` branch below, so the old
+      // password stops working at once. The founder's own record lives
+      // in system-admins.json, not adminAccounts, so this route 404s for
+      // the founder — a sub-admin can never reset the founder's password.
+      if (typeof body.newPassword !== 'string' || body.newPassword.length < ADMIN_PASSWORD_MIN_LENGTH) {
+        return res.status(400).json({ success: false, error: 'New password must be at least 8 characters long.' });
+      }
+      setSubAdminPassword(account, body.newPassword);
+      changed = true;
+    }
     if (changed) {
       // Role/status changes take effect immediately: revoke live sessions
       // so the account must sign in again under the new role/status.
@@ -3067,12 +3371,68 @@ app.patch('/api/admin/admins/:id', requireSystemAdmin, (req: Request, res: Respo
         if (session.userId === account.id) serverSessions.delete(token);
       }
     }
-    adminPanelAudit(req, 'admin_account_update', account.id, account.name, `Role: ${account.role}; status: ${account.status}.`);
+    adminPanelAudit(req, typeof body.newPassword === 'string' ? 'admin_password_reset' : 'admin_account_update', account.id, account.name, `Role: ${account.role}; status: ${account.status}${typeof body.newPassword === 'string' ? '; password reset by founder' : ''}.`);
     saveAcademicStore(academicStore);
     return res.status(200).json({ success: true, admin: sanitizeAdminAccount(account) });
   } catch (err) {
     console.error('[Admin Admins] PATCH error:', err);
     return res.status(500).json({ success: false, error: 'Failed to update admin account.' });
+  }
+});
+
+// A3: ADMIN PASSWORD CHANGE (`POST /api/admin/change-password`).
+// Previously no founder or sub-admin could ever rotate their password:
+// the invite setupNote told new sub-admins to change it, but no endpoint
+// existed. Requires the current password, a new password of at least 8
+// characters (v2 600k hash), and invalidates ALL of the admin's live
+// sessions — including the caller's own — so they must sign in again
+// with the new password. Audited as `admin_password_changed`.
+app.post('/api/admin/change-password', requireAdminRole(ADMIN_ROLES), (req: Request, res: Response) => {
+  try {
+    const session = (req as unknown as { adminSession?: ServerSession }).adminSession;
+    if (!session) {
+      return res.status(403).json({ success: false, error: 'Forbidden: Only an authenticated administrator is authorized to perform this administrative operation.' });
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
+    const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, error: 'Current password and new password are required.' });
+    }
+    if (newPassword.length < ADMIN_PASSWORD_MIN_LENGTH) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters long.' });
+    }
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ success: false, error: 'New password must be different from the current password.' });
+    }
+    systemAdmins = loadSystemAdminsFromDisk();
+    if (session.role === 'system_admin') {
+      const targetAdmin = systemAdmins.get(session.userId);
+      if (!targetAdmin) {
+        return res.status(404).json({ success: false, error: 'Admin account not found.' });
+      }
+      if (!verifyAdminPassword(currentPassword, targetAdmin)) {
+        return res.status(401).json({ success: false, error: 'Current password is incorrect.' });
+      }
+      setSystemAdminPassword(targetAdmin, newPassword);
+      saveSystemAdminsToDisk(systemAdmins);
+    } else {
+      const subAdmin = (academicStore.adminAccounts || []).find(a => a.id === session.userId);
+      if (!subAdmin) {
+        return res.status(404).json({ success: false, error: 'Admin account not found.' });
+      }
+      if (!verifySubAdminPassword(currentPassword, subAdmin)) {
+        return res.status(401).json({ success: false, error: 'Current password is incorrect.' });
+      }
+      setSubAdminPassword(subAdmin, newPassword);
+    }
+    const revoked = revokeAllSessionsForUser(session.userId);
+    adminPanelAudit(req, 'admin_password_changed', session.userId, session.name, `Password changed; ${revoked} live session(s) revoked.`);
+    saveAcademicStore(academicStore);
+    return res.status(200).json({ success: true, message: 'Password changed. Sign in again with your new password.' });
+  } catch (err) {
+    console.error('[Admin Password] POST change-password error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to change password.' });
   }
 });
 
@@ -3083,9 +3443,14 @@ app.patch('/api/admin/admins/:id', requireSystemAdmin, (req: Request, res: Respo
 // ---------------------------------------------------------------------------
 app.get('/api/admin/sessions', requireAdminRole(['super_admin']), (_req: Request, res: Response) => {
   try {
-    const sessions = [...serverSessions.entries()]
-      .map(([token, session]) => ({
-        sessionId: token,
+    // A1: NEVER return raw bearer tokens. Each row carries the opaque
+    // `sessionId` (UUID, the revoke key) plus a truncated
+    // `tokenFingerprint` (first 8 chars) for display only — a fingerprint
+    // cannot be used as a bearer token.
+    const sessions = [...serverSessions.values()]
+      .map(session => ({
+        sessionId: session.id,
+        tokenFingerprint: tokenFingerprint(session.token),
         userId: session.userId,
         userName: session.name,
         role: session.role,
@@ -3102,12 +3467,12 @@ app.get('/api/admin/sessions', requireAdminRole(['super_admin']), (_req: Request
 
 app.post('/api/admin/sessions/:id/revoke', requireAdminRole(['super_admin']), (req: Request, res: Response) => {
   try {
-    const session = serverSessions.get(req.params.id);
-    if (!session) {
+    const found = findSessionByRevokeId(req.params.id);
+    if (!found) {
       return res.status(404).json({ success: false, error: 'Session not found (it may already be expired or revoked).' });
     }
-    serverSessions.delete(req.params.id);
-    adminPanelAudit(req, 'admin_session_revoke', session.userId, session.name, `Revoked ${session.role} session.`);
+    serverSessions.delete(found.token);
+    adminPanelAudit(req, 'admin_session_revoke', found.session.userId, found.session.name, `Revoked ${found.session.role} session.`);
     saveAcademicStore(academicStore);
     return res.status(200).json({ success: true, message: 'Session revoked.' });
   } catch (err) {
@@ -3342,10 +3707,19 @@ app.get('/api/admin/analytics', requireAdminRole(ADMIN_ROLES), (req: Request, re
  * Only works when zero admins exist in `data/system-admins.json` AND the caller supplies
  * the valid server-side `bootstrapToken` (from `process.env.ADMIN_BOOTSTRAP_TOKEN` or `data/.admin-bootstrap-token`).
  */
-app.post('/api/admin/bootstrap', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
+app.post('/api/admin/bootstrap', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
   try {
     // PIN gate: no admin provisioning without first passing the PIN prompt.
     if (!requireAdminPinToken(req, res)) return;
+    // Turnstile (AU6) — only enforced when TURNSTILE_SECRET_KEY is configured.
+    try {
+      const turnstile = await enforceTurnstileIfConfigured(req);
+      if (!turnstile.ok) {
+        return res.status(403).json({ success: false, error: turnstile.error });
+      }
+    } catch {
+      return res.status(503).json({ success: false, error: 'Security check is unavailable. Please try again.' });
+    }
     systemAdmins = loadSystemAdminsFromDisk();
     if (systemAdmins.size > 0) {
       return res.status(403).json({
@@ -3428,6 +3802,10 @@ app.post('/api/admin/bootstrap', authRateLimiter, authIpRateLimiter, (req: Reque
       email: newAdmin.email
     });
 
+    // A5: bootstrap is also a successful admin sign-in — consume the PIN
+    // token so it cannot be reused for a second login attempt.
+    consumeUsedAdminPinToken(req);
+
     return res.status(201).json({
       success: true,
       message: 'First System Administrator provisioned and authenticated successfully.',
@@ -3444,12 +3822,21 @@ app.post('/api/admin/bootstrap', authRateLimiter, authIpRateLimiter, (req: Reque
  * 2G. SYSTEM ADMINISTRATOR LOGIN (`POST /api/admin/login`)
  * Authenticates against `data/system-admins.json` with PBKDF2 verification and 5-attempt lockout.
  */
-app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, (req: Request, res: Response) => {
+app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
   try {
     // PIN gate first: without a valid PIN session token the password form
     // is never even shown, and this endpoint refuses the attempt. The
     // 5-failed-password / 15-min lockout below is unchanged underneath.
     if (!requireAdminPinToken(req, res)) return;
+    // Turnstile (AU6) — only enforced when TURNSTILE_SECRET_KEY is configured.
+    try {
+      const turnstile = await enforceTurnstileIfConfigured(req);
+      if (!turnstile.ok) {
+        return res.status(403).json({ success: false, error: turnstile.error });
+      }
+    } catch {
+      return res.status(503).json({ success: false, error: 'Security check is unavailable. Please try again.' });
+    }
     systemAdmins = loadSystemAdminsFromDisk();
     const { email, password } = req.body;
 
@@ -3507,7 +3894,7 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, (req: Request, 
           saveAcademicStore(academicStore);
           return res.status(401).json({
             success: false,
-            error: `Invalid admin email or password. ${5 - subAdmin.failedAttempts} attempt(s) remaining.`
+            error: 'Invalid admin email or password.'
           });
         }
         subAdmin.failedAttempts = 0;
@@ -3521,6 +3908,9 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, (req: Request, 
         }
         appendSystemAudit('admin_login_success', subAdmin.id, subAdmin.email, `Admin (${subAdmin.role}) signed in.`, subAdmin.id);
         saveAcademicStore(academicStore);
+        // A5: a PIN token unlocks one successful sign-in — consume it here
+        // too (previously only the founder branch deleted it).
+        consumeUsedAdminPinToken(req);
         const subSession = createServerSession({
           userId: subAdmin.id,
           role: subAdmin.role,
@@ -3552,7 +3942,6 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, (req: Request, 
 
     if (!verifyAdminPassword(cleanPassword, targetAdmin)) {
       targetAdmin.failedAttempts = (targetAdmin.failedAttempts || 0) + 1;
-      const attemptsLeft = 5 - targetAdmin.failedAttempts;
 
       if (targetAdmin.failedAttempts >= 5) {
         targetAdmin.lockoutUntil = Date.now() + 15 * 60 * 1000;
@@ -3570,7 +3959,7 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, (req: Request, 
       saveAcademicStore(academicStore);
       return res.status(401).json({
         success: false,
-        error: `Invalid System Administrator email or password. ${attemptsLeft} attempt(s) remaining.`
+        error: 'Invalid System Administrator email or password.'
       });
     }
 
@@ -3593,8 +3982,8 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, (req: Request, 
 
     // A PIN token unlocks one successful sign-in; the next login needs the
     // PIN again. (Failed password attempts leave it valid for its 15 min.)
-    const usedPinToken = req.headers['x-admin-pin-token'] || (req.body as Record<string, unknown> | undefined)?.pinToken;
-    if (typeof usedPinToken === 'string') adminPinTokens.delete(usedPinToken);
+    // A5: consumed on every successful admin login, not just the founder's.
+    consumeUsedAdminPinToken(req);
 
     return res.status(200).json({
       success: true,
@@ -3628,26 +4017,17 @@ app.post('/api/teachers/login', authRateLimiter, authIpRateLimiter, async (req: 
     const cleanIdentifier = String(phoneOrEmail).trim().toLowerCase();
     const cleanPin = String(pin).trim();
 
-    // Phase 4 migration 6 (read half only): the teacher lookup reads
-    // Postgres first — getTeacherByEmail / getTeacherByPhone, the same
-    // email-or-phone match the JSON loop did — and falls back to the JSON
-    // store when Supabase is not configured or the query throws. PIN
-    // verify, lockout, PIN-version upgrade, the verification-status gate,
-    // session minting and the response shape below are unchanged.
-    //
-    // The Maps stay the mutable live record: this route mutates the
-    // teacher (failedPinAttempts / lockoutUntil / PIN upgrade) and
-    // saveAcademicStore() persists teacherAccounts from the
-    // serverTeachers / legacyUnregisteredTeachers Maps, so a
-    // Postgres-mapped object used directly would silently lose those
-    // mutations (a lockout would never persist). toTeacher() maps
-    // pin_hash_version only once supabase-schema-phase4.sql has been
-    // run; until then a mapped row has no version, so a v2 hash would
-    // mis-verify on a mapped row. The Postgres row is therefore only
-    // used to resolve WHICH teacher matches; the Map entry for that id
-    // is the record the rest of the route runs on. If Postgres finds a teacher the
-    // Maps do not have, the JSON loop below runs instead (and 404s,
-    // exactly as today — login only ever searched serverTeachers).
+    // D8 — Postgres-first, like student login: the teacher lookup reads
+    // Postgres first (getTeacherByEmail / getTeacherByPhone, the same
+    // email-or-phone match the JSON loop did) and the Postgres row is
+    // the auth record — PIN verify, lockout and the verification-status
+    // gate all run on it. The JSON store is the fallback only when
+    // Supabase is not configured or the query throws (and when Postgres
+    // answers, a missing row means "no such teacher" — no JSON fallback,
+    // exactly like /api/students/login). A Postgres row the JSON Maps
+    // do not know is mirrored into serverTeachers (auth fields win) so
+    // the rest of the route — and the JSON store — stay in sync instead
+    // of 404ing as before.
     const findTeacherInJsonStore = (): ServerTeacher | undefined => {
       for (const t of serverTeachers.values()) {
         if (t.phone.toLowerCase() === cleanIdentifier || (t.email ?? '').toLowerCase() === cleanIdentifier) {
@@ -3658,28 +4038,64 @@ app.post('/api/teachers/login', authRateLimiter, authIpRateLimiter, async (req: 
     };
 
     let targetTeacher: ServerTeacher | undefined;
+    let pgTeacher: TeacherAccount | null = null;
     if (isSupabaseConfigured()) {
       try {
-        const supabaseTeacher = cleanIdentifier.includes('@')
+        pgTeacher = cleanIdentifier.includes('@')
           ? await getTeacherByEmail(cleanIdentifier)
           : await getTeacherByPhone(cleanIdentifier);
-        targetTeacher = supabaseTeacher ? serverTeachers.get(supabaseTeacher.id) : undefined;
-        if (!targetTeacher) {
-          // Postgres missed (or found a teacher the Maps do not know):
-          // same JSON lookup as before, so a stale/missing Postgres row
-          // never locks out a teacher the JSON store still has.
-          targetTeacher = findTeacherInJsonStore();
+        if (pgTeacher) {
+          const mirrored = serverTeachers.get(pgTeacher.id);
+          targetTeacher = mirrored ?? {
+            id: pgTeacher.id,
+            name: pgTeacher.name,
+            email: pgTeacher.email ?? '',
+            phone: pgTeacher.phone ?? '',
+            college: pgTeacher.college ?? '',
+            department: pgTeacher.department ?? '',
+            designation: pgTeacher.designation ?? '',
+            teachingSubjects: pgTeacher.teachingSubjects ?? [],
+            semestersTaught: pgTeacher.semestersTaught ?? [],
+            shift: pgTeacher.shift ?? 'Morning',
+            sectionsTaught: pgTeacher.sectionsTaught,
+            verificationStatus: pgTeacher.verificationStatus ?? 'Pending',
+            pinHash: pgTeacher.pinHash ?? '',
+            pinSalt: pgTeacher.pinSalt ?? '',
+            pinHashVersion: pgTeacher.pinHashVersion,
+            failedPinAttempts: pgTeacher.failedPinAttempts ?? 0,
+            lockoutUntil: pgTeacher.lockoutUntil ?? null,
+            createdAt: pgTeacher.createdAt ?? '',
+            adminNotes: pgTeacher.adminNotes,
+            isRegisteredAccount: true,
+            isGuideTeacher: pgTeacher.isGuideTeacher,
+            guideTeacherCohort: pgTeacher.guideTeacherCohort as ServerTeacher['guideTeacherCohort']
+          };
+          // Postgres is authoritative for auth state: PIN hash/salt/
+          // version, failure count, lockout and verification status.
+          targetTeacher.pinHash = pgTeacher.pinHash ?? '';
+          targetTeacher.pinSalt = pgTeacher.pinSalt ?? '';
+          targetTeacher.pinHashVersion = pgTeacher.pinHashVersion;
+          targetTeacher.failedPinAttempts = pgTeacher.failedPinAttempts ?? 0;
+          targetTeacher.lockoutUntil = pgTeacher.lockoutUntil ?? null;
+          targetTeacher.verificationStatus = pgTeacher.verificationStatus ?? 'Pending';
+          serverTeachers.set(targetTeacher.id, targetTeacher);
+        } else {
+          targetTeacher = undefined;
         }
       } catch (err) {
         console.warn('[TeacherLogin] Supabase read failed, falling back to JSON store:', err);
+        pgTeacher = null;
         targetTeacher = findTeacherInJsonStore();
       }
     } else {
       targetTeacher = findTeacherInJsonStore();
     }
 
+    // AU3: one identical generic 401 for unknown-identifier and
+    // wrong-PIN (was 404 "No teacher found..." vs 401 with attempts
+    // remaining) — no enumeration oracle.
     if (!targetTeacher) {
-      return res.status(404).json({ success: false, error: 'No teacher found with this phone number or email.' });
+      return res.status(401).json({ success: false, error: 'Invalid phone/email or PIN.' });
     }
     if (deletedAccountIds.has(targetTeacher.id)) {
       return res.status(403).json({ success: false, error: 'This teacher account has been deactivated.' });
@@ -3698,11 +4114,16 @@ app.post('/api/teachers/login', authRateLimiter, authIpRateLimiter, async (req: 
     // hashes still verify; a success upgrades the hash to v2 below).
     if (!verifyTeacherPin(cleanPin, targetTeacher)) {
       targetTeacher.failedPinAttempts += 1;
-      const attemptsLeft = 5 - targetTeacher.failedPinAttempts;
 
       if (targetTeacher.failedPinAttempts >= 5) {
         targetTeacher.lockoutUntil = Date.now() + 15 * 60 * 1000; // 15 minutes lockout
         saveAcademicStore(academicStore); // persist the lockout across restarts
+        if (pgTeacher) {
+          await persistTeacherAuthStateToSupabase(pgTeacher.id, {
+            failed_pin_attempts: targetTeacher.failedPinAttempts,
+            lockout_until: new Date(targetTeacher.lockoutUntil).toISOString()
+          }, 'TeacherLogin');
+        }
         return res.status(429).json({
           success: false,
           error: 'Maximum failed PIN attempts exceeded (5/5). Account has been locked for 15 minutes.'
@@ -3710,9 +4131,15 @@ app.post('/api/teachers/login', authRateLimiter, authIpRateLimiter, async (req: 
       }
 
       saveAcademicStore(academicStore); // persist the failed-attempt count
+      if (pgTeacher) {
+        await persistTeacherAuthStateToSupabase(pgTeacher.id, {
+          failed_pin_attempts: targetTeacher.failedPinAttempts,
+          lockout_until: null
+        }, 'TeacherLogin');
+      }
       return res.status(401).json({
         success: false,
-        error: `Invalid Teacher PIN. ${attemptsLeft} attempt(s) remaining before security lockout.`
+        error: 'Invalid phone/email or PIN.'
       });
     }
 
@@ -3728,8 +4155,28 @@ app.post('/api/teachers/login', authRateLimiter, authIpRateLimiter, async (req: 
     targetTeacher.lockoutUntil = null;
     // Transparent hash upgrade: a successful legacy (1,000-iteration) login
     // re-hashes the PIN with the v2 scheme (100,000 iterations).
+    // S1: the upgraded hash must reach Postgres too — without this the
+    // JSON store holds v2 while Postgres keeps the legacy v1 hash (the
+    // change-pin route already dual-writes via the same helper).
+    const teacherPinWasLegacy = targetTeacher.pinHashVersion !== 2;
     upgradeTeacherPinHash(targetTeacher, cleanPin);
+    if (teacherPinWasLegacy) {
+      await persistTeacherPinChangeToSupabase(targetTeacher.id, {
+        pin_hash: targetTeacher.pinHash ?? null,
+        pin_salt: targetTeacher.pinSalt ?? null,
+        pin_hash_version: targetTeacher.pinHashVersion ?? null
+      }, 'TeacherLoginPinUpgrade');
+    }
     saveAcademicStore(academicStore);
+    // D8 (auth patch, merged): reset the Postgres auth-state counters on a
+    // successful login. The hash itself is already dual-written above when
+    // legacy, so this call carries only the counter reset — no double write.
+    if (pgTeacher) {
+      await persistTeacherAuthStateToSupabase(pgTeacher.id, {
+        failed_pin_attempts: 0,
+        lockout_until: null
+      }, 'TeacherLogin');
+    }
 
     const session = createServerSession({
       userId: targetTeacher.id,
@@ -3810,6 +4257,102 @@ app.post('/api/teachers/verify', requireSystemAdmin, (req: Request, res: Respons
 });
 
 /**
+ * 5B. ADMIN SET TEACHER TAUGHT SCOPE (Founder-only — R1 follow-up)
+ * R1 stripped scope fields from the teacher self-service profile, so a
+ * teacher's taught scope can now only change here, by the founder.
+ * Validates the scope, applies it to the JSON store, dual-writes to
+ * Postgres (warn-and-continue), and audits the change.
+ */
+app.patch('/api/admin/teachers/:id/scope', requireSystemAdmin, async (req: Request, res: Response) => {
+  try {
+    const teacherId = String(req.params.id || '');
+    const teacher = serverTeachers.get(teacherId);
+    if (!teacher) {
+      return res.status(404).json({ success: false, error: 'Teacher not found' });
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    const scopePatch: Partial<ServerTeacher> = {};
+    const pgPatch: Parameters<typeof updateTeacherById>[1] = {};
+    if (body.college !== undefined) {
+      const college = String(body.college || '').trim();
+      if (!college) return res.status(400).json({ success: false, error: 'College is required.' });
+      scopePatch.college = college;
+      pgPatch.college = college;
+    }
+    if (body.department !== undefined) {
+      const department = String(body.department || '').trim();
+      if (!department) return res.status(400).json({ success: false, error: 'Department is required.' });
+      scopePatch.department = department;
+      pgPatch.department = department;
+    }
+    if (body.semestersTaught !== undefined) {
+      if (!Array.isArray(body.semestersTaught) || body.semestersTaught.length === 0 || body.semestersTaught.some(s => !Number.isInteger(s) || s < 1 || s > 8)) {
+        return res.status(400).json({ success: false, error: 'semestersTaught must be a non-empty array of semesters 1-8.' });
+      }
+      scopePatch.semestersTaught = [...(body.semestersTaught as number[])];
+      pgPatch.semesters_taught = [...(body.semestersTaught as number[])];
+    }
+    if (body.shift !== undefined) {
+      if (!['Morning', 'Day', 'Both'].includes(String(body.shift))) {
+        return res.status(400).json({ success: false, error: 'shift must be Morning, Day or Both.' });
+      }
+      scopePatch.shift = String(body.shift) as ServerTeacher['shift'];
+      pgPatch.shift = String(body.shift);
+    }
+    if (body.sectionsTaught !== undefined) {
+      if (!Array.isArray(body.sectionsTaught) || body.sectionsTaught.some(s => typeof s !== 'string' || !s.trim())) {
+        return res.status(400).json({ success: false, error: 'sectionsTaught must be an array of section names.' });
+      }
+      scopePatch.sectionsTaught = (body.sectionsTaught as string[]).map(s => s.trim());
+      pgPatch.sections_taught = [...scopePatch.sectionsTaught];
+    }
+    if (body.isGuideTeacher !== undefined) {
+      if (typeof body.isGuideTeacher !== 'boolean') {
+        return res.status(400).json({ success: false, error: 'isGuideTeacher must be a boolean.' });
+      }
+      scopePatch.isGuideTeacher = body.isGuideTeacher;
+      pgPatch.is_guide_teacher = body.isGuideTeacher;
+    }
+    if (body.guideTeacherCohort !== undefined) {
+      if (body.guideTeacherCohort === null) {
+        scopePatch.guideTeacherCohort = undefined;
+        pgPatch.guide_teacher_cohort = null;
+      } else if (body.guideTeacherCohort && typeof body.guideTeacherCohort === 'object') {
+        const cohort = body.guideTeacherCohort as Record<string, unknown>;
+        const semester = Number(cohort.semester);
+        if (!Number.isInteger(semester) || semester < 1 || semester > 8 || !['Morning', 'Day', 'Both'].includes(String(cohort.shift)) || typeof cohort.section !== 'string' || !cohort.section.trim()) {
+          return res.status(400).json({ success: false, error: 'guideTeacherCohort must be { semester 1-8, shift, section } or null.' });
+        }
+        scopePatch.guideTeacherCohort = { semester, shift: String(cohort.shift), section: String(cohort.section).trim() } as ServerTeacher['guideTeacherCohort'];
+        pgPatch.guide_teacher_cohort = { ...scopePatch.guideTeacherCohort };
+      } else {
+        return res.status(400).json({ success: false, error: 'guideTeacherCohort must be an object or null.' });
+      }
+    }
+    if (Object.keys(scopePatch).length === 0) {
+      return res.status(400).json({ success: false, error: 'No scope fields provided.' });
+    }
+    Object.assign(teacher, scopePatch);
+    saveAcademicStore(academicStore);
+    try {
+      await updateTeacherById(teacher.id, pgPatch);
+    } catch (err) {
+      console.warn('[AdminTeacherScope] Supabase write failed, continuing with JSON store:', err);
+    }
+    const admin = (req as any).adminSession as ServerSession;
+    appendAdminAudit(admin, 'teacher_scope_updated', teacher.id, teacher.name, `Taught scope updated: ${Object.keys(scopePatch).join(', ')}.`);
+    return res.status(200).json({
+      success: true,
+      message: `Taught scope updated for ${teacher.name}`,
+      teacher: sanitizeTeacher(teacher)
+    });
+  } catch (error) {
+    console.error('Admin teacher scope error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to update teacher scope.' });
+  }
+});
+
+/**
  * 6. RESET TEACHER LOCKOUT (Admin action - Protected by requireSystemAdmin)
  */
 app.post('/api/teachers/reset-lockout', requireSystemAdmin, (req: Request, res: Response) => {
@@ -3866,6 +4409,11 @@ app.post('/api/admin/students/:id/reset-pin', requireSystemAdmin, async (req: Re
     // `student:<id>` once the account is found, `roll:<boardRoll>` before).
     studentLoginFailures.delete(`student:${student.id}`);
     studentLoginFailures.delete(`roll:${student.boardRoll}`);
+    // AU4: a PIN reset must evict every live session for this account —
+    // a stolen session must not survive the reset (same loop as erasure).
+    for (const [token, session] of serverSessions) {
+      if (session.userId === student.id) serverSessions.delete(token);
+    }
 
     await persistStudentUpdateToSupabase(student.id, {
       pin_hash: student.pinHash ?? null,
@@ -3966,6 +4514,12 @@ app.post('/api/teachers/change-pin', authRateLimiter, authIpRateLimiter, require
     saveAcademicStore(academicStore);
     appendSystemAudit('teacher_pin_changed', teacher.id, teacher.name, 'Teacher changed their own security PIN.', teacher.id);
     saveAcademicStore(academicStore);
+    // AU4: a PIN change must evict every live session for this teacher —
+    // including the session used to make the change, so the teacher signs
+    // in again with the new PIN (same loop as erasure).
+    for (const [token, session] of serverSessions) {
+      if (session.userId === teacher.id) serverSessions.delete(token);
+    }
 
     return res.status(200).json({ success: true, message: 'Teacher Security PIN updated successfully.' });
   } catch (error) {
@@ -4007,44 +4561,50 @@ app.get('/api/teacher-contacts', (req: Request, res: Response) => {
   });
 });
 
-// Helper to resolve trusted caller role for teacher-contacts endpoints
-function resolveCallerRoleForContacts(req: Request, fallbackRole?: string): {
+// Helper to resolve trusted caller role for teacher-contacts endpoints.
+// RBAC audit fix (R12): the role — and the caller's identity, college
+// and department — come from the server-side session ONLY. The old
+// fallback trusted a client-supplied `requesterRole` when there was no
+// session (and the handlers trusted body `requesterId` /
+// `requesterCollege` / `requesterDepartment` for ownership and scope
+// checks even when a session existed): latent privilege escalation if
+// the global mutation middleware were ever bypassed, and a live
+// impersonation path for teacher-ownership checks. No session means
+// not allowed; unauthenticated mutations are already rejected 401 by
+// the global middleware before these handlers run.
+function resolveCallerRoleForContacts(req: Request): {
   allowed: boolean;
   role: string;
+  session?: ServerSession;
   error?: string;
 } {
   const session = getAuthenticatedSession(req);
-  if (session) {
-    return { allowed: true, role: session.role };
-  }
-  // Never allow unverified client requests to claim system_admin or admin
-  if (fallbackRole === 'system_admin' || fallbackRole === 'admin') {
+  if (!session) {
     return {
       allowed: false,
       role: 'unauthenticated',
-      error: 'Forbidden: System Administrator role requires a valid server-side administrator session token.'
+      error: 'Authentication Required: Please sign in to manage teacher contacts.'
     };
   }
-  return { allowed: true, role: fallbackRole || 'student' };
+  return { allowed: true, role: session.role, session };
 }
 
 // CREATE teacher contact
 app.post('/api/teacher-contacts', (req: Request, res: Response) => {
   try {
-    const { 
-      requesterRole, 
-      requesterId, 
-      requesterName, 
-      requesterCollege, 
-      requesterDepartment,
-      contact 
-    } = req.body;
+    // R12: caller identity comes from the session only — body
+    // requesterRole/requesterId/requesterName/requesterCollege/
+    // requesterDepartment are ignored entirely.
+    const { contact } = req.body;
 
-    const resolvedRole = resolveCallerRoleForContacts(req, requesterRole);
-    if (!resolvedRole.allowed) {
+    const resolvedRole = resolveCallerRoleForContacts(req);
+    if (!resolvedRole.allowed || !resolvedRole.session) {
       return res.status(403).json({ success: false, error: resolvedRole.error });
     }
     const effectiveRole = resolvedRole.role;
+    const callerSession = resolvedRole.session;
+    const callerCollege = callerSession.college;
+    const callerDepartment = callerSession.department;
 
     // 1. RBAC Check: Students are strictly forbidden from mutating contacts
     if (effectiveRole === 'student') {
@@ -4061,18 +4621,29 @@ app.post('/api/teacher-contacts', (req: Request, res: Response) => {
       });
     }
 
-    const targetCollege = contact.college || requesterCollege || 'Dhaka Polytechnic Institute';
-    const targetDept = contact.department || requesterDepartment || 'Computer Science and Technology (CST)';
+    // R12: a teacher may only create/manage their OWN contact — a
+    // body-supplied teacherId for someone else is rejected, so the
+    // duplicate-update branch below cannot be used to overwrite
+    // another teacher's contact.
+    if (effectiveRole === 'teacher' && contact.teacherId && contact.teacherId !== callerSession.userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access Denied: Teachers can only manage their own contact details.'
+      });
+    }
+
+    const targetCollege = contact.college || callerCollege || 'Dhaka Polytechnic Institute';
+    const targetDept = contact.department || callerDepartment || 'Computer Science and Technology (CST)';
 
     // 2. Scope Check: Class Captains are strictly scoped to their own college and department
     if (effectiveRole === 'class_captain') {
       if (
-        !areCollegesEquivalent(requesterCollege, targetCollege) ||
-        !areDepartmentsEquivalent(requesterDepartment, targetDept)
+        !areCollegesEquivalent(callerCollege, targetCollege) ||
+        !areDepartmentsEquivalent(callerDepartment, targetDept)
       ) {
         return res.status(403).json({
           success: false,
-          error: `Scope Restriction: Class Captains are only authorized to manage contacts within their enrolled institution (${requesterCollege}) and department (${requesterDepartment}).`
+          error: `Scope Restriction: Class Captains are only authorized to manage contacts within their enrolled institution (${callerCollege}) and department (${callerDepartment}).`
         });
       }
     }
@@ -4081,6 +4652,20 @@ app.post('/api/teacher-contacts', (req: Request, res: Response) => {
     for (const existing of serverTeacherContacts.values()) {
       if (!existing.isArchived) {
         if (contact.teacherId && existing.teacherId === contact.teacherId) {
+          // R12: the duplicate-update branch must not let a captain
+          // rewrite a contact from another college/department by
+          // naming its teacherId — the existing contact must already
+          // be inside the caller's scope.
+          if (
+            effectiveRole === 'class_captain' &&
+            (!areCollegesEquivalent(callerCollege, existing.college) ||
+              !areDepartmentsEquivalent(callerDepartment, existing.department))
+          ) {
+            return res.status(403).json({
+              success: false,
+              error: 'Scope Restriction: You can only manage faculty contacts within your assigned college and department.'
+            });
+          }
           // Update existing instead of creating duplicate
           existing.name = contact.name.trim();
           existing.designation = contact.designation || existing.designation;
@@ -4095,7 +4680,7 @@ app.post('/api/teacher-contacts', (req: Request, res: Response) => {
           existing.department = targetDept;
           existing.auditTrail.push({
             action: 'updated',
-            performedBy: requesterName || requesterId || 'Authorized User',
+            performedBy: callerSession.name || callerSession.userId,
             performedByRole: effectiveRole,
             timestamp: new Date().toISOString(),
             reason: 'Profile synced from teacher setup'
@@ -4129,7 +4714,7 @@ app.post('/api/teacher-contacts', (req: Request, res: Response) => {
       auditTrail: [
         {
           action: 'created',
-          performedBy: requesterName || requesterId || 'Authorized User',
+          performedBy: callerSession.name || callerSession.userId,
           performedByRole: effectiveRole,
           timestamp: new Date().toISOString(),
           reason: 'Initial contact directory entry'
@@ -4154,20 +4739,19 @@ app.post('/api/teacher-contacts', (req: Request, res: Response) => {
 app.put('/api/teacher-contacts/:id', (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { 
-      requesterRole, 
-      requesterId, 
-      requesterName, 
-      requesterCollege, 
-      requesterDepartment, 
-      updates 
-    } = req.body;
+    // R12: caller identity comes from the session only — body
+    // requesterRole/requesterId/requesterName/requesterCollege/
+    // requesterDepartment are ignored entirely.
+    const { updates } = req.body;
 
-    const resolvedRole = resolveCallerRoleForContacts(req, requesterRole);
-    if (!resolvedRole.allowed) {
+    const resolvedRole = resolveCallerRoleForContacts(req);
+    if (!resolvedRole.allowed || !resolvedRole.session) {
       return res.status(403).json({ success: false, error: resolvedRole.error });
     }
     const effectiveRole = resolvedRole.role;
+    const callerSession = resolvedRole.session;
+    const callerCollege = callerSession.college;
+    const callerDepartment = callerSession.department;
 
     const contact = serverTeacherContacts.get(id);
     if (!contact || contact.isArchived) {
@@ -4185,8 +4769,8 @@ app.put('/api/teacher-contacts/:id', (req: Request, res: Response) => {
     // 2. Class Captain scope check
     if (effectiveRole === 'class_captain') {
       if (
-        !areCollegesEquivalent(requesterCollege, contact.college) ||
-        !areDepartmentsEquivalent(requesterDepartment, contact.department)
+        !areCollegesEquivalent(callerCollege, contact.college) ||
+        !areDepartmentsEquivalent(callerDepartment, contact.department)
       ) {
         return res.status(403).json({
           success: false,
@@ -4195,10 +4779,13 @@ app.put('/api/teacher-contacts/:id', (req: Request, res: Response) => {
       }
     }
 
-    // 3. Teachers can only edit their own contact
+    // 3. Teachers can only edit their own contact. Ownership is the
+    // session userId matched against the contact's teacherId — the old
+    // phone-match fallback (contact.phone === updates.phone) let any
+    // teacher claim any contact by echoing its phone number in the
+    // update body, so it is gone.
     if (effectiveRole === 'teacher') {
-      const isOwner = (contact.teacherId && contact.teacherId === requesterId) || 
-                      (contact.phone === updates?.phone);
+      const isOwner = contact.teacherId && contact.teacherId === callerSession.userId;
       if (!isOwner) {
         return res.status(403).json({
           success: false,
@@ -4213,8 +4800,8 @@ app.put('/api/teacher-contacts/:id', (req: Request, res: Response) => {
       const newCollege = typeof updates?.college === 'string' && updates.college.trim() ? updates.college : contact.college;
       const newDept = typeof updates?.department === 'string' && updates.department.trim() ? updates.department : contact.department;
       if (
-        !areCollegesEquivalent(requesterCollege, newCollege) ||
-        !areDepartmentsEquivalent(requesterDepartment, newDept)
+        !areCollegesEquivalent(callerCollege, newCollege) ||
+        !areDepartmentsEquivalent(callerDepartment, newDept)
       ) {
         return res.status(403).json({
           success: false,
@@ -4239,7 +4826,7 @@ app.put('/api/teacher-contacts/:id', (req: Request, res: Response) => {
 
     contact.auditTrail.push({
       action: 'updated',
-      performedBy: requesterName || requesterId || 'Authorized User',
+      performedBy: callerSession.name || callerSession.userId,
       performedByRole: effectiveRole,
       timestamp: new Date().toISOString(),
       reason: updates.reason || 'Contact information update'
@@ -4259,20 +4846,19 @@ app.put('/api/teacher-contacts/:id', (req: Request, res: Response) => {
 app.post('/api/teacher-contacts/:id/archive', (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { 
-      requesterRole, 
-      requesterId, 
-      requesterName, 
-      requesterCollege, 
-      requesterDepartment, 
-      reason 
-    } = req.body;
+    // R12: caller identity comes from the session only — body
+    // requesterRole/requesterId/requesterName/requesterCollege/
+    // requesterDepartment are ignored entirely.
+    const { reason } = req.body;
 
-    const resolvedRole = resolveCallerRoleForContacts(req, requesterRole);
-    if (!resolvedRole.allowed) {
+    const resolvedRole = resolveCallerRoleForContacts(req);
+    if (!resolvedRole.allowed || !resolvedRole.session) {
       return res.status(403).json({ success: false, error: resolvedRole.error });
     }
     const effectiveRole = resolvedRole.role;
+    const callerSession = resolvedRole.session;
+    const callerCollege = callerSession.college;
+    const callerDepartment = callerSession.department;
 
     const contact = serverTeacherContacts.get(id);
     if (!contact || contact.isArchived) {
@@ -4290,8 +4876,8 @@ app.post('/api/teacher-contacts/:id/archive', (req: Request, res: Response) => {
     // 2. Class Captain scope check
     if (effectiveRole === 'class_captain') {
       if (
-        !areCollegesEquivalent(requesterCollege, contact.college) ||
-        !areDepartmentsEquivalent(requesterDepartment, contact.department)
+        !areCollegesEquivalent(callerCollege, contact.college) ||
+        !areDepartmentsEquivalent(callerDepartment, contact.department)
       ) {
         return res.status(403).json({
           success: false,
@@ -4302,7 +4888,7 @@ app.post('/api/teacher-contacts/:id/archive', (req: Request, res: Response) => {
 
     // 3. Teachers cannot remove other faculty contacts
     if (effectiveRole === 'teacher') {
-      const isOwner = contact.teacherId && contact.teacherId === requesterId;
+      const isOwner = contact.teacherId && contact.teacherId === callerSession.userId;
       if (!isOwner) {
         return res.status(403).json({
           success: false,
@@ -4321,12 +4907,12 @@ app.post('/api/teacher-contacts/:id/archive', (req: Request, res: Response) => {
     // Perform SOFT DELETION
     contact.isArchived = true;
     contact.archivedAt = new Date().toISOString();
-    contact.archivedBy = requesterName || requesterId || 'Class Captain';
+    contact.archivedBy = callerSession.name || callerSession.userId;
     contact.archiveReason = reason.trim();
 
     contact.auditTrail.push({
       action: 'archived',
-      performedBy: requesterName || requesterId || 'Authorized User',
+      performedBy: callerSession.name || callerSession.userId,
       performedByRole: effectiveRole,
       timestamp: contact.archivedAt,
       reason: reason.trim()
@@ -4433,13 +5019,16 @@ app.post('/api/admin/captains/decision', requireSystemAdmin, async (req: Request
  */
 app.post('/api/verification/teacher-approve', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
   try {
-    const { 
-      teacherId, 
-      teacherPin, 
-      applicationId, 
-      comments, 
-      action = 'approve',
-      applicantCohort // { college, department, semester, shift, section }
+    const {
+      teacherId,
+      teacherPin,
+      applicationId,
+      comments,
+      action = 'approve'
+      // NOTE (A2): a client-supplied `applicantCohort` is deliberately NOT
+      // read here — the cohort is derived server-side from the stored
+      // captain record below, so a forged or omitted cohort can never
+      // change the authorization check.
     } = req.body;
 
     if (!teacherPin || !applicationId) {
@@ -4448,12 +5037,31 @@ app.post('/api/verification/teacher-approve', authRateLimiter, authIpRateLimiter
 
     const cleanPin = String(teacherPin).trim();
 
+    // A2: look the captain record up FIRST and 404 when it does not
+    // exist. Previously an unknown applicationId still returned 200
+    // `approved` and wrote a trusted endorsement into the registry,
+    // laundering a forged endorsement for POST /api/captains/sync.
+    const serverRecord = academicStore.captainRecords.find(item => item.id === applicationId);
+    if (!serverRecord) {
+      return res.status(404).json({ success: false, error: 'Captain application not found.' });
+    }
+
     // Find teacher by teacherId or legacy PIN match (version-aware verify:
-    // legacy 1,000-iteration hashes still verify; a success upgrades the
-    // hash to v2 on the teacher record — see the login handler).
+    // legacy 1,000-iteration hashes still verify; a successful PIN check
+    // upgrades the hash to v2 below, like the login handler — S1).
+    // A2: a supplied teacherId must exist (404 otherwise) and failures
+    // are counted against that teacher. When no teacherId is supplied —
+    // the guide teacher endorsing from a student's device in
+    // CaptainVerificationScreen, where no teacher is signed in — the
+    // all-teacher PIN search remains as a fallback; a wrong PIN then
+    // matches no teacher, so there is no teacher to count it against
+    // (the per-IP rate limiters still apply).
     let teacher: ServerTeacher | undefined;
-    if (teacherId && serverTeachers.has(teacherId)) {
-      teacher = serverTeachers.get(teacherId);
+    if (teacherId) {
+      teacher = serverTeachers.get(String(teacherId));
+      if (!teacher) {
+        return res.status(404).json({ success: false, error: 'Teacher not found.' });
+      }
     } else {
       // Search all teachers for a matching PIN
       for (const t of serverTeachers.values()) {
@@ -4510,10 +5118,41 @@ app.post('/api/verification/teacher-approve', authRateLimiter, authIpRateLimiter
       });
     }
 
-    // Cohort Validation: Ensure teacher is assigned to this applicant's college, department, and semester
-    if (applicantCohort) {
-      const { college, department, semester, shift } = applicantCohort;
-      
+    // S1: transparent hash upgrade on a successful PIN check. This path
+    // verifies PINs but never upgraded them, so a teacher who only ever
+    // approves (and never logs in) kept a legacy 1,000-iteration hash
+    // indefinitely. Dual-written to Postgres like the login handler.
+    const approvePinWasLegacy = teacher.pinHashVersion !== 2;
+    upgradeTeacherPinHash(teacher, cleanPin);
+    if (approvePinWasLegacy) {
+      await persistTeacherPinChangeToSupabase(teacher.id, {
+        pin_hash: teacher.pinHash ?? null,
+        pin_salt: teacher.pinSalt ?? null,
+        pin_hash_version: teacher.pinHashVersion ?? null
+      }, 'TeacherApprovePinUpgrade');
+      saveAcademicStore(academicStore);
+    }
+
+    // Cohort Validation (A2): derive the applicant's cohort SERVER-SIDE
+    // from the stored captain record (student record first, the record's
+    // own cohort fields as fallback). The client-supplied cohort is
+    // ignored entirely, so omitting it can no longer skip these checks.
+    const applicantStudent = academicStore.students.find(item => item.id === serverRecord.studentId);
+    const derivedCohort = {
+      college: applicantStudent?.college || serverRecord.college,
+      department: applicantStudent?.department || serverRecord.department,
+      semester: applicantStudent?.semester ?? serverRecord.semester,
+      shift: applicantStudent?.shift || serverRecord.shift
+    };
+    if (!derivedCohort.college && !derivedCohort.department && derivedCohort.semester == null && !derivedCohort.shift) {
+      return res.status(403).json({
+        success: false,
+        error: 'Cohort Verification Failed: this application has no cohort on file, so no teacher can be authorized for it.'
+      });
+    }
+    {
+      const { college, department, semester, shift } = derivedCohort;
+
       // College and department check (normalized for legacy and canonical names)
       if (college && !areCollegesEquivalent(teacher.college, college)) {
         return res.status(403).json({
@@ -4563,7 +5202,8 @@ app.post('/api/verification/teacher-approve', authRateLimiter, authIpRateLimiter
     // the server record, still saw no endorsement, and its approve guard
     // ("A teacher endorsement is required before approving a class
     // captain.") blocked the admin even though the teacher had endorsed.
-    const serverRecord = academicStore.captainRecords.find(item => item.id === applicationId);
+    // (serverRecord was already looked up + 404-checked at the top of
+    // this handler — A2 — so it is always present here.)
     if (serverRecord) {
       if (action === 'reject') {
         serverRecord.status = 'Rejected';
@@ -6444,8 +7084,10 @@ interface ServerAnnouncement {
 
 // Scanned routine document (audit batch v1.0.29, B3). The extracted
 // periods already reach the server as routines (A11); this is the
-// document itself. Bytes live in the Supabase Storage `community-files`
-// bucket (reused — no new bucket) under `storage_path`, or on the
+// document itself. Bytes live in the Supabase Storage
+// `routine-documents` bucket (D5, own bucket since v1.0.30; documents
+// uploaded before the move live in `community-files` under
+// `routine-documents/<file>`) under `storage_path`, or on the
 // record as `file_data` when Storage is unconfigured or the upload
 // failed. The download endpoint serves Storage → file_data → 503,
 // never a fake PDF.
@@ -6620,10 +7262,21 @@ interface PersistentAcademicStore {
   adminAccounts: AdminAccount[];
   supportTickets: SupportTicket[];
   teacherContactAccessLocked: boolean;
+  // Student login lockout state (AU7): persisted in this store so a
+  // restart/deploy cannot clear a lockout. Map key is `student:<id>` for
+  // a known account (the `roll:<boardRoll>` key is never written any
+  // more — see AU11 — but old entries still load and expire naturally).
+  studentLoginFailures: Record<string, StudentLoginFailure>;
   // Admin panel PIN gate (POST /api/admin/pin-verify): failed PIN attempts
   // + 5-hour lockout. Persisted in this store (NOT in memory) so a server
   // restart or Render deploy cannot clear the lockout.
   adminPinLockout: { failedAttempts: number; lockedUntil: number | null };
+  // A4: whether the admin PIN gate was EVER observed enabled. Persisted
+  // so a later deploy that drops ADMIN_PANEL_PIN can be detected: the
+  // gate then fails open by necessity (it cannot verify a PIN it does
+  // not have), but pin-status reports `gateMisconfigured: true` and
+  // startup logs a loud error instead of failing silently.
+  adminPinGateWasEnabled: boolean;
   // Endorsements created by teacher-approve, keyed by application id.
   // This is the server-side proof that an endorsement is genuine, so
   // POST /api/captains/sync can reject client-forged endorsements while
@@ -6813,6 +7466,8 @@ function buildInitialAcademicStore(): PersistentAcademicStore {
     supportTickets: [],
     teacherContactAccessLocked: false,
     adminPinLockout: { failedAttempts: 0, lockedUntil: null },
+    adminPinGateWasEnabled: false,
+    studentLoginFailures: {},
     pendingTeacherEndorsements: {}
   };
 }
@@ -6954,10 +7609,31 @@ function loadAcademicStore(): PersistentAcademicStore {
                 : null
             }
           : { failedAttempts: 0, lockedUntil: null },
+        adminPinGateWasEnabled: parsed.adminPinGateWasEnabled === true,
         pendingTeacherEndorsements: (parsed.pendingTeacherEndorsements && typeof parsed.pendingTeacherEndorsements === 'object')
           ? parsed.pendingTeacherEndorsements
-          : {}
+          : {},
+        // AU7: reload persisted student login-failure state into the
+        // in-memory Map (validated shape only; anything else is dropped).
+        studentLoginFailures: (() => {
+          const raw = parsed.studentLoginFailures;
+          if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+          const out: Record<string, StudentLoginFailure> = {};
+          for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+            if (typeof key !== 'string' || !value || typeof value !== 'object') continue;
+            const v = value as { count?: unknown; lockoutUntil?: unknown };
+            const count = Number(v.count) || 0;
+            const lockoutUntil = typeof v.lockoutUntil === 'number' ? v.lockoutUntil : null;
+            if (count > 0) out[key] = { count, lockoutUntil };
+          }
+          return out;
+        })()
       };
+      // AU7: populate the live Map from the persisted state above.
+      studentLoginFailures.clear();
+      for (const [key, value] of Object.entries(storeObj.studentLoginFailures)) {
+        studentLoginFailures.set(key, value);
+      }
       ensureAdminPanelStoreDefaults(storeObj);
       // Only persist when the loaded content actually differs from disk.
       // An unconditional save on every startup schedules a GitHub backup
@@ -6989,6 +7665,10 @@ function saveAcademicStore(store: PersistentAcademicStore): void {
     }
     store.teacherAccounts = [...legacyUnregisteredTeachers.values(), ...serverTeachers.values()];
     store.deletedAccountIds = Array.from(deletedAccountIds);
+    // AU7: the live login-failure Map is the source of truth; serialize
+    // it on every save so lockouts survive restarts (and so clearing a
+    // lockout — successful login, PIN reset, erasure — persists too).
+    store.studentLoginFailures = Object.fromEntries(studentLoginFailures);
     const tempFile = `${ACADEMIC_STORE_FILE}.tmp`;
     fs.writeFileSync(tempFile, JSON.stringify(store, null, 2), 'utf-8');
     fs.renameSync(tempFile, ACADEMIC_STORE_FILE);
@@ -7042,6 +7722,13 @@ if (!ADMIN_PIN_GATE_ENABLED) {
   console.log('[Admin PIN Gate] Enabled: admin login requires PIN verification first (3 wrong PINs = 5-hour lockout).');
 }
 
+// S4: the `log` SMS provider is a dev/test stand-in — it delivers no
+// real SMS. Warn loudly if it is ever enabled in production so a
+// misconfiguration is never mistaken for working SMS delivery.
+if ((process.env.SMS_PROVIDER || '').trim().toLowerCase() === 'log' && process.env.NODE_ENV === 'production') {
+  console.warn('[SMS] WARNING: SMS_PROVIDER=log is set with NODE_ENV=production — login codes are only logged, not delivered by a real SMS provider. Set a real SMS_PROVIDER on Render.');
+}
+
 function scheduleAcademicStoreBackup(): void {
   if (!GITHUB_STORE_BACKUP_TOKEN || githubBackupTimer) return;
   githubBackupTimer = setTimeout(() => {
@@ -7052,6 +7739,18 @@ function scheduleAcademicStoreBackup(): void {
 }
 
 async function pushAcademicStoreBackup(): Promise<void> {
+  // S1 (redaction considered and REJECTED): this backup is committed
+  // whole-file, with no redaction of pinHash/pinSalt/phone/email. That
+  // is deliberate, not an oversight — the committed file IS the restore
+  // source: the next Render deploy boots from it, and loadAcademicStore
+  // verifies logins against the hashes inside it. Redacting credential
+  // fields would make every restored account un-loggable-in (and
+  // redacting only PII would still leave a store the server cannot
+  // trust as complete). The real fix is therefore NOT redaction: it is
+  // finishing the Supabase cutover so the JSON store stops being the
+  // live database, then removing the file from the repo and rotating
+  // every credential it ever held. Until then the file stays tracked
+  // and backed up whole — see the S1 verdict in the audit-fix report.
   if (!GITHUB_STORE_BACKUP_TOKEN) return;
   try {
     const content = fs.readFileSync(ACADEMIC_STORE_FILE, 'utf-8');
@@ -7102,6 +7801,23 @@ async function pushAcademicStoreBackup(): Promise<void> {
 }
 
 const academicStore: PersistentAcademicStore = loadAcademicStore();
+
+// A4 (MITIGATED, not fully fixed — see pin-status): remember that the
+// admin PIN gate was ever enabled. If the gate is on now, record it.
+// If it was on before but ADMIN_PANEL_PIN is now unset, the gate fails
+// open by necessity (a PIN that is not configured cannot be verified,
+// and failing closed would lock the real admin out) — but log a LOUD
+// startup error and surface `gateMisconfigured: true` from
+// GET /api/admin/pin-status so the admin UI shows a warning banner and
+// the misconfiguration cannot pass unnoticed. The operational fix is to
+// re-set ADMIN_PANEL_PIN on Render; this flag only makes its absence
+// impossible to miss.
+if (ADMIN_PIN_GATE_ENABLED && !academicStore.adminPinGateWasEnabled) {
+  academicStore.adminPinGateWasEnabled = true;
+  saveAcademicStore(academicStore);
+} else if (!ADMIN_PIN_GATE_ENABLED && academicStore.adminPinGateWasEnabled) {
+  console.error('[Admin PIN Gate] ERROR: ADMIN_PANEL_PIN is NOT set, but the PIN gate was previously enabled on this server. The admin login form is currently NOT protected by a PIN (password-only). Re-set ADMIN_PANEL_PIN on Render immediately — the gate cannot be enforced without it, and failing closed would lock the real admin out.');
+}
 
 // Seed the "last backed up" snapshot so the first backup only fires when
 // the data actually changes after startup.
@@ -7171,6 +7887,13 @@ function ensureStudentAccountForSession(body: Record<string, unknown>): { error?
   }
   const existing = byId || byRoll;
   if (!existing || existing.id !== userId || !existing.isRegisteredAccount) {
+    return { error: 'A registered student account is required.', status: 401 };
+  }
+  // AU1/AU13: a PIN-less registered account can never mint a session —
+  // the owner must ask an administrator to set a PIN first. (The
+  // captains/sync path must never create a PIN-less registered account
+  // either; see the guard there.)
+  if (!existing.pinHash) {
     return { error: 'A registered student account is required.', status: 401 };
   }
   if (deletedAccountIds.has(existing.id)) return { error: 'This account has been deactivated.', status: 403 };
@@ -7246,9 +7969,10 @@ app.post('/api/students/register', authRateLimiter, authIpRateLimiter, async (re
     }
     existingByRoll.isRegisteredAccount = true;
     setStudentPin(existingByRoll, pin);
-    // Consent is JSON-store only (no consent columns exist in Supabase) —
-    // see parseConsentFields.
-    Object.assign(existingByRoll, parseConsentFields(body));
+    // D7: consent dual-writes to Postgres with the rest of the
+    // re-registration patch below (consent columns: phase-5 SQL).
+    const reRegisterConsent = parseConsentFields(body);
+    Object.assign(existingByRoll, reRegisterConsent);
     // Phase 4 write route 3: dual-write the re-registration (account
     // type / verification status / new PIN) to Postgres FIRST. A
     // Postgres failure only logs a warning — the JSON write below
@@ -7259,7 +7983,16 @@ app.post('/api/students/register', authRateLimiter, authIpRateLimiter, async (re
       is_registered_account: true,
       pin_hash: existingByRoll.pinHash ?? null,
       pin_salt: existingByRoll.pinSalt ?? null,
-      pin_hash_version: existingByRoll.pinHashVersion ?? null
+      pin_hash_version: existingByRoll.pinHashVersion ?? null,
+      // D7: consent fields (retry-without-columns grace in
+      // updateStudentById covers a not-yet-run phase-5 SQL).
+      ...(reRegisterConsent.consentAccepted !== undefined
+        ? {
+            consent_accepted: reRegisterConsent.consentAccepted,
+            consent_version: reRegisterConsent.consentVersion ?? null,
+            consent_at: reRegisterConsent.consentAt ?? null
+          }
+        : {})
     }, 'StudentRegister');
     saveAcademicStore(academicStore);
     return res.status(200).json({
@@ -7289,8 +8022,9 @@ app.post('/api/students/register', authRateLimiter, authIpRateLimiter, async (re
     isRegisteredAccount: true
   };
   setStudentPin(account, pin);
-  // Consent is JSON-store only (no consent columns exist in Supabase) —
-  // see parseConsentFields.
+  // D7: consent rides on the account into insertStudent() below, which
+  // writes the phase-5 consent columns to Postgres (with PGRST204
+  // retry-without-columns grace until that SQL is run).
   Object.assign(account, parseConsentFields(body));
   // Phase 4 write route 3: dual-write the new student to Postgres FIRST.
   // One board roll = one account, on the Postgres path too: a registered
@@ -7629,6 +8363,9 @@ async function eraseAccountFromSupabase(
   communitiesAnonymised: number;
   captainRecordsAnonymised: number;
   attendanceSheetsAnonymised: number;
+  // D6: per-table row counts for the extended erasure below.
+  extraTablesErased: Record<string, number>;
+  extraTablesAnonymised: Record<string, number>;
 }> {
   const result = {
     attempted: false,
@@ -7637,7 +8374,9 @@ async function eraseAccountFromSupabase(
     messagesAnonymised: 0,
     communitiesAnonymised: 0,
     captainRecordsAnonymised: 0,
-    attendanceSheetsAnonymised: 0
+    attendanceSheetsAnonymised: 0,
+    extraTablesErased: {} as Record<string, number>,
+    extraTablesAnonymised: {} as Record<string, number>
   };
   if (!isSupabaseConfigured()) return result;
   result.attempted = true;
@@ -7699,6 +8438,56 @@ async function eraseAccountFromSupabase(
     }
   } catch (err) {
     console.warn('[AccountDeletion] Supabase attendance anonymisation failed:', err);
+  }
+  // D6 (security audit 2026-11-27) — erasure gaps: the steps above
+  // left the user's rows in every other user-linked table. Each step
+  // below is best-effort warn-and-continue (a missing table — e.g. the
+  // audit-batch v1.0.29 SQL not run yet — must never block the JSON
+  // erasure), and counts are reported back to the caller. Deliberately
+  // NOT touched: `deleted_account_ids` (the tombstone that marks the
+  // account deleted), `subject_catalog` (static catalog, no user rows),
+  // `system_admins` (unused orphan table, no rows written by the app),
+  // `routine_notifications` (cohort broadcasts with no owner column),
+  // and `admin_audit_logs` (the audit trail of the deletion itself;
+  // the admin's record that a deletion happened must survive it).
+  const eraseSteps: { table: string; column: string; accountTypes: ('student' | 'teacher')[] }[] = [
+    { table: 'notes', column: 'owner_id', accountTypes: ['student', 'teacher'] },
+    { table: 'assignments', column: 'teacher_id', accountTypes: ['teacher'] },
+    { table: 'assignment_submissions', column: 'student_id', accountTypes: ['student'] },
+    { table: 'jobs', column: 'posted_by_id', accountTypes: ['student', 'teacher'] },
+    { table: 'semester_calculator_records', column: 'owner_user_id', accountTypes: ['student', 'teacher'] },
+    { table: 'reminders', column: 'owner_id', accountTypes: ['student', 'teacher'] },
+    { table: 'announcements', column: 'author_id', accountTypes: ['student', 'teacher'] },
+    { table: 'support_tickets', column: 'user_id', accountTypes: ['student', 'teacher'] },
+    // The deletion request itself carries the roll + name + reason —
+    // once the deletion is approved, the request row is the user's PII
+    // and is erased with everything else.
+    { table: 'account_deletion_requests', column: 'account_id', accountTypes: ['student', 'teacher'] },
+    { table: 'routine_documents', column: 'uploaded_by_id', accountTypes: ['student', 'teacher'] },
+    { table: 'community_reports', column: 'reporter_id', accountTypes: ['student', 'teacher'] },
+    { table: 'campus_notice_reports', column: 'reporter_id', accountTypes: ['student', 'teacher'] },
+    // Endorsements a teacher gave are keyed by teacher_id; a deleted
+    // teacher's endorsements must not keep endorsing captains.
+    { table: 'pending_teacher_endorsements', column: 'teacher_id', accountTypes: ['teacher'] }
+  ];
+  for (const step of eraseSteps) {
+    if (!step.accountTypes.includes(accountType)) continue;
+    try {
+      const removed = await deleteRecordsByColumnToSupabase(step.table, step.column, accountId);
+      if (removed > 0) result.extraTablesErased[`${step.table}.${step.column}`] = removed;
+    } catch (err) {
+      console.warn(`[AccountDeletion] Supabase ${step.table} erasure failed:`, err);
+    }
+  }
+  // Reports ABOUT the deleted user keep the report (a moderator may
+  // still need it) but lose the link to the user.
+  try {
+    const anonymised = await anonymizeRecordsByColumnToSupabase('community_reports', 'reported_user_id', accountId, {
+      reported_user_id: 'deleted'
+    });
+    if (anonymised > 0) result.extraTablesAnonymised['community_reports.reported_user_id'] = anonymised;
+  } catch (err) {
+    console.warn('[AccountDeletion] Supabase reported-user anonymisation failed:', err);
   }
   return result;
 }
@@ -7996,12 +8785,21 @@ app.patch('/api/me/profile', requireAuth, async (req: Request, res: Response) =>
     const shiftChanged = newShift !== undefined && newShift !== student.shift;
     const sectionChanged = newSection !== undefined && newSection !== student.section;
     if (semesterChanged || shiftChanged || sectionChanged) {
+      // RBAC audit fix (R6): the 409 covers ANY captain application,
+      // not just Approved ones — a Pending applicant could otherwise
+      // move their application to a cohort with a free captain slot.
+      // Quota counting is untouched (still Approved records only).
       const isApprovedCaptain =
         student.captainVerificationStatus === 'Approved' ||
         academicStore.captainRecords.some(
           c => c.status === 'Approved' && (c.studentId === student.id || (student.boardRoll && c.boardRoll === student.boardRoll))
         );
-      if (isApprovedCaptain) {
+      const hasPendingCaptainApplication =
+        student.captainVerificationStatus === 'Pending' ||
+        academicStore.captainRecords.some(
+          c => c.status === 'Pending' && (c.studentId === student.id || (student.boardRoll && c.boardRoll === student.boardRoll))
+        );
+      if (isApprovedCaptain || hasPendingCaptainApplication) {
         return res.status(409).json({ success: false, error: 'Captains cannot change their section/shift — contact the admin.' });
       }
       const resolved = resolveExplicitAcademicGroupInput({
@@ -8555,6 +9353,137 @@ function checkTeacherCohortAuthorization(
   return { authorized: true, status: 200, teacher };
 }
 
+// ---------------------------------------------------------------------------
+// RBAC audit fix (R4): cohort checks shared by the file-download endpoints
+// (notes / assignments / jobs / campus-notice attachments) and by the
+// notes + assignments list endpoints. Mirrors the check the
+// submission-file download already uses: system_admin sees everything,
+// the uploader sees their own file, teachers are checked against their
+// server-side taught scope, and students/captains must match the item's
+// cohort exactly. Items with no cohort fields at all (legacy records
+// created before cohort targeting existed) stay visible to any signed-in
+// user — new items always carry a cohort, so nothing new can be created
+// unscoped.
+// ---------------------------------------------------------------------------
+type CohortTarget = {
+  college?: string;
+  collegeId?: string;
+  department?: string;
+  departmentId?: string;
+  semester?: number | null;
+  shift?: string | null;
+  section?: string | null;
+};
+
+function isUnscopedCohortTarget(target: CohortTarget): boolean {
+  return (
+    !target.college &&
+    !target.collegeId &&
+    !target.department &&
+    !target.departmentId &&
+    (target.semester === undefined || target.semester === null)
+  );
+}
+
+// Exact-cohort match for a student / class_captain session against a
+// cohort-targeted item. A missing field on the item means "not scoped on
+// that axis" (e.g. a notice with shift 'Both' or section 'All' matches
+// any shift/section in the cohort).
+function sessionCohortMatchesTarget(session: ServerSession, target: CohortTarget): boolean {
+  const grp = resolveSessionAcademicGroup(session);
+  if (!grp) return false;
+  if (target.collegeId && target.collegeId !== grp.college_id) return false;
+  if (target.college && normalizeCollege(target.college).id !== grp.college_id) return false;
+  if (target.departmentId && target.departmentId !== grp.department_id) return false;
+  if (target.department && normalizeTechnology(target.department).id !== grp.department_id) return false;
+  if (target.semester !== undefined && target.semester !== null && Number(target.semester) !== Number(grp.semester)) return false;
+  if (target.shift && target.shift !== 'Both' && target.shift.toLowerCase() !== String(grp.shift).toLowerCase()) return false;
+  if (target.section && target.section !== 'All' && target.section !== grp.section) return false;
+  return true;
+}
+
+function checkFileDownloadAccess(
+  session: ServerSession | null,
+  target: CohortTarget,
+  ownerId?: string
+): { allowed: boolean; status: number; error?: string } {
+  if (!session) {
+    return { allowed: false, status: 401, error: 'Authentication Required: Please sign in to download files.' };
+  }
+  if (session.role === 'system_admin') return { allowed: true, status: 200 };
+  if (ownerId && ownerId === session.userId) return { allowed: true, status: 200 };
+  if (session.role === 'teacher') {
+    const authCheck = checkTeacherCohortAuthorization(session, {
+      college: target.college,
+      department: target.department,
+      semester: target.semester ?? undefined,
+      shift: target.shift ?? undefined
+    });
+    if (!authCheck.authorized) {
+      return { allowed: false, status: authCheck.status, error: authCheck.error };
+    }
+    return { allowed: true, status: 200 };
+  }
+  if (isUnscopedCohortTarget(target)) return { allowed: true, status: 200 };
+  if (sessionCohortMatchesTarget(session, target)) return { allowed: true, status: 200 };
+  return { allowed: false, status: 403, error: 'Forbidden: This file belongs to a different class cohort.' };
+}
+
+// Job circulars carry no college/semester cohort — only targetDepartments.
+// A circular targeting 'All' (or with no departments listed) is public to
+// any signed-in user; otherwise the caller's department must be targeted.
+function checkJobFileAccess(
+  session: ServerSession | null,
+  job: { targetDepartments?: string[]; postedById?: string }
+): { allowed: boolean; status: number; error?: string } {
+  if (!session) {
+    return { allowed: false, status: 401, error: 'Authentication Required: Please sign in to download job circulars.' };
+  }
+  if (session.role === 'system_admin') return { allowed: true, status: 200 };
+  if (job.postedById && job.postedById === session.userId) return { allowed: true, status: 200 };
+  const depts = Array.isArray(job.targetDepartments) ? job.targetDepartments : [];
+  if (depts.length === 0 || depts.some(d => String(d).toLowerCase().includes('all'))) {
+    return { allowed: true, status: 200 };
+  }
+  const sessionDeptId = session.department ? normalizeTechnology(session.department).id : null;
+  if (sessionDeptId && depts.some(d => normalizeTechnology(d).id === sessionDeptId)) {
+    return { allowed: true, status: 200 };
+  }
+  return { allowed: false, status: 403, error: 'Forbidden: This job circular is not targeted at your department.' };
+}
+
+// List visibility for cohort-targeted items (GET /api/notes,
+// GET /api/assignments): the same rule as the download check, so the list
+// never advertises a file the caller cannot download. Teachers see items
+// in their college/department whose semester/shift they teach.
+function isCohortItemVisibleToSession(
+  session: ServerSession,
+  item: CohortTarget
+): boolean {
+  if (session.role === 'system_admin') return true;
+  if (session.role === 'teacher') {
+    const teacher = serverTeachers.get(session.userId);
+    if (!teacher) return false;
+    if (item.collegeId && normalizeCollege(teacher.college).id !== item.collegeId) return false;
+    if (item.college && !areCollegesEquivalent(teacher.college, item.college)) return false;
+    if (item.departmentId && normalizeTechnology(teacher.department).id !== item.departmentId) return false;
+    if (item.department && !areDepartmentsEquivalent(teacher.department, item.department)) return false;
+    if (
+      item.semester !== undefined &&
+      item.semester !== null &&
+      Array.isArray(teacher.semestersTaught) &&
+      teacher.semestersTaught.length > 0 &&
+      !teacher.semestersTaught.includes(Number(item.semester))
+    ) {
+      return false;
+    }
+    if (item.shift && teacher.shift !== 'Both' && teacher.shift.toLowerCase() !== String(item.shift).toLowerCase()) return false;
+    return true;
+  }
+  if (isUnscopedCohortTarget(item)) return true;
+  return sessionCohortMatchesTarget(session, item);
+}
+
 /**
  * Helper: Filter enrolled students matching a specific cohort `(college, department, semester, shift, section)`
  * Shared by getCohortRoster() (JSON store) and the Supabase-first GET /api/roster
@@ -8613,7 +9542,21 @@ function getCohortRoster(params: {
 }
 
 /**
- * 10A. UPDATE TEACHER PROFILE SCOPE ON SERVER (`PUT /api/teachers/profile`)
+ * 10A. UPDATE TEACHER PROFILE ON SERVER (`PUT /api/teachers/profile`)
+ *
+ * RBAC audit fix (R1): this is a SELF-service endpoint, so it accepts
+ * only clearly non-scope fields — name, phone, designation and
+ * teachingSubjects. The taught scope (college, department,
+ * semestersTaught, shift, sectionsTaught, isGuideTeacher,
+ * guideTeacherCohort) is set at registration; there is currently no
+ * scope-change endpoint at all (the admin verify flow,
+ * `POST /api/teachers/verify`, only flips verificationStatus), so a
+ * scope correction needs a direct store edit by the admin until a
+ * dedicated admin scope endpoint exists. A teacher must never be able
+ * to widen their own cohort access, because the taught scope gates the
+ * roster, attendance, routines, notes, assignments, announcements and
+ * captain approvals. Scope fields sent here are silently ignored
+ * (never persisted, never dual-written).
  */
 app.put('/api/teachers/profile', async (req: Request, res: Response) => {
   try {
@@ -8632,22 +9575,9 @@ app.put('/api/teachers/profile', async (req: Request, res: Response) => {
 
     const {
       name,
-      college,
-      department,
       designation,
       teachingSubjects,
-      semestersTaught,
-      shift,
-      sectionsTaught,
-      // Audit batch v1.0.29 (B7): these were sent by the client setup
-      // form and silently ignored. They now persist on the teacher
-      // record (+ Supabase teacher_accounts columns). NOTE: the guide
-      // flag persists only — it gates nothing. The teacher-approve
-      // cohort check still uses semestersTaught/shift, not the guide
-      // cohort.
-      phone,
-      isGuideTeacher,
-      guideTeacherCohort
+      phone
     } = req.body;
 
     if (name) teacher.name = String(name).trim();
@@ -8655,70 +9585,26 @@ app.put('/api/teachers/profile', async (req: Request, res: Response) => {
       const cleanPhone = phone.trim().slice(0, 20);
       if (isLooseBdPhone(cleanPhone)) teacher.phone = cleanPhone;
     }
-    if (college) {
-      teacher.college = String(college).trim();
-      session.college = teacher.college;
-    }
-    if (department) {
-      teacher.department = String(department).trim();
-      session.department = teacher.department;
-    }
     if (designation) teacher.designation = String(designation).trim();
     if (Array.isArray(teachingSubjects) && teachingSubjects.length > 0) {
       teacher.teachingSubjects = teachingSubjects.map(String);
     }
-    if (Array.isArray(semestersTaught) && semestersTaught.length > 0) {
-      teacher.semestersTaught = semestersTaught.map(Number);
-    }
-    if (shift && ['Morning', 'Day', 'Both'].includes(String(shift))) {
-      teacher.shift = shift as 'Morning' | 'Day' | 'Both';
-    }
-    if (Array.isArray(sectionsTaught)) {
-      teacher.sectionsTaught = sectionsTaught.map(String);
-    }
-    if (isGuideTeacher === true || isGuideTeacher === false) {
-      teacher.isGuideTeacher = isGuideTeacher;
-      if (isGuideTeacher === true && guideTeacherCohort && typeof guideTeacherCohort === 'object') {
-        const cohort = guideTeacherCohort as Record<string, unknown>;
-        const sem = Number(cohort.semester);
-        const gShift = cohort.shift === 'Day' ? 'Day' : cohort.shift === 'Morning' ? 'Morning' : null;
-        const gSection = ['A1', 'B1', 'A2', 'B2'].includes(String(cohort.section))
-          ? (String(cohort.section) as Section)
-          : null;
-        if (Number.isInteger(sem) && sem >= 1 && sem <= 8 && gShift && gSection) {
-          teacher.guideTeacherCohort = { semester: sem as SemesterNumber, shift: gShift, section: gSection };
-        }
-      } else if (isGuideTeacher === false) {
-        delete teacher.guideTeacherCohort;
-      }
-    }
 
     saveAcademicStore(academicStore);
 
-    // Supabase dual-write for the fields this endpoint owns. The
-    // update helper retries without the guide columns when the
-    // supabase-audit-batch-v1.0.29.sql ALTERs have not been run yet.
+    // Supabase dual-write for the fields this endpoint owns.
     const teacherPatch: Parameters<typeof updateTeacherById>[1] = {};
     if (name) teacherPatch.name = teacher.name;
-    if (college) teacherPatch.college = teacher.college;
-    if (department) teacherPatch.department = teacher.department;
     if (designation) teacherPatch.designation = teacher.designation;
     if (Array.isArray(teachingSubjects) && teachingSubjects.length > 0) teacherPatch.teaching_subjects = teacher.teachingSubjects;
-    if (Array.isArray(semestersTaught) && semestersTaught.length > 0) teacherPatch.semesters_taught = teacher.semestersTaught;
-    if (shift && ['Morning', 'Day', 'Both'].includes(String(shift))) teacherPatch.shift = teacher.shift;
-    if (Array.isArray(sectionsTaught)) teacherPatch.sections_taught = teacher.sectionsTaught;
     if (typeof phone === 'string' && phone.trim()) teacherPatch.phone = teacher.phone;
-    if (isGuideTeacher === true || isGuideTeacher === false) {
-      teacherPatch.is_guide_teacher = teacher.isGuideTeacher ?? false;
-      teacherPatch.guide_teacher_cohort = teacher.guideTeacherCohort ?? null;
-    }
     if (Object.keys(teacherPatch).length > 0) {
       await persistTeacherProfileToSupabase(teacher.id, teacherPatch, 'TeacherProfileUpdate');
     }
 
     return res.status(200).json({
       success: true,
-      message: 'Teacher profile and authorized scope updated on server.',
+      message: 'Teacher profile updated on server.',
       teacher: sanitizeTeacher(teacher)
     });
   } catch (error) {
@@ -8776,6 +9662,11 @@ app.get('/api/roster', async (req: Request, res: Response) => {
     if (isSupabaseConfigured()) {
       try {
         const cohortRows = await listStudentsByCohort({
+          // D4: canonical ids narrow the SQL slice null-inclusively
+          // (legacy NULL-id rows are kept); filterStudentsByCohort()
+          // below stays the authority on membership.
+          collegeId: normalizeCollege(college).id,
+          departmentId: normalizeTechnology(department).id,
           semester,
           shift: shift === 'Day' ? 'Day' : 'Morning',
           section: section || 'A1'
@@ -8789,6 +9680,11 @@ app.get('/api/roster', async (req: Request, res: Response) => {
       roster = getCohortRoster({ college, department, semester, shift, section });
     }
 
+    // S5: contact details only for teachers/admins. The 403 gate above
+    // already restricts this route to those roles; the flag is passed
+    // explicitly so the stripper — not the gate alone — decides what a
+    // roster row may carry.
+    const canSeeRosterContactDetails = session.role === 'teacher' || session.role === 'system_admin';
     return res.status(200).json({
       success: true,
       cohort: {
@@ -8800,7 +9696,7 @@ app.get('/api/roster', async (req: Request, res: Response) => {
         shift,
         section
       },
-      students: roster.map(student => sanitizeStudent(student))
+      students: roster.map(student => sanitizeStudentForRoster(student, canSeeRosterContactDetails))
     });
   } catch (error) {
     console.error('Get roster error:', error);
@@ -10166,15 +11062,36 @@ function publicSubmission(sub: AssignmentSubmissionRecord): AssignmentSubmission
  * GET NOTES (`GET /api/notes`)
  * List responses never carry file bytes: media_data is stripped and a
  * legacy inline data: URL is rewritten to the download endpoint.
+ * RBAC audit fix (R4): requires a session and returns only the caller's
+ * cohort (teachers: their taught cohorts; admins: everything), so the
+ * list never advertises a file the caller cannot download.
  */
-app.get('/api/notes', (_req: Request, res: Response) => {
+app.get('/api/notes', (req: Request, res: Response) => {
+  const session = getAuthenticatedSession(req);
+  if (!session) {
+    return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to view study notes.' });
+  }
   return res.status(200).json({
     success: true,
-    notes: academicStore.notes.map(n => stripStoredUpload(n, 'mediaUrl', 'media_data', `/api/notes/${n.id}/file`))
+    notes: academicStore.notes
+      .filter(n => isCohortItemVisibleToSession(session, {
+        college: n.college,
+        collegeId: n.collegeId,
+        department: n.department,
+        departmentId: n.departmentId,
+        semester: n.semester,
+        shift: n.shift,
+        section: n.section
+      }))
+      .map(n => stripStoredUpload(n, 'mediaUrl', 'media_data', `/api/notes/${n.id}/file`))
   });
 });
 
-/** Download one note's file (`GET /api/notes/:id/file`) — any signed-in user. Serves Storage, then record bytes, then a legacy inline data: URL; 404 when the bytes exist nowhere (never a fake file). */
+/** Download one note's file (`GET /api/notes/:id/file`) — the uploader, a
+ * cohort-authorized teacher, a system admin, or a student/captain of the
+ * note's cohort (R4: previously any signed-in user could download any
+ * cohort's file). Serves Storage, then record bytes, then a legacy inline
+ * data: URL; 404 when the bytes exist nowhere (never a fake file). */
 app.get('/api/notes/:id/file', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
@@ -10184,6 +11101,18 @@ app.get('/api/notes/:id/file', async (req: Request, res: Response) => {
     const note = academicStore.notes.find(n => n.id === req.params.id);
     if (!note) {
       return res.status(404).json({ success: false, error: 'Note not found.' });
+    }
+    const access = checkFileDownloadAccess(session, {
+      college: note.college,
+      collegeId: note.collegeId,
+      department: note.department,
+      departmentId: note.departmentId,
+      semester: note.semester,
+      shift: note.shift,
+      section: note.section
+    }, note.uploadedById);
+    if (!access.allowed) {
+      return res.status(access.status).json({ success: false, error: access.error });
     }
     const served = await serveUploadedFile(res, {
       fileName: note.mediaName || `${note.title}.${(note.fileType || 'PDF').toLowerCase()}`,
@@ -10362,11 +11291,25 @@ app.post('/api/notes', async (req: Request, res: Response) => {
 
 /**
  * GET ASSIGNMENTS WITH ACCURATE SUBMISSION COUNTS (`GET /api/assignments`)
+ * RBAC audit fix (R4): requires a session (previously fully public) and
+ * returns only the caller's cohort (teachers: their taught cohorts;
+ * admins: everything).
  */
 app.get('/api/assignments', (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
-    const enrichedAssignments: AssignmentItem[] = academicStore.assignments.map((asg): AssignmentItem => {
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to view assignments.' });
+    }
+    const enrichedAssignments: AssignmentItem[] = academicStore.assignments.filter(asg => isCohortItemVisibleToSession(session, {
+      college: asg.college,
+      collegeId: asg.collegeId,
+      department: asg.department,
+      departmentId: asg.departmentId,
+      semester: asg.semester,
+      shift: asg.shift,
+      section: asg.section
+    })).map((asg): AssignmentItem => {
       const summary = computeAssignmentSubmissionSummary(asg, session);
       const isSubmittedForStudent =
         session && (session.role === 'student' || session.role === 'class_captain')
@@ -10392,7 +11335,7 @@ app.get('/api/assignments', (req: Request, res: Response) => {
   }
 });
 
-/** Download an assignment's attached file (`GET /api/assignments/:id/file`) — any signed-in user. */
+/** Download an assignment's attached file (`GET /api/assignments/:id/file`) — the uploader, a cohort-authorized teacher, a system admin, or a student/captain of the assignment's cohort (R4: previously any signed-in user). */
 app.get('/api/assignments/:id/file', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
@@ -10402,6 +11345,18 @@ app.get('/api/assignments/:id/file', async (req: Request, res: Response) => {
     const asg = academicStore.assignments.find(a => a.id === req.params.id);
     if (!asg) {
       return res.status(404).json({ success: false, error: 'Assignment not found.' });
+    }
+    const access = checkFileDownloadAccess(session, {
+      college: asg.college,
+      collegeId: asg.collegeId,
+      department: asg.department,
+      departmentId: asg.departmentId,
+      semester: asg.semester,
+      shift: asg.shift,
+      section: asg.section
+    }, asg.assignedById);
+    if (!access.allowed) {
+      return res.status(access.status).json({ success: false, error: access.error });
     }
     const served = await serveUploadedFile(res, {
       fileName: asg.attachmentName || `${asg.title}.${(asg.attachmentType || 'PDF').toLowerCase()}`,
@@ -11986,9 +12941,15 @@ app.get('/api/schedule-config', (req: Request, res: Response) => {
   }
 });
 
-app.put('/api/schedule-config', requireAdminOrTeacher, (req: Request, res: Response) => {
+// RBAC audit fix (R2): the global schedule config is founder-only
+// (requireSystemAdmin). Any verified teacher could previously rewrite
+// the timetable for every college; sub-admins are excluded too — the
+// founder is the only role that manages the shared schedule.
+app.put('/api/schedule-config', requireSystemAdmin, (req: Request, res: Response) => {
   try {
-    const session = (req as unknown as { session: ServerSession }).session;
+    // requireSystemAdmin sets adminSession (not session) — the founder
+    // session is the only one that reaches this handler (R2).
+    const session = (req as unknown as { adminSession: ServerSession }).adminSession;
     const body = req.body || {};
     const shift: Shift = body.shift === 'Day' ? 'Day' : 'Morning';
     const scopeKey = String(body.scopeKey || 'default').trim() || 'default';
@@ -12080,7 +13041,7 @@ app.put('/api/schedule-config', requireAdminOrTeacher, (req: Request, res: Respo
   }
 });
 
-app.post('/api/schedule-config/reset', requireAdminOrTeacher, (req: Request, res: Response) => {
+app.post('/api/schedule-config/reset', requireSystemAdmin, (req: Request, res: Response) => {
   try {
     const body = req.body || {};
     const shift: Shift = body.shift === 'Day' ? 'Day' : 'Morning';
@@ -12587,12 +13548,21 @@ async function getApprovedCaptainsForGroupAsync(group: {
   shift: Shift;
   section: Section;
 }): Promise<CaptainRecord[]> {
+  // D3: while any security-relevant dual-write has failed since boot,
+  // Postgres may hold stale captain state — prefer the JSON store
+  // (the source of truth) for the quota check instead of risking a
+  // 3rd captain in a 2-per-section section.
+  if (hasSupabaseDivergence()) {
+    return getApprovedCaptainsForGroup(group);
+  }
   if (!isSupabaseConfigured()) {
     return getApprovedCaptainsForGroup(group);
   }
   try {
     const rows = await listCaptainRecordsByCohort({
       status: 'Approved',
+      collegeId: group.college_id,
+      departmentId: group.department_id,
       semester: group.semester,
       shift: group.shift,
       section: group.section
@@ -12616,12 +13586,56 @@ async function getApprovedCaptainsForGroupAsync(group: {
  * null, e.g. a record created client-side that never reached the server
  * store), it logs a warning and the caller carries on with the JSON
  * write, so a captain decision is never lost because Postgres is down.
- * The admin audit log (`appendAdminAudit`) has no Postgres table yet,
- * so it stays JSON-only. The `pendingTeacherEndorsements` registry now
- * has a Postgres table (`supabase-schema-phase4.sql`, run 2026-11-24)
- * and is dual-written by `POST /api/verification/teacher-approve`
- * via `persistTeacherEndorsementRegistryToSupabase()` below.
+ * D9 (security audit 2026-11-27): the admin audit log IS dual-written
+ * to Postgres now (persistAdminAuditToSupabase, called from
+ * appendSystemAudit) — the `admin_audit_logs` table is no longer an
+ * orphan. The `pendingTeacherEndorsements` registry now has a
+ * Postgres table (`supabase-schema-phase4.sql`, run 2026-11-24) and is
+ * dual-written by `POST /api/verification/teacher-approve` via
+ * `persistTeacherEndorsementRegistryToSupabase()` below.
+ *
+ * D3 (security audit 2026-11-27) — dual-write divergence is now
+ * VISIBLE, not just a console warning: security-relevant persist
+ * failures (captain decisions, PIN/hash changes, endorsement
+ * registry, captain sync) are also written to the admin audit log
+ * via reportSupabaseDivergence(), and the affected record id is
+ * remembered in `supabaseDivergedRecordIds` for the rest of the
+ * process lifetime. Postgres-first captain reads check that set and
+ * prefer the JSON store while any divergence is outstanding, so a
+ * failed Postgres write can never make a later quota/list read show
+ * stale security state (e.g. a 3rd captain approved in a 2-per-section
+ * section). Non-security writes keep plain warn-and-continue.
  */
+const supabaseDivergedRecordIds = new Set<string>();
+
+function markSupabaseDiverged(recordId: string): void {
+  if (recordId) supabaseDivergedRecordIds.add(recordId);
+}
+
+/** True while any security-relevant dual-write has failed since boot — Postgres-first captain reads must prefer JSON. */
+function hasSupabaseDivergence(): boolean {
+  return supabaseDivergedRecordIds.size > 0;
+}
+
+/**
+ * D3 — record a security-relevant dual-write failure in the admin
+ * audit log (action `supabase_dual_write_failed`, admin `system`) as
+ * well as the console, so divergence is visible in the Admin Portal
+ * audit view instead of only in server logs. Never throws: audit
+ * logging must never break the request that is already carrying on
+ * with the JSON write. (appendSystemAudit is a hoisted function
+ * declaration defined later in this file; the audit entry is saved
+ * with the store so it survives a restart.)
+ */
+function reportSupabaseDivergence(logTag: string, detail: string): void {
+  try {
+    appendSystemAudit('supabase_dual_write_failed', 'supabase', 'Supabase dual-write', `[${logTag}] ${detail}`);
+    saveAcademicStore(academicStore);
+  } catch {
+    // Audit logging is best-effort; the console warning above stands.
+  }
+}
+
 async function persistCaptainRecordToSupabase(
   recordId: string,
   patch: Parameters<typeof updateCaptainRecordById>[1],
@@ -12631,9 +13645,16 @@ async function persistCaptainRecordToSupabase(
   try {
     const updated = await updateCaptainRecordById(recordId, patch);
     if (!updated) {
+      // D3: row missing in Postgres — the decision lives in JSON only;
+      // flag it so Postgres-first captain reads prefer JSON.
+      markSupabaseDiverged(recordId);
+      reportSupabaseDivergence(logTag, `Captain record ${recordId} not found in Postgres; decision kept in JSON store only.`);
       console.warn(`[${logTag}] Captain record ${recordId} not found in Postgres; decision kept in JSON store only.`);
     }
   } catch (err) {
+    // D3: see above.
+    markSupabaseDiverged(recordId);
+    reportSupabaseDivergence(logTag, `Supabase write failed, continuing with JSON store: ${err instanceof Error ? err.message : String(err)}`);
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
 }
@@ -12647,9 +13668,15 @@ async function persistCaptainStudentToSupabase(
   try {
     const updated = await updateStudentById(studentId, patch);
     if (!updated) {
+      // D3: captain status lives in JSON only — flag it for Postgres-first captain reads.
+      markSupabaseDiverged(studentId);
+      reportSupabaseDivergence(logTag, `Student ${studentId} not found in Postgres; captain status kept in JSON store only.`);
       console.warn(`[${logTag}] Student ${studentId} not found in Postgres; captain status kept in JSON store only.`);
     }
   } catch (err) {
+    // D3: see persistCaptainRecordToSupabase.
+    markSupabaseDiverged(studentId);
+    reportSupabaseDivergence(logTag, `Supabase write failed, continuing with JSON store: ${err instanceof Error ? err.message : String(err)}`);
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
 }
@@ -12699,7 +13726,51 @@ async function persistTeacherEndorsementRegistryToSupabase(
   try {
     await upsertPendingTeacherEndorsement(applicationId, endorsement);
   } catch (err) {
+    // D3: a lost endorsement registry write is security-relevant
+    // (captains/sync trusts the Postgres registry) — audit-log it.
+    markSupabaseDiverged(applicationId);
+    reportSupabaseDivergence(logTag, `Supabase registry write failed, continuing with JSON store: ${err instanceof Error ? err.message : String(err)}`);
     console.warn(`[${logTag}] Supabase registry write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * D9 (security audit 2026-11-27) — admin audit log dual-write. The
+ * `admin_audit_logs` Postgres table existed since phase 1 but was an
+ * orphan: no code ever read or wrote it, so a Postgres-first audit
+ * read would show nothing (and the one phase-2 seed row is stale).
+ * Every JSON audit entry is now mirrored to Postgres, fire-and-forget
+ * from appendSystemAudit(). Same contract as the other persist
+ * helpers: return early when Supabase is unconfigured, never throw —
+ * on any query error log a warning and the JSON entry stands alone.
+ * `details` is stored as a `{ note }` JSONB object (the column is
+ * jsonb, not text). The `system_admins` Postgres table is deliberately
+ * NOT wired: admin auth stays in data/system-admins.json by design
+ * (see S1 — migrating admin credentials to Postgres is a separate,
+ * Secrets-owned decision); the table is left in place, unused.
+ */
+async function persistAdminAuditToSupabase(entry: {
+  id: string;
+  adminId: string;
+  action: string;
+  targetId: string;
+  targetName: string;
+  timestamp: string;
+  details?: string;
+}): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertRecordToSupabase('admin_audit_logs', {
+      id: entry.id,
+      admin_id: entry.adminId,
+      action: entry.action,
+      target_id: entry.targetId,
+      target_name: entry.targetName,
+      details: entry.details ? { note: entry.details } : null,
+      timestamp: entry.timestamp
+    });
+  } catch (err) {
+    console.warn('[AdminAudit] Supabase audit-log write failed, continuing with JSON store:', err);
   }
 }
 
@@ -12712,8 +13783,8 @@ async function persistTeacherEndorsementRegistryToSupabase(
  * in one try/catch, so a failure part-way (e.g. community inserted but
  * membership rejected) can leave a partial Postgres row set; the JSON
  * store stays the source of truth until the live path is verified.
- * The admin audit log (`appendAdminAudit`) has no Postgres table yet,
- * so it stays JSON-only.
+ * D9: the admin audit log IS dual-written to Postgres now
+ * (persistAdminAuditToSupabase, via appendSystemAudit).
  */
 async function persistCommunityCreateToSupabase(
   community: AcademicCommunity,
@@ -13250,9 +14321,16 @@ async function persistStudentUpdateToSupabase(
   try {
     const updated = await updateStudentById(studentId, patch);
     if (!updated) {
+      // D3: this helper carries PIN changes (register / PIN reset) —
+      // a missing Postgres row means the new hash lives in JSON only.
+      markSupabaseDiverged(studentId);
+      reportSupabaseDivergence(logTag, `Student ${studentId} not found in Postgres; change kept in JSON store only.`);
       console.warn(`[${logTag}] Student ${studentId} not found in Postgres; change kept in JSON store only.`);
     }
   } catch (err) {
+    // D3: see above.
+    markSupabaseDiverged(studentId);
+    reportSupabaseDivergence(logTag, `Supabase write failed, continuing with JSON store: ${err instanceof Error ? err.message : String(err)}`);
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
 }
@@ -13282,7 +14360,38 @@ async function persistTeacherPinChangeToSupabase(
   try {
     const updated = await updateTeacherById(teacherId, patch);
     if (!updated) {
+      // D3: a PIN change that lands in JSON only leaves a stale hash
+      // in Postgres — audit-log it (D2's login-time upgrade uses this
+      // helper too, so a failed upgrade is visible the same way).
+      markSupabaseDiverged(teacherId);
+      reportSupabaseDivergence(logTag, `Teacher ${teacherId} not found in Postgres; PIN change kept in JSON store only.`);
       console.warn(`[${logTag}] Teacher ${teacherId} not found in Postgres; PIN change kept in JSON store only.`);
+    }
+  } catch (err) {
+    // D3: see above.
+    markSupabaseDiverged(teacherId);
+    reportSupabaseDivergence(logTag, `Supabase write failed, continuing with JSON store: ${err instanceof Error ? err.message : String(err)}`);
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * D8: dual-write helper for teacher-login auth state (failed-PIN count,
+ * lockout, and the transparent v2 hash upgrade on success). Same
+ * warn-and-continue contract as persistTeacherPinChangeToSupabase:
+ * never throws, so a Postgres failure can never block a login whose
+ * JSON-store state was already updated.
+ */
+async function persistTeacherAuthStateToSupabase(
+  teacherId: string,
+  patch: Parameters<typeof updateTeacherById>[1],
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const updated = await updateTeacherById(teacherId, patch);
+    if (!updated) {
+      console.warn(`[${logTag}] Teacher ${teacherId} not found in Postgres; login state kept in JSON store only.`);
     }
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
@@ -13365,6 +14474,11 @@ async function persistCaptainSyncToSupabase(
       });
     }
   } catch (err) {
+    // D3: a failed captain sync leaves Postgres stale on a
+    // security-relevant record — audit-log it and flag the record so
+    // Postgres-first captain reads prefer JSON.
+    markSupabaseDiverged(captain.id);
+    reportSupabaseDivergence(logTag, `Supabase write failed, continuing with JSON store: ${err instanceof Error ? err.message : String(err)}`);
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
 }
@@ -14182,14 +15296,14 @@ app.post('/api/routines/documents', async (req: Request, res: Response) => {
       : undefined;
 
     const docId = `rtdoc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    // Bytes to Supabase Storage first (community-files bucket, reused).
-    // On any failure the bytes stay on the record as file_data.
+    // D5: bytes to the dedicated `routine-documents` Storage bucket
+    // (was the shared `community-files` bucket). On any failure the
+    // bytes stay on the record as file_data.
     let storagePath: string | null = null;
     if (isSupabaseConfigured()) {
       try {
-        storagePath = await uploadStorageFile(
-          'community-files',
-          `routine-documents/${docId}_${sanitizeStorageFileName(fileName)}`,
+        storagePath = await uploadRoutineDocumentFile(
+          `${docId}_${sanitizeStorageFileName(fileName)}`,
           Buffer.from(inspected.fileData, 'base64'),
           inspected.mimeType
         );
@@ -14313,13 +15427,27 @@ app.get('/api/routines/documents/:id/file', async (req: Request, res: Response) 
     if (session.role !== 'system_admin' && !sameCohort && !teacherScope) {
       return res.status(403).json({ success: false, error: 'Forbidden: This document belongs to another class cohort.' });
     }
+    // D5: routine documents live in their own `routine-documents`
+    // bucket now; downloadRoutineDocumentFile() falls back to the
+    // legacy `community-files` bucket for documents uploaded before
+    // the move, then to the JSON file_data bytes.
     const served = await serveUploadedFile(res, {
       fileName: doc.fileName,
       mimeType: doc.mimeType,
-      bucket: 'community-files',
+      bucket: ROUTINE_DOCUMENTS_BUCKET,
       storagePath: doc.storage_path,
       fileData: doc.file_data
     });
+    if (!served && doc.storage_path) {
+      const legacyServed = await serveUploadedFile(res, {
+        fileName: doc.fileName,
+        mimeType: doc.mimeType,
+        bucket: 'community-files',
+        storagePath: doc.storage_path,
+        fileData: doc.file_data
+      });
+      if (legacyServed) return;
+    }
     if (!served) {
       return res.status(503).json({ success: false, error: 'File temporarily unavailable. Please try again.' });
     }
@@ -14503,7 +15631,10 @@ app.post('/api/routines', async (req: Request, res: Response) => {
 
     const nowIso = new Date().toISOString();
     const newRoutine: RoutinePeriod = {
-      id: body.id ? String(body.id).trim() : `rt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      // RBAC audit fix (R11): ids are always server-generated — a
+      // client-supplied body.id is ignored, so a caller cannot reuse
+      // another cohort's routine id and confuse PUT/DELETE lookups.
+      id: `rt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       day,
       periodNumber,
       startTime,
@@ -14615,7 +15746,9 @@ app.post('/api/routines/publish-batch', async (req: Request, res: Response) => {
     const nowIso = new Date().toISOString();
 
     const sanitizedPeriods: RoutinePeriod[] = periodsInput.map((p, idx) => ({
-      id: p.id ? String(p.id).trim() : `rt_batch_${Date.now()}_${idx}`,
+      // RBAC audit fix (R11): ids are always server-generated — a
+      // client-supplied p.id is ignored (see POST /api/routines).
+      id: `rt_batch_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 7)}`,
       day: (['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'].includes(String(p.day))
         ? String(p.day)
         : 'Saturday') as WeekDay,
@@ -14951,8 +16084,13 @@ app.get('/api/captains', async (req: Request, res: Response) => {
     }
 
     // Supabase first; any Postgres error falls back to the JSON store.
+    // D3: while any security-relevant dual-write has failed since boot,
+    // prefer the JSON store outright — a stale Postgres copy must not
+    // hide a decision that already landed in JSON.
     let records: CaptainRecord[];
-    if (isSupabaseConfigured()) {
+    if (hasSupabaseDivergence()) {
+      records = academicStore.captainRecords;
+    } else if (isSupabaseConfigured()) {
       try {
         records = await listAllCaptainRecords();
       } catch (err) {
@@ -15039,14 +16177,46 @@ app.post('/api/captains/sync', requireAuth, async (req: Request, res: Response) 
       c => c.isRegisteredAccount && (c.id === recordInput.id || c.studentId === recordInput.studentId)
     );
 
+    // RBAC audit fix (R9): the record's cohort NEVER moves from the
+    // request body. An existing record keeps its stored cohort; a new
+    // record for an already-registered student takes the stored student
+    // record's cohort. Only a brand-new registration (no stored student
+    // yet) uses the body cohort, because it is the only source. The
+    // quota check below therefore runs against the stored cohort too.
+    const linkedStudentForSync = academicStore.students.find(s => s.id === String(recordInput.studentId));
+    const resolveStoredCohort = (college: string, department: string, semester: number, shift: string, section: string) => {
+      const stored = resolveExplicitAcademicGroupInput({ college, department, semester, shift, section });
+      return stored.valid && stored.group ? stored.group : null;
+    };
+    const effectiveGroup =
+      (existingIdx >= 0
+        ? resolveStoredCohort(
+            academicStore.captainRecords[existingIdx].college,
+            academicStore.captainRecords[existingIdx].department,
+            academicStore.captainRecords[existingIdx].semester,
+            academicStore.captainRecords[existingIdx].shift,
+            academicStore.captainRecords[existingIdx].section
+          )
+        : null) ??
+      (linkedStudentForSync
+        ? resolveStoredCohort(
+            linkedStudentForSync.college,
+            linkedStudentForSync.department,
+            linkedStudentForSync.semester,
+            linkedStudentForSync.shift,
+            linkedStudentForSync.section
+          )
+        : null) ??
+      grp;
+
     if (recordInput.status === 'Approved') {
-      const existingApproved = (await getApprovedCaptainsForGroupAsync(grp)).filter(
+      const existingApproved = (await getApprovedCaptainsForGroupAsync(effectiveGroup)).filter(
         (c) => c.id !== recordInput.id && c.studentId !== recordInput.studentId
       );
       if (existingApproved.length >= 2) {
         return res.status(409).json({
           success: false,
-          error: `Captain Limit Reached: ${grp.college} · ${grp.department} · Semester ${grp.semester} (${grp.shift} · Sec ${grp.section}) already has the maximum of 2 verified Class Captains.`
+          error: `Captain Limit Reached: ${effectiveGroup.college} · ${effectiveGroup.department} · Semester ${effectiveGroup.semester} (${effectiveGroup.shift} · Sec ${effectiveGroup.section}) already has the maximum of 2 verified Class Captains.`
         });
       }
     }
@@ -15108,12 +16278,19 @@ app.post('/api/captains/sync', requireAuth, async (req: Request, res: Response) 
           ? String(recordInput.id)
           : `app_cr_${crypto.randomUUID()}`,
       studentId: String(recordInput.studentId),
-      studentName: String(recordInput.studentName || 'Class Captain').trim(),
-      college: grp.college,
-      department: grp.department,
-      semester: grp.semester,
-      shift: grp.shift,
-      section: grp.section,
+      // RBAC audit fix (R9): never overwrite the stored name with the
+      // 'Class Captain' default when the sync omits studentName — keep
+      // the existing record's name, else the linked student's name, and
+      // use the default only for a brand-new record with no name source.
+      studentName: String(recordInput.studentName || '').trim()
+        || (existingIdx >= 0 ? academicStore.captainRecords[existingIdx].studentName : '')
+        || (linkedStudentForSync ? linkedStudentForSync.name : '')
+        || 'Class Captain',
+      college: effectiveGroup.college,
+      department: effectiveGroup.department,
+      semester: effectiveGroup.semester,
+      shift: effectiveGroup.shift,
+      section: effectiveGroup.section,
       boardRoll: String(recordInput.boardRoll || '').trim(),
       regNumber: String(recordInput.regNumber || '').trim(),
       phone: String(recordInput.phone || '').trim(),
@@ -15141,7 +16318,10 @@ app.post('/api/captains/sync', requireAuth, async (req: Request, res: Response) 
       ) {
         return res.status(409).json({ success: false, error: 'Captain application credentials do not match the student account.' });
       }
-      linkedStudent.isRegisteredAccount = true;
+      if (linkedStudent.pinHash) linkedStudent.isRegisteredAccount = true;
+      // AU13: a PIN-less account is never marked registered here — a
+      // registered account without a PIN was the latent AU1 feed. Such
+      // a student claims this record by registering with a PIN.
       if (linkedStudent.captainVerificationStatus !== 'Approved') {
         linkedStudent.accountType = 'class_captain';
         linkedStudent.captainVerificationStatus = 'Pending';
@@ -15174,7 +16354,11 @@ app.post('/api/captains/sync', requireAuth, async (req: Request, res: Response) 
         captainVerificationStatus: 'Pending',
         attendanceRate: '',
         createdAt: normalizedCaptain.appliedAt,
-        isRegisteredAccount: true
+        // AU13: created WITHOUT isRegisteredAccount — a sync-created
+        // record has no PIN, so it must not be a registered account.
+        // The student claims it by registering with a PIN (the register
+        // handler upgrades an unregistered record for the same roll).
+        isRegisteredAccount: false
       };
     }
 
@@ -15201,7 +16385,7 @@ app.post('/api/captains/sync', requireAuth, async (req: Request, res: Response) 
     return res.status(200).json({
       success: true,
       captainRecord: normalizedCaptain,
-      cohortApprovedCount: (await getApprovedCaptainsForGroupAsync(grp)).length
+      cohortApprovedCount: (await getApprovedCaptainsForGroupAsync(effectiveGroup)).length
     });
   } catch (err) {
     console.error('[Captains API] POST /api/captains/sync error:', err);
@@ -15399,9 +16583,21 @@ function isUserCommunityModerator(session: ServerSession, comm: AcademicCommunit
   if (session.role === 'system_admin') return true;
   if (comm.created_by === session.userId) return true;
   if (Array.isArray(comm.moderators) && comm.moderators.includes(session.userId)) return true;
+  // RBAC audit fix (R3): a teacher is a moderator ONLY as a real, active
+  // member of this community whose college matches the community's.
+  // Teacher sessions carry no semester, so resolveSessionAcademicGroup()
+  // returns null for them — the old code treated that null as "moderator
+  // of every community", which let any non-member teacher read, post,
+  // pin and delete anywhere. Membership alone is not enough either:
+  // the college must match, so a teacher from another institute cannot
+  // moderate here even if they somehow hold a membership row.
   if (session.role === 'teacher') {
-    const grp = resolveSessionAcademicGroup(session);
-    if (!grp || grp.college_id === comm.college_id) return true;
+    const membership = academicStore.communityMemberships.find(
+      m => m.community_id === comm.id && m.user_id === session.userId && m.status === 'active'
+    );
+    if (!membership) return false;
+    const teacherCollegeId = session.college ? normalizeCollege(session.college).id : null;
+    return teacherCollegeId !== null && teacherCollegeId === comm.college_id;
   }
   return false;
 }
@@ -15539,6 +16735,7 @@ app.get('/api/communities/recommended', async (req: Request, res: Response) => {
       const qSem = req.query.semester ? Number(req.query.semester) : null;
       if (qClg && qTech && qSem && qSem >= 1 && qSem <= 8) {
         session = {
+          id: crypto.randomUUID(),
           token: 'temp_onboarding',
           userId: 'temp_student',
           role: 'student',
@@ -16407,7 +17604,7 @@ app.post('/api/communities/:id/messages/:msgId/pin', (req: Request, res: Respons
     }
 
     if (!isUserCommunityModerator(session, comm)) {
-      return res.status(403).json({ success: false, error: 'Only community moderators or teachers can pin announcements.' });
+      return res.status(403).json({ success: false, error: 'Only community moderators can pin announcements.' });
     }
 
     const msg = academicStore.communityMessages.find(m => m.id === req.params.msgId && m.community_id === comm.id);
@@ -16528,6 +17725,21 @@ app.post('/api/communities/:id/report', (req: Request, res: Response) => {
     const session = getAuthenticatedSession(req);
     if (!session) {
       return res.status(401).json({ success: false, error: 'Unauthorized.' });
+    }
+
+    const comm = academicStore.communities.find(c => c.id === req.params.id);
+    if (!comm) {
+      return res.status(404).json({ success: false, error: 'Community not found.' });
+    }
+
+    // RBAC audit fix (R7): only active members (or a system admin) may
+    // report — previously any authenticated user could file reports
+    // against any user in any community, including ones they never joined.
+    const isMember = academicStore.communityMemberships.some(
+      m => m.community_id === comm.id && m.user_id === session.userId && m.status === 'active'
+    );
+    if (!isMember && session.role !== 'system_admin') {
+      return res.status(403).json({ success: false, error: 'Forbidden: Only active members of this community can report content.' });
     }
 
     const { reported_message_id, reported_user_id, reason } = req.body || {};
@@ -16751,6 +17963,12 @@ interface AdminManagedAccount {
  * JSON path excludes it. Any error falls back to the JSON store.
  */
 async function loadCaptainRecordsForAdminList(): Promise<CaptainRecord[]> {
+  // D3: while any security-relevant dual-write has failed since boot,
+  // prefer the JSON store — the admin list must show the decided
+  // status, not a stale Postgres copy.
+  if (hasSupabaseDivergence()) {
+    return academicStore.captainRecords;
+  }
   if (!isSupabaseConfigured()) {
     return academicStore.captainRecords;
   }
@@ -16844,7 +18062,7 @@ function appendSystemAudit(
   details?: string,
   adminId = 'system'
 ): void {
-  academicStore.adminAuditLogs.unshift({
+  const entry = {
     id: `audit_${crypto.randomUUID()}`,
     adminId,
     action,
@@ -16852,8 +18070,13 @@ function appendSystemAudit(
     targetName,
     timestamp: new Date().toISOString(),
     details
-  });
+  };
+  academicStore.adminAuditLogs.unshift(entry);
   academicStore.adminAuditLogs = academicStore.adminAuditLogs.slice(0, 5000);
+  // D9: mirror the entry to Postgres (`admin_audit_logs`) — the table
+  // was an orphan until now. Fire-and-forget; the helper never throws
+  // and the JSON entry stands alone if Postgres is down.
+  void persistAdminAuditToSupabase(entry);
 }
 
 function appendAdminAudit(
@@ -17788,10 +19011,21 @@ app.get('/api/notices/bteb', async (req: Request, res: Response) => {
   try {
     const forceRefresh = req.query.refresh === 'true';
     const simulateOutage = req.query.simulateOutage === 'true';
+    // R5 residual (audit fix): a forced refresh triggers live BTEB fetches,
+    // so only teachers/admins may request one. Everyone else gets the
+    // cached notices; the scheduled 30-min sync still runs for all callers.
+    const refreshSession = getAuthenticatedSession(req);
+    const refreshAllowed = !!refreshSession && (
+      refreshSession.role === 'teacher' ||
+      refreshSession.role === 'system_admin' ||
+      (ADMIN_ROLES as string[]).includes(refreshSession.role)
+    );
+    const effectiveForceRefresh = forceRefresh && refreshAllowed;
+    const effectiveSimulateOutage = simulateOutage && refreshAllowed;
 
     let syncResult = null;
-    if (forceRefresh || simulateOutage || isBtebNoticesSyncDue()) {
-      syncResult = await syncBtebOfficialNotices({ force: forceRefresh, simulateOutage });
+    if (effectiveForceRefresh || effectiveSimulateOutage || isBtebNoticesSyncDue()) {
+      syncResult = await syncBtebOfficialNotices({ force: effectiveForceRefresh, simulateOutage: effectiveSimulateOutage });
     }
 
     const q = String(req.query.q || '').trim().toLowerCase();
@@ -17860,6 +19094,16 @@ app.get('/api/notices/bteb', async (req: Request, res: Response) => {
  */
 app.post('/api/notices/bteb/sync', requireAuth, async (req: Request, res: Response) => {
   try {
+    // RBAC audit fix (R5): triggering an external sync (live BTEB fetch
+    // or a manual import) is admin/teacher only — any authenticated
+    // student could previously fire it at will.
+    const syncSession = (req as unknown as { session: ServerSession }).session;
+    if (!syncSession || (syncSession.role !== 'system_admin' && syncSession.role !== 'teacher')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: Only System Administrators or Verified Teachers can synchronize BTEB notices.'
+      });
+    }
     const { simulateOutage, manualNotices } = req.body || {};
 
     // Support admin-assisted or test discovery of new notices without duplicating existing ones
@@ -18624,6 +19868,12 @@ app.post('/api/notices/campus/:id/report', (req: Request, res: Response) => {
  * Authenticated (any signed-in user — a plain <a href> gets a 401,
  * so the client fetches with the session token and hands the blob
  * to nativeService.downloadBlob, like the community attachments).
+ * RBAC audit fix (R4): the caller must also be in the notice's audience
+ * — the publisher, a system admin, a cohort-authorized teacher, or a
+ * student/captain of the notice's target scope (college notices: same
+ * college; department notices: same department; cohort notices: exact
+ * cohort). Previously any signed-in user could download any notice's
+ * attachment.
  * Serves the stored bytes, or a legacy inline data: URL. When the
  * bytes exist nowhere reachable this is a 404 — it used to answer
  * with a fake generated PDF, which is never served any more.
@@ -18637,6 +19887,31 @@ app.get('/api/notices/campus/:id/attachment', async (req: Request, res: Response
     const notice = academicStore.campusNotices.find(n => n.id === req.params.id);
     if (!notice) {
       return res.status(404).json({ success: false, error: 'Notice attachment not found.' });
+    }
+    // Scope the cohort target to what the notice actually targets:
+    // a college-wide notice is open to the whole college, a department
+    // notice to the whole department, a cohort notice to the exact
+    // cohort. A notice with no college set is an admin broadcast to
+    // every college (same rule as the GET /api/notices/campus list).
+    const noticeTarget: CohortTarget =
+      !notice.college_id && !notice.college
+        ? {}
+        : notice.targetScope === 'college'
+          ? { college: notice.college, collegeId: notice.college_id }
+          : notice.targetScope === 'department'
+            ? { college: notice.college, collegeId: notice.college_id, department: notice.department, departmentId: notice.department_id }
+            : {
+                college: notice.college,
+                collegeId: notice.college_id,
+                department: notice.department,
+                departmentId: notice.department_id,
+                semester: notice.semester ?? undefined,
+                shift: notice.shift ?? undefined,
+                section: notice.section ?? undefined
+              };
+    const access = checkFileDownloadAccess(session, noticeTarget, notice.publisherId);
+    if (!access.allowed) {
+      return res.status(access.status).json({ success: false, error: access.error });
     }
     const served = await serveUploadedFile(res, {
       fileName: notice.attachmentName || 'notice-attachment',
@@ -18947,7 +20222,10 @@ app.get('/api/jobs', (req: Request, res: Response) => {
   }
 });
 
-/** Download a job circular's attached file (`GET /api/jobs/:id/file`) — any signed-in user. */
+/** Download a job circular's attached file (`GET /api/jobs/:id/file`) —
+ * the poster, a system admin, or a signed-in user whose department the
+ * circular targets (R4: previously any signed-in user; circulars
+ * targeting 'All' stay open to every signed-in user). */
 app.get('/api/jobs/:id/file', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
@@ -18957,6 +20235,10 @@ app.get('/api/jobs/:id/file', async (req: Request, res: Response) => {
     const job = academicStore.jobs.find(j => j.id === req.params.id);
     if (!job) {
       return res.status(404).json({ success: false, error: 'Job circular not found.' });
+    }
+    const access = checkJobFileAccess(session, job);
+    if (!access.allowed) {
+      return res.status(access.status).json({ success: false, error: access.error });
     }
     const served = await serveUploadedFile(res, {
       fileName: job.mediaName || 'job-circular',
@@ -19338,8 +20620,18 @@ app.delete('/api/jobs/:id', (req: Request, res: Response) => {
 /**
  * 16C-5. SYNC / REFRESH JOB CIRCULARS (`POST /api/jobs/sync`)
  */
-app.post('/api/jobs/sync', requireAuth, async (_req: Request, res: Response) => {
+app.post('/api/jobs/sync', requireAuth, async (req: Request, res: Response) => {
   try {
+    // RBAC audit fix (R5): triggering an external Careerjet sync is
+    // admin/teacher only — any authenticated student could previously
+    // fire it at will.
+    const syncSession = (req as unknown as { session: ServerSession }).session;
+    if (!syncSession || (syncSession.role !== 'system_admin' && syncSession.role !== 'teacher')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: Only System Administrators or Verified Teachers can synchronize job circulars.'
+      });
+    }
     const result = await syncCareerjetJobs();
     return res.status(200).json({
       success: true,

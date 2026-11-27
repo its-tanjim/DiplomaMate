@@ -19,7 +19,11 @@ import {
 import { MonitorSmartphone, RefreshCw } from 'lucide-react';
 
 type AdminSession = {
+  // A1: sessionId is an opaque UUID (the revoke key), never a bearer
+  // token. tokenFingerprint is the first 8 chars of the token + '…' —
+  // display-only, it cannot be used as a bearer token.
   sessionId: string;
+  tokenFingerprint?: string;
   id?: string;
   user?: string;
   userName?: string;
@@ -123,6 +127,9 @@ export const AdminSessionsSection: React.FC = () => {
                       </div>
                       <p className="mt-1 text-[11px] text-slate-500">
                         Session <span className="font-mono">{id.slice(0, 16)}{id.length > 16 ? '…' : ''}</span>
+                        {session.tokenFingerprint ? (
+                          <span> · Token <span className="font-mono">{session.tokenFingerprint}</span></span>
+                        ) : null}
                         {session.device ? ` · ${session.device}` : ''}
                         {session.createdAt ? ` · Signed in ${formatDateTime(session.createdAt)}` : ''}
                         {session.lastSeenAt ? ` · Last seen ${formatDateTime(session.lastSeenAt)}` : ''}

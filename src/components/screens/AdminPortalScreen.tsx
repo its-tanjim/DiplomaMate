@@ -57,6 +57,7 @@ import { AdminNotificationsSection } from '../admin/AdminNotificationsSection';
 import { AdminRoutinesSection } from '../admin/AdminRoutinesSection';
 import { AdminFlagsSection } from '../admin/AdminFlagsSection';
 import { AdminVersionSection } from '../admin/AdminVersionSection';
+import { AdminChangePasswordSection } from '../admin/AdminChangePasswordSection';
 import { AdminReportsSection } from '../admin/AdminReportsSection';
 import { AdminRolesSection } from '../admin/AdminRolesSection';
 import { AdminSessionsSection } from '../admin/AdminSessionsSection';
@@ -95,7 +96,7 @@ export const AdminPortalScreen: React.FC = () => {
   // Sub-sections inside the grouped Content / Operations / Settings tabs.
   const [contentSub, setContentSub] = useState<'notices' | 'notifications' | 'routines'>('notices');
   const [opsSub, setOpsSub] = useState<'reports' | 'roles' | 'sessions' | 'tickets' | 'analytics'>('reports');
-  const [settingsSub, setSettingsSub] = useState<'flags' | 'version'>('flags');
+  const [settingsSub, setSettingsSub] = useState<'flags' | 'version' | 'password'>('flags');
 
   // Pill sub-nav shared by the grouped tabs (Content / Operations / Settings).
   const renderSubNav = (
@@ -894,6 +895,7 @@ export const AdminPortalScreen: React.FC = () => {
               [
                 { id: 'flags', label: 'Feature Flags & Maintenance' },
                 { id: 'version', label: 'Force Update' },
+                { id: 'password', label: 'Change Password' },
               ],
               settingsSub,
               id => setSettingsSub(id as typeof settingsSub)
@@ -901,6 +903,7 @@ export const AdminPortalScreen: React.FC = () => {
             <div className="mt-3">
               {settingsSub === 'flags' && <AdminFlagsSection />}
               {settingsSub === 'version' && <AdminVersionSection />}
+              {settingsSub === 'password' && <AdminChangePasswordSection />}
             </div>
           </div>
         )}

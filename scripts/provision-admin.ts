@@ -19,6 +19,11 @@ interface StoredSystemAdmin {
   email: string;
   passwordHash: string;
   passwordSalt: string;
+  // Hash scheme version: 2 = PBKDF2-SHA256 600,000 iterations (see
+  // server.ts ADMIN_PASSWORD_ITERATIONS_V2). Records minted before the
+  // v2 scheme carry no version (= legacy 10,000 iterations) and are
+  // upgraded transparently on the next successful admin login.
+  passwordHashVersion?: number;
   role: 'system_admin';
   failedAttempts: number;
   lockoutUntil: number | null;
@@ -26,8 +31,11 @@ interface StoredSystemAdmin {
   lastLoginAt?: string;
 }
 
+// S2: mint v2 hashes (PBKDF2-SHA256, 600,000 iterations) — the old
+// 10,000-iteration default silently re-introduced legacy hashes on
+// every re-provision, undoing the login-time upgrade in server.ts.
 function hashAdminPassword(password: string, salt: string): string {
-  return crypto.pbkdf2Sync(password, salt, 10000, 32, 'sha256').toString('hex');
+  return crypto.pbkdf2Sync(password, salt, 600000, 32, 'sha256').toString('hex');
 }
 
 function parseCliArgs(argv: string[]) {
@@ -88,6 +96,7 @@ function main() {
       name: name || admins[existingIdx].name,
       passwordSalt: salt,
       passwordHash,
+      passwordHashVersion: 2,
       failedAttempts: 0,
       lockoutUntil: null
     };
@@ -99,6 +108,7 @@ function main() {
       email,
       passwordHash,
       passwordSalt: salt,
+      passwordHashVersion: 2,
       role: 'system_admin',
       failedAttempts: 0,
       lockoutUntil: null,

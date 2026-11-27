@@ -68,6 +68,7 @@
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { normalizeCollege, normalizeTechnology } from '../src/data/directoryData';
 import type { EnrolledStudent } from '../src/data/mockData';
 import type {
   AcademicCommunity,
@@ -186,6 +187,106 @@ function isMissingColumnError(error: unknown, column: string): boolean {
 }
 
 /**
+ * D4 (audit 2026-11-27) — canonical cohort ids for one stored display
+ * name pair. `normalizeCollege('')` defaults to DPI and
+ * `normalizeTechnology('')` to CST, so an empty / missing name maps to
+ * NULL, never to a default college — a wrong id would silently move a
+ * row into another cohort's SQL slice. Callers use this one helper so
+ * the stored-name -> canonical-id mapping cannot drift per route.
+ */
+export function canonicalCohortIds(
+  college: string | null | undefined,
+  department: string | null | undefined,
+): { college_id: string | null; department_id: string | null } {
+  return {
+    college_id: college && String(college).trim() ? normalizeCollege(String(college)).id : null,
+    department_id:
+      department && String(department).trim() ? normalizeTechnology(String(department)).id : null,
+  };
+}
+
+/** D4 — when a patch sets `college` / `department` (display names), fill in the matching canonical ids so the row stays SQL-filterable. Only the side present in the patch is derived; an explicitly supplied id is never overwritten. */
+function withCanonicalCohortIds<
+  T extends Partial<
+    Record<'college' | 'department' | 'college_id' | 'department_id', string | null>
+  >,
+>(patch: T): T {
+  const out = { ...patch } as T & Record<string, unknown>;
+  if ('college' in patch && !('college_id' in patch)) {
+    out.college_id =
+      patch.college && String(patch.college).trim()
+        ? normalizeCollege(String(patch.college)).id
+        : null;
+  }
+  if ('department' in patch && !('department_id' in patch)) {
+    out.department_id =
+      patch.department && String(patch.department).trim()
+        ? normalizeTechnology(String(patch.department)).id
+        : null;
+  }
+  return out as T;
+}
+
+/** True when a value is safe to interpolate into a PostgREST `.or()` filter (canonical ids only). */
+function isSafeFilterId(value: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(value);
+}
+
+/**
+ * D4 — null-inclusive SQL narrowing on a canonical-id column. Rows
+ * written before the backfill (or before
+ * supabase-rls-enable-v1.0.30.sql runs) carry NULL ids, so an exact
+ * `.eq()` would silently drop them from the result. `id = X OR id IS
+ * NULL` narrows the over-fetch without dropping legacy rows; the
+ * caller's in-memory canonical-id filter stays the authority.
+ */
+function narrowByCanonicalId(
+  query: { or: (filters: string, opts?: { foreignTable?: string }) => unknown },
+  column: string,
+  id: string | undefined,
+): void {
+  if (id && isSafeFilterId(id)) {
+    query.or(`${column}.eq.${id},${column}.is.null`);
+  }
+}
+
+/**
+ * D6 (audit 2026-11-27) — generic erasure helpers. Delete every row in
+ * `table` whose `column` equals `value`, returning how many rows were
+ * removed. Throws on any query error — callers catch and continue with
+ * the JSON erasure, so a Postgres outage never blocks an approved
+ * deletion. Table/column names come from the server's own erasure
+ * table map in server.ts, never from request input.
+ */
+export async function deleteRecordsByColumnToSupabase(
+  table: string,
+  column: string,
+  value: string,
+): Promise<number> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from(table).delete().eq(column, value).select('id');
+  throwIfError(error, `deleteRecordsByColumn(${table}.${column})`);
+  return data?.length ?? 0;
+}
+
+/** D6 — anonymise one column to 'deleted' on every row matching `column = value`. Returns rows touched. */
+export async function anonymizeRecordsByColumnToSupabase(
+  table: string,
+  column: string,
+  value: string,
+  patch: Record<string, unknown>,
+): Promise<number> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from(table)
+    .update(patch)
+    .eq(column, value)
+    .select('id');
+  throwIfError(error, `anonymizeRecordsByColumn(${table}.${column})`);
+  return data?.length ?? 0;
+}
+
+/**
  * Generic record helpers (audit batch v1.0.29, B19). The record stores
  * that had no typed helper yet (notes, assignments, submissions, jobs,
  * semester records, support tickets, deletion requests, announcements,
@@ -193,8 +294,9 @@ function isMissingColumnError(error: unknown, column: string): boolean {
  * share one contract: insert / upsert / update-by-id / delete-by-id
  * against a named table, throwing on any query error so the server.ts
  * persist wrappers can catch, warn, and keep the JSON-store write.
- * RLS is not enabled on these tables yet (Phase 3 note), and the
- * server uses the service_role key, so these calls are not blocked
+ * RLS is enabled on these tables by supabase-rls-enable-v1.0.30.sql
+ * (D1, deny-by-default for anon/authenticated); the server uses the
+ * service_role key, which bypasses RLS, so these calls are not blocked
  * by row policies. Tables that do not exist yet (announcements,
  * reminders, support_tickets, account_deletion_requests,
  * routine_documents) are created by
@@ -252,6 +354,11 @@ export interface StudentRow {
   reg_number: string | null;
   college: string | null;
   department: string | null;
+  // Added by supabase-rls-enable-v1.0.30.sql (D4): canonical ids for the
+  // stored display names above, written by insert/update helpers via
+  // canonicalCohortIds(). NULL until that SQL runs / the row is rewritten.
+  college_id: string | null;
+  department_id: string | null;
   semester: number | null;
   shift: string | null;
   section: string | null;
@@ -264,6 +371,10 @@ export interface StudentRow {
   pin_salt: string | null;
   // Added by supabase-schema-phase4.sql; null until that ALTER is run.
   pin_hash_version: number | null;
+  // Added by supabase-consent-columns-phase5.sql (D7); null until that ALTER is run.
+  consent_accepted: boolean | null;
+  consent_version: string | null;
+  consent_at: string | null;
   // Added by supabase-enrolled-subjects.sql; null until that ALTER is run.
   // JSONB array of { code, name } — the subjects a student enrolled in
   // for the current semester. Read by toStudent(); written by
@@ -291,6 +402,9 @@ export interface TeacherRow {
   phone: string | null;
   college: string | null;
   department: string | null;
+  // Added by supabase-rls-enable-v1.0.30.sql (D4); see StudentRow.
+  college_id: string | null;
+  department_id: string | null;
   designation: string | null;
   teaching_subjects: string[] | null;
   semesters_taught: number[] | null;
@@ -301,6 +415,10 @@ export interface TeacherRow {
   pin_hash: string | null;
   // Added by supabase-schema-phase4.sql; null until that ALTER is run.
   pin_hash_version: number | null;
+  // Added by supabase-consent-columns-phase5.sql (D7); null until that ALTER is run.
+  consent_accepted: boolean | null;
+  consent_version: string | null;
+  consent_at: string | null;
   // Added by supabase-audit-batch-v1.0.29.sql; null until that ALTER is
   // run. Guide-teacher flag + the cohort the teacher guides
   // ({ semester, shift, section }) — written by PUT /api/teachers/profile.
@@ -331,6 +449,10 @@ export interface TeacherAccount {
   pinHash: string;
   pinSalt: string;
   pinHashVersion?: number;
+  // Consent (D7): added by supabase-consent-columns-phase5.sql; undefined until that ALTER runs.
+  consentAccepted?: boolean;
+  consentVersion?: string;
+  consentAt?: string;
   failedPinAttempts: number;
   lockoutUntil: number | null;
   createdAt: string;
@@ -352,6 +474,9 @@ export interface CaptainRow {
   student_name: string | null;
   college: string | null;
   department: string | null;
+  // Added by supabase-rls-enable-v1.0.30.sql (D4); see StudentRow.
+  college_id: string | null;
+  department_id: string | null;
   semester: number | null;
   shift: string | null;
   section: string | null;
@@ -533,6 +658,19 @@ export function toStudent(row: StudentRow): EnrolledStudent {
       ? { regulation: row.regulation }
       : {}),
     ...(parsedNotifications ? { notifications: parsedNotifications } : {}),
+    // consent_accepted / consent_version / consent_at are added by
+    // supabase-consent-columns-phase5.sql (D7). EnrolledStudent (src)
+    // carries no such fields, so they ride as an extension (same
+    // pattern as the profile fields above) — spread, never a type
+    // change in src/. Absent column -> undefined -> the JSON-store
+    // consent stays the record of consent.
+    ...(row.consent_accepted === null || row.consent_accepted === undefined
+      ? {}
+      : {
+          consentAccepted: row.consent_accepted,
+          ...(row.consent_version ? { consentVersion: row.consent_version } : {}),
+          ...(row.consent_at ? { consentAt: row.consent_at } : {}),
+        }),
   };
 }
 
@@ -597,6 +735,11 @@ export function toTeacher(row: TeacherRow): TeacherAccount {
     // supabase-audit-batch-v1.0.29.sql; undefined until that ALTER runs.
     isGuideTeacher: row.is_guide_teacher ?? undefined,
     guideTeacherCohort: parseGuideTeacherCohort(row.guide_teacher_cohort),
+    // consent_accepted / consent_version / consent_at are added by
+    // supabase-consent-columns-phase5.sql (D7); undefined until that ALTER runs.
+    consentAccepted: row.consent_accepted ?? undefined,
+    consentVersion: row.consent_version ?? undefined,
+    consentAt: row.consent_at ?? undefined,
   };
 }
 
@@ -842,6 +985,12 @@ export function toCampusNotice(row: CampusNoticeRow): CampusNoticeItem {
 export interface CohortFilter {
   college?: string;
   department?: string;
+  // D4: canonical ids (from normalizeCollege()/normalizeTechnology()).
+  // When supplied, the SQL narrows null-inclusively on college_id /
+  // department_id (legacy NULL-id rows are kept); the caller's
+  // in-memory canonical-id filter stays the authority.
+  collegeId?: string;
+  departmentId?: string;
   semester?: number;
   shift?: string;
   section?: string;
@@ -919,6 +1068,11 @@ export async function listStudentsByCohort(filter: CohortFilter): Promise<Enroll
   let query = client.from('students').select('*');
   if (filter.college) query = query.eq('college', filter.college);
   if (filter.department) query = query.eq('department', filter.department);
+  // D4: canonical-id narrowing is null-inclusive (see
+  // narrowByCanonicalId) — legacy rows with NULL ids are kept, and the
+  // caller's filterStudentsByCohort() still decides membership.
+  narrowByCanonicalId(query, 'college_id', filter.collegeId);
+  narrowByCanonicalId(query, 'department_id', filter.departmentId);
   if (filter.semester !== undefined) query = query.eq('semester', filter.semester);
   if (filter.shift) query = query.eq('shift', filter.shift);
   if (filter.section) query = query.eq('section', filter.section);
@@ -950,6 +1104,8 @@ export async function updateStudentById(
   patch: Partial<Omit<StudentRow, 'id' | 'created_at'>>,
 ): Promise<EnrolledStudent | null> {
   const client = getSupabaseClient();
+  // D4: derive canonical cohort ids from any college/department in the patch.
+  patch = withCanonicalCohortIds(patch);
   const runUpdate = (p: Partial<Omit<StudentRow, 'id' | 'created_at'>>) =>
     client
       .from('students')
@@ -958,21 +1114,27 @@ export async function updateStudentById(
       .select('*')
       .maybeSingle();
   let { data, error } = await runUpdate(patch);
-  if (error && 'pin_hash_version' in patch && isMissingColumnError(error, 'pin_hash_version')) {
-    const { pin_hash_version: _dropped, ...patchWithoutVersion } = patch;
-    ({ data, error } = await runUpdate(patchWithoutVersion));
+  // Retries chain: each retry drops columns from the patch the previous
+  // attempt actually sent, so a DB missing several new columns still
+  // applies the rest of the patch instead of failing outright.
+  let currentPatch = patch;
+  if (error && 'pin_hash_version' in currentPatch && isMissingColumnError(error, 'pin_hash_version')) {
+    const { pin_hash_version: _dropped, ...patchWithoutVersion } = currentPatch;
+    currentPatch = patchWithoutVersion;
+    ({ data, error } = await runUpdate(currentPatch));
   }
-  if (error && 'enrolled_subjects' in patch && isMissingColumnError(error, 'enrolled_subjects')) {
+  if (error && 'enrolled_subjects' in currentPatch && isMissingColumnError(error, 'enrolled_subjects')) {
     // The supabase-enrolled-subjects.sql ALTER has not been run yet:
     // retry without the column so the rest of the patch still applies,
     // and the caller (persistStudentProfileToSupabase) warns that
     // subjects are JSON-store only until the ALTER runs.
-    const { enrolled_subjects: _droppedSubjects, ...patchWithoutSubjects } = patch;
-    ({ data, error } = await runUpdate(patchWithoutSubjects));
+    const { enrolled_subjects: _droppedSubjects, ...patchWithoutSubjects } = currentPatch;
+    currentPatch = patchWithoutSubjects;
+    ({ data, error } = await runUpdate(currentPatch));
   }
   if (
     error &&
-    ('academic_session' in patch || 'regulation' in patch || 'notification_preferences' in patch) &&
+    ('academic_session' in currentPatch || 'regulation' in currentPatch || 'notification_preferences' in currentPatch) &&
     (isMissingColumnError(error, 'academic_session') ||
       isMissingColumnError(error, 'regulation') ||
       isMissingColumnError(error, 'notification_preferences'))
@@ -986,8 +1148,38 @@ export async function updateStudentById(
       regulation: _droppedRegulation,
       notification_preferences: _droppedNotifications,
       ...patchWithoutProfile
-    } = patch;
-    ({ data, error } = await runUpdate(patchWithoutProfile));
+    } = currentPatch;
+    currentPatch = patchWithoutProfile;
+    ({ data, error } = await runUpdate(currentPatch));
+  }
+  if (
+    error &&
+    ('consent_accepted' in currentPatch ||
+      'consent_version' in currentPatch ||
+      'consent_at' in currentPatch ||
+      'college_id' in currentPatch ||
+      'department_id' in currentPatch) &&
+    (isMissingColumnError(error, 'consent_accepted') ||
+      isMissingColumnError(error, 'consent_version') ||
+      isMissingColumnError(error, 'consent_at') ||
+      isMissingColumnError(error, 'college_id') ||
+      isMissingColumnError(error, 'department_id'))
+  ) {
+    // The supabase-consent-columns-phase5.sql ALTERs / the
+    // supabase-rls-enable-v1.0.30.sql cohort-id columns have not been
+    // run yet: retry without them so the rest of the patch still
+    // applies. Consent then stays JSON-store only until the phase-5
+    // SQL runs (D7); cohort ids are re-derived on the next write.
+    const {
+      consent_accepted: _droppedConsent,
+      consent_version: _droppedConsentVersion,
+      consent_at: _droppedConsentAt,
+      college_id: _droppedCollegeId,
+      department_id: _droppedDepartmentId,
+      ...patchWithoutConsent
+    } = currentPatch;
+    currentPatch = patchWithoutConsent;
+    ({ data, error } = await runUpdate(currentPatch));
   }
   throwIfError(error, 'updateStudentById');
   return data ? toStudent(data as StudentRow) : null;
@@ -1021,6 +1213,8 @@ export async function insertStudent(student: EnrolledStudent): Promise<EnrolledS
     reg_number: student.regNumber || null,
     college: student.college || null,
     department: student.department || null,
+    // D4: canonical ids for the stored display names above.
+    ...canonicalCohortIds(student.college, student.department),
     semester: student.semester ?? null,
     shift: student.shift ?? null,
     section: student.section ?? null,
@@ -1032,6 +1226,14 @@ export async function insertStudent(student: EnrolledStudent): Promise<EnrolledS
     pin_hash: student.pinHash ?? null,
     pin_salt: student.pinSalt ?? null,
     pin_hash_version: student.pinHashVersion ?? null,
+    // D7: consent rides on the account record (extension fields, same
+    // pattern as the profile fields in toStudent()). Absent when the
+    // caller did not record consent.
+    consent_accepted:
+      (student as EnrolledStudent & { consentAccepted?: boolean }).consentAccepted ?? null,
+    consent_version:
+      (student as EnrolledStudent & { consentVersion?: string }).consentVersion ?? null,
+    consent_at: (student as EnrolledStudent & { consentAt?: string }).consentAt ?? null,
     // New registrations carry no subjects (they are chosen later in
     // Profile → Edit Profile); null until PATCH /api/me/profile writes.
     enrolled_subjects: student.enrolledSubjects?.length ? student.enrolledSubjects : null,
@@ -1047,10 +1249,37 @@ export async function insertStudent(student: EnrolledStudent): Promise<EnrolledS
     created_at: student.createdAt ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  let { data, error } = await client.from('students').insert(row).select('*').single();
+  // Retries chain: each retry drops columns from the row the previous
+  // attempt actually sent, so a DB missing several new columns still
+  // lands the registration (consent / cohort ids just stay unset).
+  let insertRow: Partial<StudentRow> = row;
+  let { data, error } = await client.from('students').insert(insertRow).select('*').single();
   if (error && isMissingColumnError(error, 'pin_hash_version')) {
-    const { pin_hash_version: _dropped, ...rowWithoutVersion } = row;
-    ({ data, error } = await client.from('students').insert(rowWithoutVersion).select('*').single());
+    const { pin_hash_version: _dropped, ...rowWithoutVersion } = insertRow;
+    insertRow = rowWithoutVersion;
+    ({ data, error } = await client.from('students').insert(insertRow).select('*').single());
+  }
+  if (
+    error &&
+    (isMissingColumnError(error, 'consent_accepted') ||
+      isMissingColumnError(error, 'consent_version') ||
+      isMissingColumnError(error, 'consent_at') ||
+      isMissingColumnError(error, 'college_id') ||
+      isMissingColumnError(error, 'department_id'))
+  ) {
+    // Phase-5 consent columns / v1.0.30 cohort-id columns not run yet:
+    // retry without them so the registration still lands in Postgres;
+    // consent then stays JSON-store only until the phase-5 SQL runs (D7).
+    const {
+      consent_accepted: _droppedConsent,
+      consent_version: _droppedConsentVersion,
+      consent_at: _droppedConsentAt,
+      college_id: _droppedCollegeId,
+      department_id: _droppedDepartmentId,
+      ...rowWithoutConsent
+    } = insertRow;
+    insertRow = rowWithoutConsent;
+    ({ data, error } = await client.from('students').insert(insertRow).select('*').single());
   }
   throwIfError(error, 'insertStudent');
   return toStudent(data as StudentRow);
@@ -1121,6 +1350,8 @@ export async function updateTeacherById(
   patch: Partial<Omit<TeacherRow, 'id' | 'created_at'>>,
 ): Promise<TeacherAccount | null> {
   const client = getSupabaseClient();
+  // D4: derive canonical cohort ids from any college/department in the patch.
+  patch = withCanonicalCohortIds(patch);
   const runUpdate = (p: Partial<Omit<TeacherRow, 'id' | 'created_at'>>) =>
     client
       .from('teacher_accounts')
@@ -1129,15 +1360,18 @@ export async function updateTeacherById(
       .select('*')
       .maybeSingle();
   let { data, error } = await runUpdate(patch);
+  // Retries chain from the patch the previous attempt actually sent (see updateStudentById).
+  let currentPatch = patch;
   // Same pin_hash_version grace as updateStudentById (see above): the
   // column is added by supabase-schema-phase4.sql; retry without it.
-  if (error && 'pin_hash_version' in patch && isMissingColumnError(error, 'pin_hash_version')) {
-    const { pin_hash_version: _dropped, ...patchWithoutVersion } = patch;
-    ({ data, error } = await runUpdate(patchWithoutVersion));
+  if (error && 'pin_hash_version' in currentPatch && isMissingColumnError(error, 'pin_hash_version')) {
+    const { pin_hash_version: _dropped, ...patchWithoutVersion } = currentPatch;
+    currentPatch = patchWithoutVersion;
+    ({ data, error } = await runUpdate(currentPatch));
   }
   if (
     error &&
-    ('is_guide_teacher' in patch || 'guide_teacher_cohort' in patch) &&
+    ('is_guide_teacher' in currentPatch || 'guide_teacher_cohort' in currentPatch) &&
     (isMissingColumnError(error, 'is_guide_teacher') ||
       isMissingColumnError(error, 'guide_teacher_cohort'))
   ) {
@@ -1148,11 +1382,138 @@ export async function updateTeacherById(
       is_guide_teacher: _droppedGuide,
       guide_teacher_cohort: _droppedCohort,
       ...patchWithoutGuide
-    } = patch;
-    ({ data, error } = await runUpdate(patchWithoutGuide));
+    } = currentPatch;
+    currentPatch = patchWithoutGuide;
+    ({ data, error } = await runUpdate(currentPatch));
+  }
+  if (
+    error &&
+    ('consent_accepted' in currentPatch ||
+      'consent_version' in currentPatch ||
+      'consent_at' in currentPatch ||
+      'college_id' in currentPatch ||
+      'department_id' in currentPatch) &&
+    (isMissingColumnError(error, 'consent_accepted') ||
+      isMissingColumnError(error, 'consent_version') ||
+      isMissingColumnError(error, 'consent_at') ||
+      isMissingColumnError(error, 'college_id') ||
+      isMissingColumnError(error, 'department_id'))
+  ) {
+    // Phase-5 consent columns / v1.0.30 cohort-id columns not run yet:
+    // retry without them so the rest of the patch still applies (D7).
+    const {
+      consent_accepted: _droppedConsent,
+      consent_version: _droppedConsentVersion,
+      consent_at: _droppedConsentAt,
+      college_id: _droppedCollegeId,
+      department_id: _droppedDepartmentId,
+      ...patchWithoutConsent
+    } = currentPatch;
+    currentPatch = patchWithoutConsent;
+    ({ data, error } = await runUpdate(currentPatch));
   }
   throwIfError(error, 'updateTeacherById');
   return data ? toTeacher(data as TeacherRow) : null;
+}
+
+/**
+ * D7 — insert helper for POST /api/teachers/register. Teacher
+ * registration was JSON-only until now (no insert helper existed), so
+ * teacher consent had no Postgres path at all. Same contract as
+ * insertStudent: throws on any query error, callers catch and fall
+ * back to JSON-only. Includes consent + canonical cohort ids, with the
+ * same retry-without-columns grace when the phase-5 / v1.0.30 ALTERs
+ * have not been run yet. `email` is unique in Postgres: a duplicate
+ * fails here and the caller keeps the JSON-store write.
+ */
+export interface InsertTeacherInput {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  college?: string | null;
+  department?: string | null;
+  designation?: string | null;
+  teachingSubjects?: string[];
+  semestersTaught?: number[];
+  shift?: string;
+  sectionsTaught?: string[];
+  verificationStatus?: string;
+  pinHash: string;
+  pinSalt: string;
+  pinHashVersion?: number;
+  consentAccepted?: boolean;
+  consentVersion?: string;
+  consentAt?: string;
+  isGuideTeacher?: boolean;
+  guideTeacherCohort?: { semester: number; shift: string; section: string };
+  failedPinAttempts?: number;
+  createdAt?: string;
+  adminNotes?: string;
+}
+export async function insertTeacher(teacher: InsertTeacherInput): Promise<TeacherAccount> {
+  const client = getSupabaseClient();
+  const row: TeacherRow = {
+    id: teacher.id,
+    name: teacher.name,
+    email: teacher.email?.trim() ? teacher.email.trim() : null,
+    phone: teacher.phone?.trim() ? teacher.phone.trim() : null,
+    college: teacher.college || null,
+    department: teacher.department || null,
+    ...canonicalCohortIds(teacher.college, teacher.department),
+    designation: teacher.designation || null,
+    teaching_subjects: teacher.teachingSubjects?.length ? teacher.teachingSubjects : [],
+    semesters_taught: teacher.semestersTaught?.length ? teacher.semestersTaught : [],
+    shift: teacher.shift ?? 'Morning',
+    sections_taught: teacher.sectionsTaught ?? [],
+    verification_status: teacher.verificationStatus ?? 'Pending',
+    pin_salt: teacher.pinSalt ?? null,
+    pin_hash: teacher.pinHash ?? null,
+    pin_hash_version: teacher.pinHashVersion ?? null,
+    consent_accepted: teacher.consentAccepted ?? null,
+    consent_version: teacher.consentVersion ?? null,
+    consent_at: teacher.consentAt ?? null,
+    is_guide_teacher: teacher.isGuideTeacher ?? null,
+    guide_teacher_cohort: teacher.guideTeacherCohort ?? null,
+    failed_pin_attempts: teacher.failedPinAttempts ?? 0,
+    lockout_until: null,
+    admin_notes: teacher.adminNotes ?? null,
+    auth_user_id: null,
+    created_at: teacher.createdAt ?? new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  let insertRow: Partial<TeacherRow> = row;
+  let { data, error } = await client.from('teacher_accounts').insert(insertRow).select('*').single();
+  if (error && isMissingColumnError(error, 'pin_hash_version')) {
+    const { pin_hash_version: _dropped, ...rest } = insertRow;
+    insertRow = rest;
+    ({ data, error } = await client.from('teacher_accounts').insert(insertRow).select('*').single());
+  }
+  if (
+    error &&
+    (isMissingColumnError(error, 'consent_accepted') ||
+      isMissingColumnError(error, 'consent_version') ||
+      isMissingColumnError(error, 'consent_at') ||
+      isMissingColumnError(error, 'college_id') ||
+      isMissingColumnError(error, 'department_id') ||
+      isMissingColumnError(error, 'is_guide_teacher') ||
+      isMissingColumnError(error, 'guide_teacher_cohort'))
+  ) {
+    const {
+      consent_accepted: _droppedConsent,
+      consent_version: _droppedConsentVersion,
+      consent_at: _droppedConsentAt,
+      college_id: _droppedCollegeId,
+      department_id: _droppedDepartmentId,
+      is_guide_teacher: _droppedGuide,
+      guide_teacher_cohort: _droppedCohort,
+      ...rest
+    } = insertRow;
+    insertRow = rest;
+    ({ data, error } = await client.from('teacher_accounts').insert(insertRow).select('*').single());
+  }
+  throwIfError(error, 'insertTeacher');
+  return toTeacher(data as TeacherRow);
 }
 
 /**
@@ -1190,6 +1551,9 @@ export async function listCaptainRecordsByCohort(filter: CaptainCohortFilter): P
   let query = client.from('captain_records').select('*');
   if (filter.college) query = query.eq('college', filter.college);
   if (filter.department) query = query.eq('department', filter.department);
+  // D4: null-inclusive canonical-id narrowing, as in listStudentsByCohort.
+  narrowByCanonicalId(query, 'college_id', filter.collegeId);
+  narrowByCanonicalId(query, 'department_id', filter.departmentId);
   if (filter.semester !== undefined) query = query.eq('semester', filter.semester);
   if (filter.shift) query = query.eq('shift', filter.shift);
   if (filter.section) query = query.eq('section', filter.section);
@@ -1248,12 +1612,26 @@ export async function updateCaptainRecordById(
   patch: Partial<Omit<CaptainRow, 'id' | 'created_at'>>,
 ): Promise<CaptainRecord | null> {
   const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('captain_records')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select('*')
-    .maybeSingle();
+  // D4: derive canonical cohort ids from any college/department in the patch.
+  patch = withCanonicalCohortIds(patch);
+  const runUpdate = (p: Partial<Omit<CaptainRow, 'id' | 'created_at'>>) =>
+    client
+      .from('captain_records')
+      .update({ ...p, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+  let { data, error } = await runUpdate(patch);
+  if (
+    error &&
+    ('college_id' in patch || 'department_id' in patch) &&
+    (isMissingColumnError(error, 'college_id') || isMissingColumnError(error, 'department_id'))
+  ) {
+    // The supabase-rls-enable-v1.0.30.sql cohort-id columns have not
+    // been run yet: retry without them so the decision still lands.
+    const { college_id: _droppedCollegeId, department_id: _droppedDepartmentId, ...rest } = patch;
+    ({ data, error } = await runUpdate(rest));
+  }
   throwIfError(error, 'updateCaptainRecordById');
   return data ? toCaptain(data as CaptainRow) : null;
 }
@@ -1297,6 +1675,8 @@ export function toCaptainRow(captain: CaptainRecord): CaptainRow {
     student_name: captain.studentName || null,
     college: captain.college || null,
     department: captain.department || null,
+    // D4: canonical ids for the stored display names above.
+    ...canonicalCohortIds(captain.college, captain.department),
     semester: captain.semester ?? null,
     shift: captain.shift ?? null,
     section: captain.section ?? null,
@@ -1330,11 +1710,22 @@ export function toCaptainRow(captain: CaptainRecord): CaptainRow {
  */
 export async function insertCaptainRecord(captain: CaptainRecord): Promise<CaptainRecord> {
   const client = getSupabaseClient();
-  const { data, error } = await client
+  let insertRow: Partial<CaptainRow> = toCaptainRow(captain);
+  let { data, error } = await client
     .from('captain_records')
-    .insert(toCaptainRow(captain))
+    .insert(insertRow)
     .select('*')
     .single();
+  if (
+    error &&
+    (isMissingColumnError(error, 'college_id') || isMissingColumnError(error, 'department_id'))
+  ) {
+    // The supabase-rls-enable-v1.0.30.sql cohort-id columns have not
+    // been run yet: retry without them so the record still lands.
+    const { college_id: _droppedCollegeId, department_id: _droppedDepartmentId, ...rest } = insertRow;
+    insertRow = rest;
+    ({ data, error } = await client.from('captain_records').insert(insertRow).select('*').single());
+  }
   throwIfError(error, 'insertCaptainRecord');
   return toCaptain(data as CaptainRow);
 }
@@ -1568,9 +1959,13 @@ export async function listCommunityMessages(
  * `image_url` column, so the community image URL is JSON-only and is
  * deliberately omitted here — inserting it would fail with an unknown-
  * column error. `community_messages` has no `deleted_by` / `updated_at`
- * columns, so those are omitted too. Attachments are inserted verbatim
- * (jsonb), including `file_data` base64 bytes, so the Postgres copy is
- * faithful to the JSON store.
+ * columns, so those are omitted too. D10 (audit 2026-11-27):
+ * attachments are stored WITHOUT `file_data` — only the metadata plus
+ * `storage_path` (bytes live in Storage, or in the JSON store's
+ * `file_data` fallback). Copying base64 bytes into Postgres bloated
+ * the table and exposed file contents through the DB; the JSON store
+ * stays the source of truth for bytes, and downloads are served by
+ * the server's authenticated download endpoint either way.
  */
 export async function insertCommunity(community: AcademicCommunity): Promise<AcademicCommunity> {
   const client = getSupabaseClient();
@@ -1640,7 +2035,16 @@ export async function insertCommunityMessage(message: CommunityMessageRecord): P
     sender_designation: message.sender_designation ?? null,
     is_moderator: message.is_moderator,
     content: message.content,
-    attachments: message.attachments,
+    // D10: strip `file_data` base64 bytes from every attachment —
+    // Postgres stores only the metadata + `storage_path` (see the
+    // insertCommunity() comment). The caller's in-memory message is
+    // untouched; only the Postgres copy is metadata-only.
+    attachments: Array.isArray(message.attachments)
+      ? message.attachments.map((att) => {
+          const { file_data: _droppedBytes, ...meta } = att as unknown as Record<string, unknown>;
+          return meta;
+        })
+      : message.attachments,
     is_pinned: message.is_pinned,
     pinned_by: message.pinned_by ?? null,
     pinned_at: message.pinned_at ?? null,
@@ -2147,9 +2551,20 @@ export async function deleteAttendanceSheetById(id: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 // Supabase Storage — file bytes for uploads (Phase 4, uploads item).
 //
-// Buckets (supabase-storage-phase3.sql, already run):
+// Buckets (supabase-storage-phase3.sql, already run; `routine-documents`
+// added by supabase-rls-enable-v1.0.30.sql, D5):
 //   community-files (private), notes (private), assignments (private),
-//   avatars (public), admin-images (public).
+//   routine-documents (private), avatars (public), admin-images (public).
+//
+// D5 (audit 2026-11-27): every download is served by the server's
+// authenticated download endpoints via the service_role key — no client
+// ever receives a direct Storage URL, and the phase-3 `auth.role() =
+// 'authenticated'` policies are NOT relied on (the app has no Supabase
+// Auth users, so that gate is inert). The RLS SQL file therefore drops
+// the broad authenticated read/upload storage policies; private buckets
+// are server-only by policy, and the public buckets keep public READ
+// only. Routine documents get their own bucket instead of sharing
+// `community-files` with community attachments.
 //
 // The backend uses the service_role key, which bypasses the storage
 // policies, so the server can always read/write. The same lazy
@@ -2247,4 +2662,33 @@ export async function uploadCommunityFile(
 /** Download one community attachment's bytes from `community-files` by its stored path. */
 export async function downloadCommunityFile(storagePath: string): Promise<Buffer> {
   return downloadStorageFile('community-files', storagePath);
+}
+
+/** D5 — the private bucket for scanned routine documents (was `community-files`, shared). */
+export const ROUTINE_DOCUMENTS_BUCKET = 'routine-documents';
+
+/** D5 — upload one routine document's bytes to the `routine-documents` bucket. Returns the object path. */
+export async function uploadRoutineDocumentFile(
+  path: string,
+  data: Buffer,
+  mimeType: string,
+): Promise<StoragePath> {
+  return uploadStorageFile(ROUTINE_DOCUMENTS_BUCKET, path, data, mimeType);
+}
+
+/**
+ * D5 — download one routine document's bytes. Tries the
+ * `routine-documents` bucket first, then the legacy `community-files`
+ * bucket (documents uploaded before the v1.0.30 move live there under
+ * `routine-documents/<file>`). Throws when neither bucket has it —
+ * callers fall through to the JSON `file_data` fallback.
+ */
+export async function downloadRoutineDocumentFile(storagePath: string): Promise<Buffer> {
+  try {
+    return await downloadStorageFile(ROUTINE_DOCUMENTS_BUCKET, storagePath);
+  } catch (err) {
+    // Legacy path only: a missing object in the old bucket throws the
+    // same error shape, so a genuinely missing file still surfaces.
+    return downloadStorageFile('community-files', storagePath);
+  }
 }

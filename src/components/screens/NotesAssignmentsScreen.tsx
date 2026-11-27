@@ -499,7 +499,10 @@ export const NotesAssignmentsScreen: React.FC = () => {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
       });
       const data = await res.json();
-      if (data.message) {
+      if (!res.ok) {
+        // RBAC audit fix (R5): only teachers/admins can trigger a sync.
+        showToast(data.error || 'Job sync is only available to teachers.');
+      } else if (data.message) {
         showToast(data.message);
       }
       await fetchJobsList(1, false);
@@ -1978,15 +1981,20 @@ export const NotesAssignmentsScreen: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={isSyncingJobs}
-                  onClick={handleTriggerJobSync}
-                  className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                >
-                  <RefreshCw aria-hidden="true" className={`w-3 h-3 ${isSyncingJobs ? 'animate-spin' : ''}`} />
-                  <span>{isSyncingJobs ? 'Refreshing...' : 'Refresh Jobs'}</span>
-                </button>
+                {/* RBAC audit fix (R5): job sync is teacher/admin only
+                    on the server — hide the button for everyone else
+                    instead of letting it 403. */}
+                {isVerifiedTeacher && (
+                  <button
+                    type="button"
+                    disabled={isSyncingJobs}
+                    onClick={handleTriggerJobSync}
+                    className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-brand-blue text-xs font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw aria-hidden="true" className={`w-3 h-3 ${isSyncingJobs ? 'animate-spin' : ''}`} />
+                    <span>{isSyncingJobs ? 'Refreshing...' : 'Refresh Jobs'}</span>
+                  </button>
+                )}
                 <a
                   href="https://www.careerjet.com.bd/diploma-engineer-jobs"
                   target="_blank"

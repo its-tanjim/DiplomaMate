@@ -543,7 +543,11 @@ export const WelcomeScreen: React.FC = () => {
           regNumber: onboardingProfile.regNumber,
           semester: onboardingProfile.semester,
           shift: onboardingProfile.shift,
-          section: onboardingProfile.section
+          section: onboardingProfile.section,
+          // AU1: no stored token exists yet at onboarding time (the user
+          // has only just registered), so the fresh mint needs the PIN
+          // they just chose — roll + reg number alone no longer suffice.
+          pin: normalizeDigits(signUpPin)
         })
       });
       const sessionData = await sessionRes.json();

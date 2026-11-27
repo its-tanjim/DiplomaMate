@@ -1,4 +1,7 @@
 import { apiFetch } from '../../services/apiClient';
+// A6: admin sign-in/bootstrap HTTP calls live in the admin-only module
+// src/admin/adminAuth.ts — not in the main AppContext.
+import { adminLoginRequest, adminBootstrapRequest } from '../../admin/adminAuth';
 import {
   fetchWithNetworkRetry,
   NETWORK_ERROR_MESSAGE,
@@ -18,7 +21,7 @@ import {
 } from 'lucide-react';
 
 export const AdminLoginScreen: React.FC = () => {
-  const { adminLogin, adminBootstrap, setActiveScreen, isLoggedIn } = useApp();
+  const { applyAdminSession, setActiveScreen, isLoggedIn } = useApp();
 
   const [isBootstrapped, setIsBootstrapped] = useState<boolean>(true);
   const [mode, setMode] = useState<'login' | 'bootstrap'>('login');
@@ -33,6 +36,9 @@ export const AdminLoginScreen: React.FC = () => {
   const [pin, setPin] = useState<string>('');
   const [pinError, setPinError] = useState<string>('');
   const [pinLockedUntil, setPinLockedUntil] = useState<number | null>(null);
+  // A4: true when the PIN gate was previously enabled but ADMIN_PANEL_PIN
+  // is now unset — login is password-only and the admin must be warned.
+  const [pinGateMisconfigured, setPinGateMisconfigured] = useState(false);
   const [pinAttemptsRemaining, setPinAttemptsRemaining] = useState<number | null>(null);
   const [isCheckingPin, setIsCheckingPin] = useState<boolean>(true);
   const [isSubmittingPin, setIsSubmittingPin] = useState<boolean>(false);
@@ -46,7 +52,7 @@ export const AdminLoginScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
   // Shown while the admin login request is being retried after a network
-  // failure; set via adminLogin's onRetry callback.
+  // failure; set via adminLoginRequest's onRetry callback.
   const [retryNotice, setRetryNotice] = useState<string>('');
 
   // First-Admin Bootstrap state (only usable when zero admins exist on server)
@@ -69,6 +75,7 @@ export const AdminLoginScreen: React.FC = () => {
       if (data.success) {
         const enabled = Boolean(data.pinGateEnabled);
         setPinGateEnabled(enabled);
+        setPinGateMisconfigured(Boolean(data.gateMisconfigured));
         if (!enabled) {
           setPinUnlocked(true);
         } else if (data.locked && typeof data.lockedUntil === 'number') {
@@ -81,11 +88,13 @@ export const AdminLoginScreen: React.FC = () => {
         // Status endpoint unreachable/old server: fail open to the old
         // password form so a status failure can never lock the admin out.
         setPinGateEnabled(false);
+        setPinGateMisconfigured(false);
         setPinUnlocked(true);
       }
     } catch {
       setPinRetryNotice('');
       setPinGateEnabled(false);
+      setPinGateMisconfigured(false);
       setPinUnlocked(true);
     } finally {
       setIsCheckingPin(false);
@@ -176,7 +185,7 @@ export const AdminLoginScreen: React.FC = () => {
     setIsSubmitting(true);
     setRetryNotice('');
     try {
-      const res = await adminLogin(email.trim(), password, pinToken || undefined, {
+      const res = await adminLoginRequest(email.trim(), password, pinToken || undefined, {
         onRetry: () => setRetryNotice(NETWORK_RETRY_MESSAGE)
       });
       if (!res.success) {
@@ -188,7 +197,9 @@ export const AdminLoginScreen: React.FC = () => {
         setErrorMessage(
           res.message.includes('Failed to fetch') ? NETWORK_ERROR_MESSAGE : res.message
         );
+        return;
       }
+      applyAdminSession(res.admin, res.sessionToken);
     } finally {
       setRetryNotice('');
       setIsSubmitting(false);
@@ -205,7 +216,7 @@ export const AdminLoginScreen: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const res = await adminBootstrap(
+      const res = await adminBootstrapRequest(
         bootstrapToken.trim(),
         adminName.trim() || 'Academic System Administrator',
         email.trim(),
@@ -218,7 +229,9 @@ export const AdminLoginScreen: React.FC = () => {
           return;
         }
         setErrorMessage(res.message);
+        return;
       }
+      applyAdminSession(res.admin, res.sessionToken);
     } finally {
       setIsSubmitting(false);
     }
@@ -257,6 +270,21 @@ export const AdminLoginScreen: React.FC = () => {
           </div>
 
           <div className="p-5 space-y-4">
+            {/* A4: the PIN gate was previously enabled but ADMIN_PANEL_PIN
+                is now unset — sign-in is password-only. Loud warning so
+                the misconfiguration cannot pass unnoticed; re-set the
+                env var on Render to restore the PIN layer. */}
+            {pinGateMisconfigured && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Security warning:</strong> the admin panel PIN was
+                  previously enabled on this server, but it is not configured
+                  now — sign-in is password-only. Re-set ADMIN_PANEL_PIN on
+                  the server to restore the PIN layer.
+                </span>
+              </div>
+            )}
             {/* Admin panel PIN gate: password form stays hidden until the PIN is verified. */}
             {pinGateEnabled && !pinUnlocked ? (
               isCheckingPin ? (
