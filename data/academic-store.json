@@ -307,6 +307,24 @@
   "deletedAccountIds": [],
   "adminAuditLogs": [
     {
+      "id": "audit_1f5169cb-228b-4c79-9eeb-f9f983548892",
+      "adminId": "sysadmin_1792821774886",
+      "action": "admin_login_success",
+      "targetId": "sysadmin_1792821774886",
+      "targetName": "its.tanjim.06@gmail.com",
+      "timestamp": "2026-11-27T13:53:15.891Z",
+      "details": "Administrator signed in."
+    },
+    {
+      "id": "audit_f839f169-9670-4274-8031-7362b6ba9b96",
+      "adminId": "system",
+      "action": "supabase_dual_write_failed",
+      "targetId": "supabase",
+      "targetName": "Supabase dual-write",
+      "timestamp": "2026-11-27T13:53:15.856Z",
+      "details": "[AdminLogin] Admin sysadmin_1792821774886 not persisted to Postgres; change kept in JSON store only: Supabase upsertSystemAdmin failed: permission denied for table system_admins"
+    },
+    {
       "id": "audit_18618710-0d7e-4bd1-89b5-0d9755338203",
       "adminId": "system",
       "action": "admin_pin_verified",
@@ -740,5 +758,10 @@
   },
   "adminPinGateWasEnabled": true,
   "pendingTeacherEndorsements": {},
-  "studentLoginFailures": {}
+  "studentLoginFailures": {
+    "student:std_4bdf8ad5-de93-45e1-ba60-64925b2520d5": {
+      "count": 1,
+      "lockoutUntil": null
+    }
+  }
 }
