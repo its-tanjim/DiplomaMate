@@ -882,7 +882,7 @@ export const ClassRoutineScreen: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-600">
-              Scan a printed, photographed, or PDF class timetable in Bangla or English. OCR runs on this device; review and correct the extracted weekdays, periods, subjects, teachers, rooms, and times before publishing.
+              Scan a printed, photographed, or PDF class timetable in Bangla or English. AI scan runs on the server (Gemini) and reads the table like Gemini does; on-device OCR is the fallback. Review and correct the extracted weekdays, periods, subjects, teachers, rooms, and times before publishing.
             </p>
 
             <div className={`border-2 border-dashed border-teal-300 rounded-2xl p-6 text-center bg-teal-50/30 transition-colors ${ocrProcessing ? 'opacity-60 pointer-events-none' : 'hover:bg-teal-50'}`}>

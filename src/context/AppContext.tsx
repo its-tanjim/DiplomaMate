@@ -13,6 +13,7 @@ import {
   AccountType,
   Shift,
   Section,
+  WeekDay,
   ClassAnnouncement,
   NotificationPreferences,
   CaptainApplication,
@@ -2299,6 +2300,102 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
+      // Server AI scan FIRST (Gemini, v1.0.34): until now the routine
+      // screen ran ONLY on-device Tesseract OCR, so the GEMINI_API_KEY
+      // was never used for routines — and Tesseract cannot read routine
+      // tables the way Gemini does (it dumps raw text lines; the table
+      // structure is lost). The server endpoint already understands
+      // routine tables: digital PDFs extract via their text layer (no
+      // key needed), scanned/image PDFs go through Gemini vision.
+      // Local Tesseract stays as the fallback whenever the server
+      // cannot scan (no key, timeout, or zero periods).
+      const tokenToUse = authToken || localStorage.getItem(`${STORAGE_KEY_PREFIX}auth_token`);
+      const b64Part = doc.dataUrl.includes(',') ? doc.dataUrl.split(',').slice(1).join(',') : '';
+      const approxBytes = doc.sizeBytes ?? Math.floor(b64Part.length * 0.75);
+      const serverDiagnostics: string[] = [];
+      if (tokenToUse && approxBytes > 0 && approxBytes <= 10 * 1024 * 1024) {
+        try {
+          onProgress?.('AI scan on server (Gemini)...', 5);
+          const { scanDocumentOnServer } = await import('../services/documentIntelligenceService');
+          const mimeMatch = doc.dataUrl.match(/^data:([^;,]+)[;,]/);
+          const mimeType = doc.fileType === 'PDF' ? 'application/pdf' : mimeMatch?.[1] || 'image/jpeg';
+          const serverRes = await scanDocumentOnServer({
+            feature: 'routine',
+            fileDataUrl: doc.dataUrl,
+            fileName: doc.fileName,
+            mimeType,
+            defaults: {
+              college: userProfile.college,
+              department: userProfile.department,
+              semester: userProfile.semester,
+              shift: selectedShift,
+              section: selectedSection
+            },
+            authToken: tokenToUse,
+            timeoutMs: 90000,
+            onProgress: (stage) => onProgress?.(stage, 10)
+          });
+          const serverPeriods = serverRes?.routineData?.periods;
+          if (serverRes?.success && Array.isArray(serverPeriods) && serverPeriods.length > 0) {
+            const validDays: WeekDay[] = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'];
+            const periods: RoutinePeriod[] = (serverPeriods as any[])
+              .filter(p => p && validDays.includes(String(p.day) as WeekDay) && Number(p.periodNumber) >= 1 && p.startTime && p.endTime)
+              .map((p, idx) => ({
+                id: `ai_rt_${Date.now()}_${idx}`,
+                day: String(p.day) as WeekDay,
+                periodNumber: Number(p.periodNumber),
+                startTime: String(p.startTime || ''),
+                endTime: String(p.endTime || ''),
+                subjectCode: String(p.subjectCode || ''),
+                subjectName: String(p.subjectName || ''),
+                teacherName: String(p.teacherName || ''),
+                room: String(p.room || ''),
+                type: p.type === 'Practical / Lab' ? 'Practical / Lab' : 'Theory',
+                shift: selectedShift,
+                section: selectedSection,
+                confidence: p.confidence === 'high' || p.confidence === 'medium' || p.confidence === 'low' ? p.confidence : 'medium',
+                uncertainFields: Array.isArray(p.uncertainFields) ? p.uncertainFields.filter((f: unknown): f is string => typeof f === 'string') : []
+              }));
+            if (periods.length > 0) {
+              uploadedRoutinesRef.current = uploadedRoutinesRef.current.map(d =>
+                d.id === docId ? { ...d, extractedPeriodsCount: periods.length } : d
+              );
+              setUploadedRoutines(prev =>
+                prev.map(d => (d.id === docId ? { ...d, extractedPeriodsCount: periods.length } : d))
+              );
+              showToast(`Extracted ${periods.length} timetable periods! Please review before publishing.`);
+              const meta = serverRes.routineData;
+              return {
+                success: true,
+                periods,
+                routineMetadata: meta ? {
+                  college: meta.college ?? null,
+                  department: meta.department ?? null,
+                  semester: meta.semester ?? null,
+                  shift: meta.shift ?? null,
+                  section: meta.section ?? null
+                } : undefined,
+                warnings: serverRes.warnings || [],
+                confidence: serverRes.confidence || 'high',
+                rawExtractedText: serverRes.rawExtractedText || '',
+                diagnostics: [`Server AI scan (Gemini) via ${serverRes.extractionMethod || 'server scan'} — ${periods.length} periods extracted.`]
+              };
+            }
+          }
+          serverDiagnostics.push(
+            `Server AI scan returned no periods${serverRes?.error ? ` (${serverRes.error})` : ''} — falling back to on-device OCR.`
+          );
+        } catch (serverErr: any) {
+          serverDiagnostics.push(
+            `Server AI scan failed (${serverErr?.message || 'network error'}) — falling back to on-device OCR.`
+          );
+        }
+      } else if (!tokenToUse) {
+        serverDiagnostics.push('No sign-in token — server AI scan skipped, using on-device OCR.');
+      } else {
+        serverDiagnostics.push('File is over the 10 MB server scan limit — using on-device OCR.');
+      }
+
       const { scanRoutineLocally } = await import('../services/routineOcrService');
       const result = await scanRoutineLocally({
         fileName: doc.fileName,
@@ -2323,7 +2420,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           routineMetadata: result.routineMetadata,
           warnings: result.warnings,
           rawExtractedText: result.rawExtractedText,
-          diagnostics: result.diagnostics,
+          diagnostics: [...serverDiagnostics, ...result.diagnostics],
           error: result.rawExtractedText.trim()
             ? 'OCR read text, but no routine rows matched. Review the raw OCR text below or enter periods manually.'
             : 'OCR returned no text. Check the original file, OCR model loading, and browser network access; raw diagnostics are shown below.'
@@ -2337,7 +2434,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         warnings: result.warnings,
         confidence: result.confidence,
         rawExtractedText: result.rawExtractedText,
-        diagnostics: result.diagnostics
+        diagnostics: [...serverDiagnostics, ...result.diagnostics]
       };
     } catch (error) {
       console.error('Local routine OCR failed:', error);

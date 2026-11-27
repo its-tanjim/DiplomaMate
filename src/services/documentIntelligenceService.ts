@@ -336,6 +336,9 @@ export async function scanDocumentOnServer(params: {
   };
   authToken?: string | null;
   onProgress?: (stage: string) => void;
+  /** Abort timeout in ms. Default 35000. Gemini vision calls can take up
+   * to 60 s server-side, so routine scans pass 90000 (v1.0.34). */
+  timeoutMs?: number;
 }): Promise<DocumentScanResult> {
   const onProgress = params.onProgress || (() => {});
   onProgress(
@@ -347,7 +350,7 @@ export async function scanDocumentOnServer(params: {
   );
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 35000);
+  const timeoutId = setTimeout(() => controller.abort(), params.timeoutMs ?? 35000);
 
   try {
     const headers: Record<string, string> = {
