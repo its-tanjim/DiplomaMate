@@ -307,6 +307,33 @@
   "deletedAccountIds": [],
   "adminAuditLogs": [
     {
+      "id": "audit_068f5755-9362-4aea-95d7-c2cb3b9e0f17",
+      "adminId": "sysadmin_1792821774886",
+      "action": "admin_login_success",
+      "targetId": "sysadmin_1792821774886",
+      "targetName": "its.tanjim.06@gmail.com",
+      "timestamp": "2026-11-27T10:53:19.322Z",
+      "details": "Administrator signed in."
+    },
+    {
+      "id": "audit_c36ace34-d029-4f99-967a-522bdae85086",
+      "adminId": "system",
+      "action": "admin_pin_verified",
+      "targetId": "admin-pin-gate",
+      "targetName": "Admin Panel PIN",
+      "timestamp": "2026-11-27T10:52:59.597Z",
+      "details": "Admin panel PIN verified; login form unlocked for 15 minutes."
+    },
+    {
+      "id": "audit_018e4f09-4d63-49dc-bf4b-da66c99ee596",
+      "adminId": "sysadmin_1792821774886",
+      "action": "admin_password_changed",
+      "targetId": "sysadmin_1792821774886",
+      "targetName": "Academic System Administrator",
+      "timestamp": "2026-11-27T10:52:53.331Z",
+      "details": "Password changed; 1 live session(s) revoked."
+    },
+    {
       "id": "audit_b1f4a96c-188b-4ad1-a21b-066c7a87dafe",
       "adminId": "sysadmin_1792821774886",
       "action": "admin_login_success",
