@@ -758,10 +758,5 @@
   },
   "adminPinGateWasEnabled": true,
   "pendingTeacherEndorsements": {},
-  "studentLoginFailures": {
-    "student:std_4bdf8ad5-de93-45e1-ba60-64925b2520d5": {
-      "count": 1,
-      "lockoutUntil": null
-    }
-  }
+  "studentLoginFailures": {}
 }
