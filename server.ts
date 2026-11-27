@@ -174,13 +174,26 @@ import {
   deleteRecordsByColumnToSupabase,
   deleteRoutineById,
   deleteStudentById,
+  deleteSystemAdminById,
   deleteTeacherById,
   downloadCommunityFile,
   downloadStorageFile,
+  getAdminPinLockoutRow,
+  getAppConfigValue,
+  getCommunityById,
   getPendingTeacherEndorsement,
+  getRecordByIdFromSupabase,
   getStudentByBoardRoll,
+  getStudentByEmail,
+  getStudentRowByBoardRoll,
+  getSubAdminByEmail,
+  getSubAdminById,
+  getSystemAdminByEmail,
+  getSystemAdminById,
   getTeacherByEmail,
+  getTeacherById,
   getTeacherByPhone,
+  insertAdminNotification,
   insertAttendanceSheet,
   insertCampusNotice,
   insertCaptainRecord,
@@ -189,27 +202,48 @@ import {
   insertCommunityMessage,
   insertRecordToSupabase,
   insertRoutine,
+  insertRoutineNotification,
   insertStudent,
   insertTeacher,
   isUniqueViolationError,
+  listAdminNotifications,
   listAllCaptainRecords,
+  listAppConfigValues,
   listAttendanceSheets,
   listCampusNotices,
   listCaptainRecordsByCohort,
   listCommunities,
+  listCommunityMessages,
+  listIdsFromSupabase,
+  listMembershipsForCommunity,
   listMembershipsForUser,
+  listRecordsFromSupabase,
+  listRoutineNotifications,
   listRoutines,
+  listShiftSchedules,
   listStudentsByCohort,
+  listSubAdmins,
+  listSystemAdmins,
+  listTeacherContacts,
+  listTeachers,
   ROUTINE_DOCUMENTS_BUCKET,
   sanitizeStorageFileName,
   toAttendanceSheetRow,
   toCampusNoticeRow,
   toCaptainRow,
+  toCommunity,
+  toCommunityRow,
+  toMembership,
+  toMembershipRow,
+  toRoutineNotification,
+  toRoutineNotificationRow,
   toRoutineRow,
   updateAttendanceSheetById,
   updateCampusNoticeById,
   updateCaptainRecordById,
+  updateCommunityById,
   updateRecordByIdToSupabase,
+  updateRecordsByColumnToSupabase,
   updateRoutineById,
   updateStudentById,
   updateTeacherById,
@@ -217,9 +251,23 @@ import {
   uploadCommunityFile,
   uploadRoutineDocumentFile,
   uploadStorageFile,
+  upsertAdminPinLockout,
+  upsertAppConfigValue,
+  upsertCommunityMembership,
   upsertPendingTeacherEndorsement,
   upsertRecordToSupabase,
-  type TeacherAccount
+  upsertShiftSchedule,
+  upsertSubAdmin,
+  upsertSystemAdmin,
+  upsertTeacherContact,
+  type AdminNotificationRow,
+  type CommunityRow,
+  type MembershipRow,
+  type RoutineNotificationRow,
+  type SubAdminAccount,
+  type SystemAdminAccount,
+  type TeacherAccount,
+  type TeacherContactRow
 } from './server/supabaseClient';
 
 dotenv.config();
@@ -803,10 +851,13 @@ const STUDENT_LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
 
 // AU7: student login lockout state is persisted in the JSON store (and
 // reloaded into this Map by loadAcademicStore), like the teacher lockout
-// — a restart/deploy must not clear it. There is no Supabase table or
-// column for per-account login-failure state, so there is no dual-write
-// for this state (JSON store only); the PIN itself is still dual-written
-// by the reset-pin / register paths.
+// — a restart/deploy must not clear it. Auth cutover (Stage 1): the
+// state is ALSO dual-written to the students table
+// (failed_pin_attempts / lockout_until, which exist since phase 1) via
+// persistStudentLockoutToSupabase, and the Map is seeded from the
+// Postgres row on login (seedStudentLockoutFromPostgres) — so the
+// lockout survives the JSON file going away. The Map stays the
+// in-request read cache; Postgres is the durable copy.
 function persistStudentLoginFailures(): void {
   try {
     saveAcademicStore(academicStore);
@@ -817,6 +868,10 @@ function persistStudentLoginFailures(): void {
 
 // Records one failed login for lockoutKey. Returns true when this failure
 // trips the 15-minute lockout. Persists on every call (AU7).
+// Auth cutover (Stage 1): a `student:<id>` failure is also dual-written
+// to the students table (failed_pin_attempts / lockout_until) so the
+// lockout survives the JSON file going away; `roll:<boardRoll>` keys
+// (unknown accounts) have no Postgres row and are skipped.
 function recordStudentLoginFailure(lockoutKey: string): boolean {
   const current = studentLoginFailures.get(lockoutKey) || { count: 0, lockoutUntil: null };
   current.count += 1;
@@ -824,17 +879,31 @@ function recordStudentLoginFailure(lockoutKey: string): boolean {
     current.lockoutUntil = Date.now() + STUDENT_LOGIN_LOCKOUT_MS;
     studentLoginFailures.set(lockoutKey, current);
     persistStudentLoginFailures();
+    if (lockoutKey.startsWith('student:')) {
+      void persistStudentLockoutToSupabase(lockoutKey.slice('student:'.length), current.count, current.lockoutUntil);
+    }
     return true;
   }
   studentLoginFailures.set(lockoutKey, current);
   persistStudentLoginFailures();
+  if (lockoutKey.startsWith('student:')) {
+    void persistStudentLockoutToSupabase(lockoutKey.slice('student:'.length), current.count, current.lockoutUntil);
+  }
   return false;
 }
 
 // Clears the failure state for lockoutKey (successful login / PIN reset).
-// Persists only when something was actually cleared.
-function clearStudentLoginFailure(lockoutKey: string): void {
-  if (studentLoginFailures.delete(lockoutKey)) persistStudentLoginFailures();
+// Persists only when something was actually cleared. Returns the queued
+// Postgres write for `student:<id>` keys so the admin PIN-reset path can
+// await it (a fire-and-forget clear would let the next login re-seed the
+// stale Postgres lockout and 429).
+function clearStudentLoginFailure(lockoutKey: string): Promise<void> | void {
+  if (studentLoginFailures.delete(lockoutKey)) {
+    persistStudentLoginFailures();
+    if (lockoutKey.startsWith('student:')) {
+      return persistStudentLockoutToSupabase(lockoutKey.slice('student:'.length), 0, null);
+    }
+  }
 }
 
 function createServerSession(params: {
@@ -937,7 +1006,10 @@ function getAuthenticatedSession(req: Request): ServerSession | null {
   // Last-seen tracking for the admin session-control panel: refreshed on
   // every authenticated request (see GET /api/admin/sessions).
   session.lastSeenAt = Date.now();
-  // If session is system_admin, verify admin still exists in store
+  // If session is system_admin, verify admin still exists in store.
+  // Auth cutover (Stage 1): the disk file is the dual-written mirror
+  // of public.system_admins, so this check stays valid; the credential
+  // decision itself is Postgres-first in the login handler.
   if (session.role === 'system_admin') {
     systemAdmins = loadSystemAdminsFromDisk();
     if (!systemAdmins.has(session.userId)) {
@@ -1675,6 +1747,11 @@ app.post('/api/auth/session', authRateLimiter, authIpRateLimiter, async (req: Re
     }
     const sessionUserId = accountCheck.userId;
     const persistedStudent = academicStore.students.find(student => student.id === sessionUserId);
+    // Auth cutover (Stage 1): seed the in-memory lockout Map from the
+    // Postgres row before the fresh-path lockout check below.
+    if (persistedStudent && isSupabaseConfigured()) {
+      await seedStudentLockoutFromPostgres(persistedStudent.boardRoll, sessionUserId);
+    }
     const canUseCaptainRole =
       persistedStudent?.isRegisteredAccount === true &&
       persistedStudent?.accountType === 'class_captain' &&
@@ -1802,6 +1879,11 @@ app.post('/api/students/login', authRateLimiter, authIpRateLimiter, async (req: 
   if (isSupabaseConfigured()) {
     try {
       student = await getStudentByBoardRoll(boardRoll, { registeredOnly: true });
+      // Auth cutover (Stage 1): seed the in-memory lockout Map from the
+      // Postgres row before the lockout check below — a lockout recorded
+      // in Postgres (durable copy) must hold even if the JSON mirror
+      // was reset.
+      if (student) await seedStudentLockoutFromPostgres(boardRoll, student.id);
     } catch (err) {
       console.warn('[StudentLogin] Supabase read failed, falling back to JSON store:', err);
       student = academicStore.students.find(
@@ -2061,12 +2143,35 @@ app.post('/api/students/sms/resend', authRateLimiter, authIpRateLimiter, async (
  * first (created with Board Roll + PIN); linking from Settings is a
  * later step.
  */
-function resolveSocialStudent(email: string, requestedRole: AccountType): { student?: EnrolledStudent; error?: string; status?: number } {
+async function resolveSocialStudent(email: string, requestedRole: AccountType): Promise<{ student?: EnrolledStudent; error?: string; status?: number }> {
   const cleanEmail = String(email || '').trim().toLowerCase();
   if (!cleanEmail) return { error: 'No email address was shared by the social account.', status: 401 };
-  const student = academicStore.students.find(
-    account => (account.email || '').trim().toLowerCase() === cleanEmail && account.isRegisteredAccount === true
-  );
+  // Stage 1 data cutover: the social lookup reads Postgres first
+  // (getStudentByEmail, registered accounts only), falling back to
+  // the JSON store on error or when unconfigured. A JSON twin wins
+  // when one exists: the Postgres row drops JSON-only fields the
+  // session minting reads (enrolledSubjects, profile extras).
+  let student: EnrolledStudent | undefined;
+  if (isSupabaseConfigured()) {
+    try {
+      const pgStudent = await getStudentByEmail(cleanEmail);
+      if (pgStudent) {
+        student =
+          academicStore.students.find(
+            (account) =>
+              (account.email || '').trim().toLowerCase() === cleanEmail &&
+              account.isRegisteredAccount === true
+          ) ?? pgStudent;
+      }
+    } catch (err) {
+      console.warn('[SocialLogin] Supabase lookup failed, falling back to JSON store:', err);
+    }
+  }
+  if (!student) {
+    student = academicStore.students.find(
+      account => (account.email || '').trim().toLowerCase() === cleanEmail && account.isRegisteredAccount === true
+    );
+  }
   if (!student) {
     return { error: 'No DiplomaMate account is linked to this email. Sign in with Board Roll + PIN first, then link your social account from Settings.', status: 404 };
   }
@@ -2128,7 +2233,7 @@ app.post('/api/auth/google', authRateLimiter, authIpRateLimiter, async (req: Req
     if (Number(payload.exp) * 1000 < Date.now()) {
       return res.status(401).json({ success: false, error: 'Google sign-in has expired. Please try again.' });
     }
-    const resolved = resolveSocialStudent(payload.email || '', requestedRole);
+    const resolved = await resolveSocialStudent(payload.email || '', requestedRole);
     if (!resolved.student) {
       return res.status(resolved.status || 401).json({ success: false, error: resolved.error });
     }
@@ -2200,7 +2305,7 @@ app.post('/api/auth/facebook', authRateLimiter, authIpRateLimiter, async (req: R
     if (!me.email) {
       return res.status(401).json({ success: false, error: 'Facebook did not share an email address. Please allow email access and try again.' });
     }
-    const resolved = resolveSocialStudent(me.email, requestedRole);
+    const resolved = await resolveSocialStudent(me.email, requestedRole);
     if (!resolved.student) {
       return res.status(resolved.status || 401).json({ success: false, error: resolved.error });
     }
@@ -2320,6 +2425,9 @@ function isAdminPinLocked(): { locked: boolean; lockedUntil: number | null } {
     lockout.failedAttempts = 0;
     lockout.lockedUntil = null;
     saveAcademicStore(academicStore);
+    // Auth cutover (Stage 1): the expiry clear is a lockout mutation —
+    // dual-write it so Postgres does not keep re-locking the panel.
+    void persistAdminPinLockoutToSupabase('AdminPinLockout');
   }
   return { locked: false, lockedUntil: null };
 }
@@ -2439,6 +2547,8 @@ app.post('/api/admin/pin-verify', authRateLimiter, authIpRateLimiter, (req: Requ
         lockout.lockedUntil = Date.now() + ADMIN_PIN_LOCKOUT_MS;
         appendSystemAudit('admin_pin_locked_out', 'admin-pin-gate', 'Admin Panel PIN', 'Admin panel locked after 3 failed PIN attempts (5 hours).');
         saveAcademicStore(academicStore);
+        // Auth cutover (Stage 1): dual-write the lockout to Postgres.
+        void persistAdminPinLockoutToSupabase('AdminPinVerify');
         return res.status(429).json({
           success: false,
           locked: true,
@@ -2449,6 +2559,8 @@ app.post('/api/admin/pin-verify', authRateLimiter, authIpRateLimiter, (req: Requ
       const attemptsLeft = ADMIN_PIN_MAX_ATTEMPTS - lockout.failedAttempts;
       appendSystemAudit('admin_pin_failed', 'admin-pin-gate', 'Admin Panel PIN', `Failed PIN attempt (${lockout.failedAttempts}/3).`);
       saveAcademicStore(academicStore);
+      // Auth cutover (Stage 1): dual-write the failure count to Postgres.
+      void persistAdminPinLockoutToSupabase('AdminPinVerify');
       return res.status(401).json({
         success: false,
         error: `Incorrect admin panel PIN. ${attemptsLeft} attempt(s) remaining before a 5-hour lockout.`
@@ -2460,6 +2572,8 @@ app.post('/api/admin/pin-verify', authRateLimiter, authIpRateLimiter, (req: Requ
     lockout.failedAttempts = 0;
     lockout.lockedUntil = null;
     saveAcademicStore(academicStore);
+    // Auth cutover (Stage 1): dual-write the cleared lockout to Postgres.
+    void persistAdminPinLockoutToSupabase('AdminPinVerify');
     for (const [token, expiresAt] of adminPinTokens) {
       if (Date.now() >= expiresAt) adminPinTokens.delete(token);
     }
@@ -2494,7 +2608,7 @@ app.get('/api/admin/bootstrap-status', (_req: Request, res: Response) => {
 
 // Admin audit-log viewer (paginated). The audit log was previously
 // write-only — entries were recorded but no endpoint could read them.
-app.get('/api/admin/audit-logs', requireAdminRole(ADMIN_ROLES), (req: Request, res: Response) => {
+app.get('/api/admin/audit-logs', requireAdminRole(ADMIN_ROLES), async (req: Request, res: Response) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
   const actionFilter = typeof req.query.action === 'string' && req.query.action.trim()
@@ -2503,7 +2617,18 @@ app.get('/api/admin/audit-logs', requireAdminRole(ADMIN_ROLES), (req: Request, r
   const adminFilter = typeof req.query.adminId === 'string' && req.query.adminId.trim()
     ? req.query.adminId.trim()
     : null;
-  const allLogs = academicStore.adminAuditLogs || [];
+  // Stage 1 data cutover: audit logs read Postgres first, merged with
+  // the JSON store (see listPostgresFirstMerged). The JSON store stays
+  // the fallback — audit writes are dual-written since v1.0.30.
+  const allLogs = await listPostgresFirstMerged(
+    'admin_audit_logs',
+    academicStore.adminAuditLogs || [],
+    fromAdminAuditRow,
+    'AdminAuditLogs',
+    undefined,
+    'timestamp',
+    false
+  );
   const filtered = allLogs.filter(entry =>
     (!actionFilter || entry.action === actionFilter) &&
     (!adminFilter || entry.adminId === adminFilter)
@@ -2645,11 +2770,30 @@ function applyAdminNoticeFields(
 //    expiresAt records are hidden; records without admin status fields —
 //    teacher/captain notices — are treated as published, as before).
 // ---------------------------------------------------------------------------
-app.get('/api/admin/notices', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), (req: Request, res: Response) => {
+app.get('/api/admin/notices', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), async (req: Request, res: Response) => {
   try {
     const statusFilter = typeof req.query.status === 'string' ? req.query.status : '';
     const audienceFilter = typeof req.query.audience === 'string' ? req.query.audience : '';
-    const notices = [...academicStore.campusNotices].sort((a, b) => {
+    // Stage 1 data cutover: admin notices read Postgres first via
+    // fetchCampusNotices() (same helper as GET /api/notices/campus),
+    // falling back to the JSON store on error. A JSON twin wins when
+    // one exists: the Postgres row drops the admin extras (status /
+    // publishAt / expiresAt / audience) the admin list filters on.
+    let notices = [...academicStore.campusNotices];
+    if (isSupabaseConfigured()) {
+      try {
+        const pgNotices = await listCampusNotices();
+        const byId = new Map(academicStore.campusNotices.map((n) => [n.id, n]));
+        const pgIds = new Set(pgNotices.map((n) => n.id));
+        notices = [
+          ...pgNotices.map((n) => byId.get(n.id) ?? n),
+          ...academicStore.campusNotices.filter((n) => !pgIds.has(n.id))
+        ];
+      } catch (err) {
+        console.warn('[AdminNotices] Supabase read failed, falling back to JSON store:', err);
+      }
+    }
+    notices = notices.sort((a, b) => {
       const aPinned = Boolean(a.isPinned);
       const bPinned = Boolean(b.isPinned);
       if (aPinned !== bPinned) return aPinned ? -1 : 1;
@@ -2842,6 +2986,9 @@ app.post('/api/admin/notifications/send', requireAdminRole(['super_admin', 'acad
     academicStore.adminNotifications.unshift(notification);
     adminPanelAudit(req, 'admin_notification_send', notification.id, notification.title, `Audience: ${audienceType}; channel: in-app.`);
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: sent notifications dual-write to
+    // Postgres (admin_notifications).
+    void persistAdminNotificationToSupabase(notification, 'AdminNotificationSend');
     return res.status(201).json({ success: true, notification });
   } catch (err) {
     console.error('[Admin Notifications] POST send error:', err);
@@ -2849,9 +2996,21 @@ app.post('/api/admin/notifications/send', requireAdminRole(['super_admin', 'acad
   }
 });
 
-app.get('/api/admin/notifications/history', requireAdminRole(ADMIN_ROLES), (req: Request, res: Response) => {
+app.get('/api/admin/notifications/history', requireAdminRole(ADMIN_ROLES), async (req: Request, res: Response) => {
   try {
-    const notifications = [...(academicStore.adminNotifications || [])].sort((a, b) =>
+    // Stage 1 data cutover: notification history reads Postgres first,
+    // merged with the JSON store (see listPostgresFirstMerged).
+    const notifications = (
+      await listPostgresFirstMerged(
+        'admin_notifications',
+        academicStore.adminNotifications || [],
+        fromAdminNotificationRow,
+        'AdminNotifications',
+        undefined,
+        'created_at',
+        false
+      )
+    ).sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     return res.status(200).json({ success: true, notifications, total: notifications.length });
@@ -2861,13 +3020,25 @@ app.get('/api/admin/notifications/history', requireAdminRole(ADMIN_ROLES), (req:
   }
 });
 
-app.get('/api/notifications', (req: Request, res: Response) => {
+app.get('/api/notifications', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
       return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to view notifications.' });
     }
-    const notifications = (academicStore.adminNotifications || [])
+    // Stage 1 data cutover: user notifications read Postgres first,
+    // merged with the JSON store (see listPostgresFirstMerged).
+    const notifications = (
+      await listPostgresFirstMerged(
+        'admin_notifications',
+        academicStore.adminNotifications || [],
+        fromAdminNotificationRow,
+        'AdminNotifications',
+        undefined,
+        'created_at',
+        false
+      )
+    )
       .filter(n => n.status === 'sent' && notificationMatchesSession(n, session))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .map(n => ({ id: n.id, title: n.title, message: n.message, createdAt: n.createdAt }));
@@ -2885,14 +3056,41 @@ app.get('/api/notifications', (req: Request, res: Response) => {
 //    picks them up unchanged. `kind` is 'class' (default) or 'exam'; exam
 //    routines are excluded from the class-routine student read path.
 // ---------------------------------------------------------------------------
-app.get('/api/admin/routines', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), (req: Request, res: Response) => {
+// Stage 1 data cutover: routines read Postgres first via listRoutines()
+// (the same helper as GET /api/routines), falling back to the JSON
+// store on error or when unconfigured. A JSON twin wins when one
+// exists: the Postgres row drops the review/OCR metadata fields
+// (migration_review_reason, confidence, uncertainFields), which the
+// admin review UI still needs. Rows present only in Postgres are
+// appended after the JSON rows.
+async function getRoutinesMerged(): Promise<RoutinePeriod[]> {
+  if (!isSupabaseConfigured()) {
+    return [...academicStore.routines];
+  }
+  try {
+    const rows = await listRoutines({});
+    const byId = new Map(academicStore.routines.map((r) => [r.id, r]));
+    const pgIds = new Set(rows.map((r) => r.id));
+    return [
+      ...rows.map((r) => byId.get(r.id) ?? r),
+      ...academicStore.routines.filter((r) => !pgIds.has(r.id))
+    ];
+  } catch (err) {
+    console.warn('[Routines] Supabase read failed, falling back to JSON store:', err);
+    return [...academicStore.routines];
+  }
+}
+
+app.get('/api/admin/routines', requireAdminRole(['super_admin', 'academic_manager', 'content_manager']), async (req: Request, res: Response) => {
   try {
     const deptFilter = typeof req.query.department === 'string' ? req.query.department.trim().toLowerCase() : '';
     const semFilter = req.query.semester !== undefined && req.query.semester !== '' ? Number(req.query.semester) : undefined;
     const dayFilter = typeof req.query.day === 'string' ? req.query.day.trim() : '';
     const kindFilter = typeof req.query.kind === 'string' ? req.query.kind.trim() : '';
     const statusFilter = typeof req.query.status === 'string' ? req.query.status.trim() : '';
-    const routines = academicStore.routines.filter(r => {
+    // Stage 1 data cutover: routines read Postgres first (see
+    // getRoutinesMerged); the filters below are unchanged.
+    const routines = (await getRoutinesMerged()).filter(r => {
       if (deptFilter && !(r.department || '').toLowerCase().includes(deptFilter) && !(r.department_id || '').toLowerCase().includes(deptFilter)) return false;
       if (semFilter !== undefined && Number(r.semester) !== semFilter) return false;
       if (dayFilter && r.day !== dayFilter) return false;
@@ -3067,9 +3265,12 @@ app.post('/api/admin/routines/:id/archive', requireAdminRole(['super_admin', 'ac
 // ---------------------------------------------------------------------------
 // 4. FEATURE FLAGS + MAINTENANCE
 // ---------------------------------------------------------------------------
-app.get('/api/admin/flags', requireAdminRole(ADMIN_ROLES), (_req: Request, res: Response) => {
+app.get('/api/admin/flags', requireAdminRole(ADMIN_ROLES), async (_req: Request, res: Response) => {
   ensureAdminPanelStoreDefaults(academicStore);
-  return res.status(200).json({ success: true, featureFlags: academicStore.featureFlags });
+  // Stage 1 data cutover: feature flags read Postgres first (see
+  // getAppConfigPostgresFirst); the JSON store is the fallback.
+  const config = await getAppConfigPostgresFirst();
+  return res.status(200).json({ success: true, featureFlags: config.featureFlags });
 });
 
 app.post('/api/admin/flags', requireAdminRole(['super_admin']), (req: Request, res: Response) => {
@@ -3087,6 +3288,9 @@ app.post('/api/admin/flags', requireAdminRole(['super_admin']), (req: Request, r
     academicStore.featureFlags[key] = { enabled: body.enabled, updatedBy: session.name, updatedAt: new Date().toISOString() };
     adminPanelAudit(req, 'admin_flag_upsert', key, key, `Flag ${key} ${body.enabled ? 'enabled' : 'disabled'}.`);
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: the flag dual-writes to Postgres
+    // (app_config row `featureFlags`).
+    void persistAppConfigToSupabase('featureFlags', academicStore.featureFlags, 'AdminFlags', session.name);
     return res.status(200).json({ success: true, featureFlags: academicStore.featureFlags });
   } catch (err) {
     console.error('[Admin Flags] POST error:', err);
@@ -3110,6 +3314,9 @@ app.post('/api/admin/maintenance', requireAdminRole(['super_admin']), (req: Requ
     };
     adminPanelAudit(req, 'admin_maintenance', 'maintenance', 'Maintenance mode', `Maintenance ${body.enabled ? 'enabled' : 'disabled'}.`);
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: maintenance mode dual-writes to Postgres
+    // (app_config row `maintenanceMode`).
+    void persistAppConfigToSupabase('maintenanceMode', academicStore.maintenanceMode, 'AdminMaintenance', session.name);
     return res.status(200).json({ success: true, maintenanceMode: academicStore.maintenanceMode });
   } catch (err) {
     console.error('[Admin Maintenance] POST error:', err);
@@ -3120,9 +3327,12 @@ app.post('/api/admin/maintenance', requireAdminRole(['super_admin']), (req: Requ
 // ---------------------------------------------------------------------------
 // 5. FORCE UPDATE (version control)
 // ---------------------------------------------------------------------------
-app.get('/api/admin/version-control', requireAdminRole(ADMIN_ROLES), (_req: Request, res: Response) => {
+app.get('/api/admin/version-control', requireAdminRole(ADMIN_ROLES), async (_req: Request, res: Response) => {
   ensureAdminPanelStoreDefaults(academicStore);
-  return res.status(200).json({ success: true, appVersionControl: academicStore.appVersionControl });
+  // Stage 1 data cutover: version control reads Postgres first (see
+  // getAppConfigPostgresFirst); the JSON store is the fallback.
+  const config = await getAppConfigPostgresFirst();
+  return res.status(200).json({ success: true, appVersionControl: config.appVersionControl });
 });
 
 app.post('/api/admin/version-control', requireAdminRole(['super_admin']), (req: Request, res: Response) => {
@@ -3154,6 +3364,9 @@ app.post('/api/admin/version-control', requireAdminRole(['super_admin']), (req: 
     };
     adminPanelAudit(req, 'admin_version_control', 'app-version', 'App version control', `min=${academicStore.appVersionControl.minVersionCode} latest=${academicStore.appVersionControl.latestVersionCode} (${academicStore.appVersionControl.latestVersionName}) forceUpdate=${academicStore.appVersionControl.forceUpdate}.`);
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: version control dual-writes to Postgres
+    // (app_config row `appVersionControl`).
+    void persistAppConfigToSupabase('appVersionControl', academicStore.appVersionControl, 'AdminVersionControl', session.name);
     return res.status(200).json({ success: true, appVersionControl: academicStore.appVersionControl });
   } catch (err) {
     console.error('[Admin Version Control] POST error:', err);
@@ -3163,13 +3376,16 @@ app.post('/api/admin/version-control', requireAdminRole(['super_admin']), (req: 
 
 // Public boot config — NO auth. The student app calls this at startup for
 // the maintenance banner, feature flags and force-update check.
-app.get('/api/app-config', (_req: Request, res: Response) => {
+app.get('/api/app-config', async (_req: Request, res: Response) => {
   ensureAdminPanelStoreDefaults(academicStore);
+  // Stage 1 data cutover: the boot config reads Postgres first (see
+  // getAppConfigPostgresFirst); the JSON store is the fallback.
+  const config = await getAppConfigPostgresFirst();
   return res.status(200).json({
     success: true,
-    maintenanceMode: academicStore.maintenanceMode,
-    featureFlags: academicStore.featureFlags,
-    appVersionControl: academicStore.appVersionControl
+    maintenanceMode: config.maintenanceMode,
+    featureFlags: config.featureFlags,
+    appVersionControl: config.appVersionControl
   });
 });
 
@@ -3278,7 +3494,7 @@ app.get('/api/admin/admins', requireSystemAdmin, (_req: Request, res: Response) 
   }
 });
 
-app.post('/api/admin/admins/invite', requireSystemAdmin, (req: Request, res: Response) => {
+app.post('/api/admin/admins/invite', requireSystemAdmin, async (req: Request, res: Response) => {
   try {
     const body = (req.body || {}) as Record<string, unknown>;
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
@@ -3297,9 +3513,21 @@ app.post('/api/admin/admins/invite', requireSystemAdmin, (req: Request, res: Res
     if (!password || password.length < 8) {
       return res.status(400).json({ success: false, error: 'Password must be at least 8 characters long.' });
     }
-    const emailTaken =
+    // Auth cutover (Stage 1): the email must be free in Postgres too —
+    // a sub-admin whose row lives only in Postgres would otherwise be
+    // duplicated by a JSON-only check. A Postgres error falls back to
+    // the JSON check with a warning (transitional safety).
+    let emailTaken =
       (academicStore.adminAccounts || []).some(a => a.email.toLowerCase() === email) ||
       [...systemAdmins.values()].some(a => a.email.toLowerCase() === email);
+    if (!emailTaken && isSupabaseConfigured()) {
+      try {
+        const [pgFounder, pgSub] = await Promise.all([getSystemAdminByEmail(email), getSubAdminByEmail(email)]);
+        if (pgFounder || pgSub) emailTaken = true;
+      } catch (err) {
+        console.warn('[AdminInvite] Supabase duplicate check failed, using the JSON store:', err);
+      }
+    }
     if (emailTaken) {
       return res.status(409).json({ success: false, error: 'An admin account with this email already exists.' });
     }
@@ -3319,6 +3547,9 @@ app.post('/api/admin/admins/invite', requireSystemAdmin, (req: Request, res: Res
     };
     academicStore.adminAccounts.push(account);
     adminPanelAudit(req, 'admin_account_invite', account.id, account.name, `Role: ${account.role}; email: ${account.email}.`);
+    // Auth cutover (Stage 1): the new sub-admin goes to Postgres
+    // (public.admin_accounts) FIRST, then the JSON store.
+    await persistAdminRecordToSupabase(account, 'AdminInvite');
     saveAcademicStore(academicStore);
     return res.status(201).json({
       success: true,
@@ -3331,7 +3562,7 @@ app.post('/api/admin/admins/invite', requireSystemAdmin, (req: Request, res: Res
   }
 });
 
-app.patch('/api/admin/admins/:id', requireSystemAdmin, (req: Request, res: Response) => {
+app.patch('/api/admin/admins/:id', requireSystemAdmin, async (req: Request, res: Response) => {
   try {
     const account = (academicStore.adminAccounts || []).find(a => a.id === req.params.id);
     if (!account) {
@@ -3370,6 +3601,11 @@ app.patch('/api/admin/admins/:id', requireSystemAdmin, (req: Request, res: Respo
       for (const [token, session] of serverSessions) {
         if (session.userId === account.id) serverSessions.delete(token);
       }
+      // Auth cutover (Stage 1): role / status / founder-reset password
+      // go to Postgres (public.admin_accounts) FIRST, then the JSON
+      // store — the upsert also self-heals a sub-admin whose Postgres
+      // row the boot backfill missed.
+      await persistAdminRecordToSupabase(account, 'AdminAccountUpdate');
     }
     adminPanelAudit(req, typeof body.newPassword === 'string' ? 'admin_password_reset' : 'admin_account_update', account.id, account.name, `Role: ${account.role}; status: ${account.status}${typeof body.newPassword === 'string' ? '; password reset by founder' : ''}.`);
     saveAcademicStore(academicStore);
@@ -3387,7 +3623,7 @@ app.patch('/api/admin/admins/:id', requireSystemAdmin, (req: Request, res: Respo
 // characters (v2 600k hash), and invalidates ALL of the admin's live
 // sessions — including the caller's own — so they must sign in again
 // with the new password. Audited as `admin_password_changed`.
-app.post('/api/admin/change-password', requireAdminRole(ADMIN_ROLES), (req: Request, res: Response) => {
+app.post('/api/admin/change-password', requireAdminRole(ADMIN_ROLES), async (req: Request, res: Response) => {
   try {
     const session = (req as unknown as { adminSession?: ServerSession }).adminSession;
     if (!session) {
@@ -3407,7 +3643,11 @@ app.post('/api/admin/change-password', requireAdminRole(ADMIN_ROLES), (req: Requ
     }
     systemAdmins = loadSystemAdminsFromDisk();
     if (session.role === 'system_admin') {
-      const targetAdmin = systemAdmins.get(session.userId);
+      // Auth cutover (Stage 1): the current-password check runs on the
+      // Postgres record when it answers; the new v2 hash is written to
+      // Postgres FIRST, then the JSON disk copy — so the new password
+      // survives the next deploy instead of reverting to the repo copy.
+      const targetAdmin = await resolveAdminRecordById(session.userId, 'system_admin') as StoredSystemAdmin | undefined;
       if (!targetAdmin) {
         return res.status(404).json({ success: false, error: 'Admin account not found.' });
       }
@@ -3415,9 +3655,10 @@ app.post('/api/admin/change-password', requireAdminRole(ADMIN_ROLES), (req: Requ
         return res.status(401).json({ success: false, error: 'Current password is incorrect.' });
       }
       setSystemAdminPassword(targetAdmin, newPassword);
+      await persistAdminRecordToSupabase(targetAdmin, 'AdminPasswordChange');
       saveSystemAdminsToDisk(systemAdmins);
     } else {
-      const subAdmin = (academicStore.adminAccounts || []).find(a => a.id === session.userId);
+      const subAdmin = await resolveAdminRecordById(session.userId, session.role as AdminRole) as AdminAccount | undefined;
       if (!subAdmin) {
         return res.status(404).json({ success: false, error: 'Admin account not found.' });
       }
@@ -3425,6 +3666,8 @@ app.post('/api/admin/change-password', requireAdminRole(ADMIN_ROLES), (req: Requ
         return res.status(401).json({ success: false, error: 'Current password is incorrect.' });
       }
       setSubAdminPassword(subAdmin, newPassword);
+      // Auth cutover (Stage 1): new hash to Postgres FIRST, then JSON.
+      await persistAdminRecordToSupabase(subAdmin, 'AdminPasswordChange');
     }
     const revoked = revokeAllSessionsForUser(session.userId);
     adminPanelAudit(req, 'admin_password_changed', session.userId, session.name, `Password changed; ${revoked} live session(s) revoked.`);
@@ -3538,15 +3781,25 @@ app.post('/api/support/tickets', (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/support/tickets/mine', (req: Request, res: Response) => {
+app.get('/api/support/tickets/mine', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
       return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to view your tickets.' });
     }
-    const tickets = (academicStore.supportTickets || [])
-      .filter(t => t.userId === session.userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Stage 1 data cutover: tickets read Postgres first, merged with
+    // the JSON store (see listPostgresFirstMerged).
+    const tickets = (
+      await listPostgresFirstMerged(
+        'support_tickets',
+        (academicStore.supportTickets || []).filter(t => t.userId === session.userId),
+        fromSupportTicketRow,
+        'SupportTickets',
+        { user_id: session.userId },
+        'created_at',
+        false
+      )
+    ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return res.status(200).json({ success: true, tickets, total: tickets.length });
   } catch (err) {
     console.error('[Support Tickets] GET mine error:', err);
@@ -3554,12 +3807,23 @@ app.get('/api/support/tickets/mine', (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/admin/tickets', requireAdminRole(['super_admin', 'support_manager']), (req: Request, res: Response) => {
+app.get('/api/admin/tickets', requireAdminRole(['super_admin', 'support_manager']), async (req: Request, res: Response) => {
   try {
     const statusFilter = typeof req.query.status === 'string' ? req.query.status : '';
     const priorityFilter = typeof req.query.priority === 'string' ? req.query.priority : '';
     const assigneeFilter = typeof req.query.assignee === 'string' ? req.query.assignee : '';
-    const tickets = (academicStore.supportTickets || [])
+    // Stage 1 data cutover: tickets read Postgres first, merged with
+    // the JSON store (see listPostgresFirstMerged).
+    const allTickets = await listPostgresFirstMerged(
+      'support_tickets',
+      academicStore.supportTickets || [],
+      fromSupportTicketRow,
+      'SupportTickets',
+      undefined,
+      'created_at',
+      false
+    );
+    const tickets = allTickets
       .filter(t => {
         if (statusFilter && t.status !== statusFilter) return false;
         if (priorityFilter && t.priority !== priorityFilter) return false;
@@ -3607,6 +3871,9 @@ app.patch('/api/admin/tickets/:id', requireAdminRole(['super_admin', 'support_ma
     ticket.updatedAt = new Date().toISOString();
     adminPanelAudit(req, 'admin_ticket_update', ticket.id, ticket.subject, `Status: ${ticket.status}; priority: ${ticket.priority}; assignee: ${ticket.assigneeId || 'unassigned'}.`);
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: ticket updates dual-write to Postgres
+    // (status / priority / assignee / resolution / resolved_at).
+    void persistSupportTicketUpdateToSupabase(ticket, 'AdminTicketUpdate');
     return res.status(200).json({ success: true, ticket });
   } catch (err) {
     console.error('[Admin Tickets] PATCH error:', err);
@@ -3630,6 +3897,9 @@ app.post('/api/admin/tickets/:id/notes', requireAdminRole(['super_admin', 'suppo
     ticket.updatedAt = new Date().toISOString();
     adminPanelAudit(req, 'admin_ticket_note', ticket.id, ticket.subject, 'Internal note added.');
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: internal notes dual-write to Postgres
+    // (internal_notes jsonb column, added by the Stage-1 SQL).
+    void persistSupportTicketUpdateToSupabase(ticket, 'AdminTicketNote');
     return res.status(200).json({ success: true, ticket });
   } catch (err) {
     console.error('[Admin Tickets] POST note error:', err);
@@ -3721,6 +3991,23 @@ app.post('/api/admin/bootstrap', authRateLimiter, authIpRateLimiter, async (req:
       return res.status(503).json({ success: false, error: 'Security check is unavailable. Please try again.' });
     }
     systemAdmins = loadSystemAdminsFromDisk();
+    // Auth cutover (Stage 1): the founder may already exist in
+    // Postgres even when the disk file is empty (e.g. after a deploy
+    // that reset the disk to the repo seed) — check Postgres first. A
+    // Postgres error falls back to the disk check with a warning.
+    if (isSupabaseConfigured()) {
+      try {
+        const pgAdmins = await listSystemAdmins();
+        if (pgAdmins.length > 0) {
+          return res.status(403).json({
+            success: false,
+            error: 'Forbidden: Initial System Administrator has already been provisioned. Public or repeated bootstrap is disabled.'
+          });
+        }
+      } catch (err) {
+        console.warn('[AdminBootstrap] Supabase founder check failed, using the disk store:', err);
+      }
+    }
     if (systemAdmins.size > 0) {
       return res.status(403).json({
         success: false,
@@ -3784,6 +4071,9 @@ app.post('/api/admin/bootstrap', authRateLimiter, authIpRateLimiter, async (req:
     };
 
     systemAdmins.set(newAdmin.id, newAdmin);
+    // Auth cutover (Stage 1): the first founder goes to Postgres
+    // FIRST, then the JSON disk copy.
+    await persistAdminRecordToSupabase(newAdmin, 'AdminBootstrap');
     saveSystemAdminsToDisk(systemAdmins);
 
     // Delete the one-time bootstrap token file immediately
@@ -3820,7 +4110,11 @@ app.post('/api/admin/bootstrap', authRateLimiter, authIpRateLimiter, async (req:
 
 /**
  * 2G. SYSTEM ADMINISTRATOR LOGIN (`POST /api/admin/login`)
- * Authenticates against `data/system-admins.json` with PBKDF2 verification and 5-attempt lockout.
+ * Authenticates Postgres-first (public.system_admins / public
+ * .admin_accounts, Stage-1 auth cutover) with PBKDF2 verification and
+ * 5-attempt lockout; the JSON files are the fallback only when
+ * Supabase is unconfigured or the query throws. A Postgres lookup
+ * that answers with no row rejects the login without consulting JSON.
  */
 app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, async (req: Request, res: Response) => {
   try {
@@ -3850,22 +4144,25 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, async (req: Req
     const cleanEmail = String(email).trim().toLowerCase();
     const cleanPassword = String(password).trim();
 
-    let targetAdmin: StoredSystemAdmin | undefined;
-    for (const a of systemAdmins.values()) {
-      if (a.email.toLowerCase() === cleanEmail) {
-        targetAdmin = a;
-        break;
-      }
-    }
+    // Auth cutover (Stage 1): the credential decision is Postgres-
+    // authoritative. resolveAdminAuthRecord returns the Postgres record
+    // (mirrored into the JSON stores) when Postgres answers — and when
+    // Postgres answers with NO record for this email, the login is
+    // rejected below WITHOUT consulting the JSON mirror, so a stale or
+    // seed JSON record can never authenticate. The JSON mirror is the
+    // credential source only when the resolver reports source 'json'
+    // (Supabase unconfigured or the query threw — transitional safety).
+    const authSource = await resolveAdminAuthRecord(cleanEmail);
+    const targetAdmin = authSource.founder;
 
     if (!targetAdmin) {
-      // Sub-admin accounts (adminAccounts in the academic store) sign in
-      // through this same endpoint; the PIN gate above already ran for
-      // them too. Passwords use the same PBKDF2 helpers (v2 = 600k
-      // iterations, legacy 10k verified + transparently upgraded).
-      const subAdmin = (academicStore.adminAccounts || []).find(
-        a => a.email.toLowerCase() === cleanEmail
-      );
+      // Sub-admin accounts sign in through this same endpoint; the PIN
+      // gate above already ran for them too. Passwords use the same
+      // PBKDF2 helpers (v2 = 600k iterations, legacy 10k verified +
+      // transparently upgraded). The sub-admin record comes from
+      // public.admin_accounts when Postgres answered, else from the
+      // JSON mirror (authSource.source === 'json' only).
+      const subAdmin = authSource.subAdmin;
       if (subAdmin) {
         if (subAdmin.status !== 'active') {
           return res.status(403).json({
@@ -3885,12 +4182,16 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, async (req: Req
           subAdmin.failedAttempts = (subAdmin.failedAttempts || 0) + 1;
           if (subAdmin.failedAttempts >= 5) {
             subAdmin.lockoutUntil = Date.now() + 15 * 60 * 1000;
+            // Auth cutover (Stage 1): lockout state to Postgres FIRST,
+            // then the JSON mirror.
+            await persistAdminRecordToSupabase(subAdmin, 'AdminLogin');
             saveAcademicStore(academicStore);
             return res.status(429).json({
               success: false,
               error: 'Maximum failed login attempts exceeded (5/5). Admin account locked for 15 minutes.'
             });
           }
+          await persistAdminRecordToSupabase(subAdmin, 'AdminLogin');
           saveAcademicStore(academicStore);
           return res.status(401).json({
             success: false,
@@ -3907,6 +4208,9 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, async (req: Req
           subAdmin.passwordHashVersion = 2;
         }
         appendSystemAudit('admin_login_success', subAdmin.id, subAdmin.email, `Admin (${subAdmin.role}) signed in.`, subAdmin.id);
+        // Auth cutover (Stage 1): the reset counters + v2 hash upgrade
+        // (above) go to Postgres FIRST, then the JSON mirror.
+        await persistAdminRecordToSupabase(subAdmin, 'AdminLogin');
         saveAcademicStore(academicStore);
         // A5: a PIN token unlocks one successful sign-in — consume it here
         // too (previously only the founder branch deleted it).
@@ -3945,6 +4249,9 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, async (req: Req
 
       if (targetAdmin.failedAttempts >= 5) {
         targetAdmin.lockoutUntil = Date.now() + 15 * 60 * 1000;
+        // Auth cutover (Stage 1): lockout state to Postgres FIRST,
+        // then the JSON disk copy.
+        await persistAdminRecordToSupabase(targetAdmin, 'AdminLogin');
         saveSystemAdminsToDisk(systemAdmins);
         appendSystemAudit('admin_login_locked_out', targetAdmin.id, targetAdmin.email, 'Account locked after 5 failed login attempts.', targetAdmin.id);
         saveAcademicStore(academicStore);
@@ -3954,6 +4261,7 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, async (req: Req
         });
       }
 
+      await persistAdminRecordToSupabase(targetAdmin, 'AdminLogin');
       saveSystemAdminsToDisk(systemAdmins);
       appendSystemAudit('admin_login_failed', targetAdmin.id, targetAdmin.email, `Failed login attempt (${targetAdmin.failedAttempts}/5).`, targetAdmin.id);
       saveAcademicStore(academicStore);
@@ -3968,7 +4276,11 @@ app.post('/api/admin/login', authRateLimiter, authIpRateLimiter, async (req: Req
     targetAdmin.lastLoginAt = new Date().toISOString();
     // Transparent hash upgrade: a successful legacy (10k-iteration) login
     // re-hashes the password with the v2 scheme (600k iterations).
+    // Auth cutover (Stage 1): the upgraded hash is dual-written —
+    // Postgres FIRST, then the JSON disk copy — so the v2 hash survives
+    // the next deploy instead of reverting to the repo-copy v1 hash.
     upgradeAdminPasswordHash(targetAdmin, cleanPassword);
+    await persistAdminRecordToSupabase(targetAdmin, 'AdminLogin');
     saveSystemAdminsToDisk(systemAdmins);
     appendSystemAudit('admin_login_success', targetAdmin.id, targetAdmin.email, 'Administrator signed in.', targetAdmin.id);
     saveAcademicStore(academicStore);
@@ -4202,9 +4514,23 @@ app.post('/api/teachers/login', authRateLimiter, authIpRateLimiter, async (req: 
 /**
  * 4. GET ALL TEACHERS (Sanitized)
  */
-app.get('/api/teachers', (req: Request, res: Response) => {
+app.get('/api/teachers', async (req: Request, res: Response) => {
   const session = getAuthenticatedSession(req);
-  const list = Array.from(serverTeachers.values())
+  // Stage 1 data cutover: the teacher directory reads Postgres first
+  // (via listTeachers), falling back to the in-memory serverTeachers
+  // map on error or when unconfigured.
+  let teachers: ServerTeacher[] = Array.from(serverTeachers.values());
+  if (isSupabaseConfigured()) {
+    try {
+      // TeacherAccount's guideTeacherCohort is number-typed where
+      // ServerTeacher narrows to SemesterNumber/Shift/Section, so the
+      // cast is structural — the directory only reads display fields.
+      teachers = (await listTeachers()) as unknown as ServerTeacher[];
+    } catch (err) {
+      console.warn('[Teachers] Supabase read failed, falling back to in-memory map:', err);
+    }
+  }
+  const list = teachers
     .filter(teacher => !deletedAccountIds.has(teacher.id))
     .map(teacher => {
       const safe = sanitizeTeacher(teacher);
@@ -4222,7 +4548,7 @@ app.get('/api/teachers', (req: Request, res: Response) => {
 /**
  * 5. ADMIN VERIFY OR REJECT TEACHER (Protected by requireSystemAdmin)
  */
-app.post('/api/teachers/verify', requireSystemAdmin, (req: Request, res: Response) => {
+app.post('/api/teachers/verify', requireSystemAdmin, async (req: Request, res: Response) => {
   try {
     const { teacherId, status, adminNotes } = req.body;
 
@@ -4243,6 +4569,15 @@ app.post('/api/teachers/verify', requireSystemAdmin, (req: Request, res: Respons
     if (status === 'Verified' || status === 'Rejected') {
       appendAdminAudit(admin, status === 'Verified' ? 'account_approved' : 'account_rejected', teacher.id, teacher.name);
     }
+    // Auth cutover (Stage 1): teacher login is Postgres-first and gates
+    // on the Postgres verification_status — a verify that stayed
+    // JSON-only would leave Postgres 'Pending' and the teacher locked
+    // out. Dual-write the status (warn-and-continue) before the JSON
+    // save; a teacher with no Postgres row yet is backfilled at boot.
+    await persistTeacherAuthStateToSupabase(teacher.id, {
+      verification_status: status,
+      ...(adminNotes ? { admin_notes: adminNotes } : {}),
+    }, 'TeacherVerify');
     saveAcademicStore(academicStore);
 
     return res.status(200).json({
@@ -4355,7 +4690,7 @@ app.patch('/api/admin/teachers/:id/scope', requireSystemAdmin, async (req: Reque
 /**
  * 6. RESET TEACHER LOCKOUT (Admin action - Protected by requireSystemAdmin)
  */
-app.post('/api/teachers/reset-lockout', requireSystemAdmin, (req: Request, res: Response) => {
+app.post('/api/teachers/reset-lockout', requireSystemAdmin, async (req: Request, res: Response) => {
   try {
     const { teacherId } = req.body;
     const teacher = serverTeachers.get(teacherId);
@@ -4365,6 +4700,13 @@ app.post('/api/teachers/reset-lockout', requireSystemAdmin, (req: Request, res: 
 
     teacher.failedPinAttempts = 0;
     teacher.lockoutUntil = null;
+    // Auth cutover (Stage 1): teacher login reads the lockout from
+    // Postgres — a JSON-only reset would leave Postgres locked and the
+    // teacher still 429ing. Dual-write the reset (warn-and-continue).
+    await persistTeacherAuthStateToSupabase(teacher.id, {
+      failed_pin_attempts: 0,
+      lockout_until: null,
+    }, 'TeacherResetLockout');
     saveAcademicStore(academicStore);
 
     return res.status(200).json({
@@ -4407,8 +4749,12 @@ app.post('/api/admin/students/:id/reset-pin', requireSystemAdmin, async (req: Re
     setStudentPin(student, pin);
     // Clear any student-login lockout for this account (lockout keys are
     // `student:<id>` once the account is found, `roll:<boardRoll>` before).
-    studentLoginFailures.delete(`student:${student.id}`);
-    studentLoginFailures.delete(`roll:${student.boardRoll}`);
+    // Auth cutover (Stage 1): the `student:` clear is AWAITED — the
+    // Postgres lockout row must be cleared before this 200 returns, or
+    // the student's next login would re-seed the stale lockout from
+    // Postgres (the seed merge takes the max) and 429 despite the reset.
+    await clearStudentLoginFailure(`student:${student.id}`);
+    clearStudentLoginFailure(`roll:${student.boardRoll}`);
     // AU4: a PIN reset must evict every live session for this account —
     // a stolen session must not survive the reset (same loop as erasure).
     for (const [token, session] of serverSessions) {
@@ -4723,6 +5069,9 @@ app.post('/api/teacher-contacts', (req: Request, res: Response) => {
     };
 
     serverTeacherContacts.set(contactId, newContact);
+    // Stage 1 data cutover: the new contact dual-writes to Postgres
+    // (teacher_contacts) — the Map alone was lost on every restart.
+    void persistTeacherContactToSupabase(newContact, 'TeacherContactCreate');
 
     return res.status(201).json({
       success: true,
@@ -4832,6 +5181,10 @@ app.put('/api/teacher-contacts/:id', (req: Request, res: Response) => {
       reason: updates.reason || 'Contact information update'
     });
 
+    // Stage 1 data cutover: the edit dual-writes to Postgres
+    // (teacher_contacts).
+    void persistTeacherContactToSupabase(contact, 'TeacherContactUpdate');
+
     return res.status(200).json({
       success: true,
       message: 'Teacher contact updated successfully.',
@@ -4919,6 +5272,10 @@ app.post('/api/teacher-contacts/:id/archive', (req: Request, res: Response) => {
     });
 
     // NOTE: The teacher's actual login account in `serverTeachers` is intentionally PRESERVED and NOT deleted!
+
+    // Stage 1 data cutover: the archive dual-writes to Postgres
+    // (teacher_contacts — is_archived flips, the row stays).
+    void persistTeacherContactToSupabase(contact, 'TeacherContactArchive');
 
     return res.status(200).json({
       success: true,
@@ -5435,7 +5792,9 @@ app.post('/api/documents/scan', requireAuth, aiRateLimiter, async (req: Request,
     });
 
     if (feature === 'roster' && result.success && result.rawExtractedText) {
-      const existingRoster = getCohortRoster({
+      // Stage 1 data cutover: candidates are matched against the
+      // Postgres-first roster, like GET /api/roster.
+      const existingRoster = await getCohortRosterPostgresFirst({
         college: defaults?.college || 'Dhaka Polytechnic Institute',
         department: defaults?.department || 'Computer Science and Technology (CST)',
         semester: Number(defaults?.semester) || 6,
@@ -7705,6 +8064,17 @@ const GITHUB_BACKUP_REPO = 'its-tanjim/DiplomaMate';
 const GITHUB_BACKUP_BRANCH = 'main';
 const GITHUB_BACKUP_PATH = 'data/academic-store.json';
 const GITHUB_BACKUP_DEBOUNCE_MS = Number(process.env.GITHUB_BACKUP_DEBOUNCE_MS || 60000) || 60000;
+// Stage 1 data cutover: gate for the GitHub auto-backup of the JSON
+// store. Default TRUE — current behaviour is preserved. Stage 2 sets
+// STORE_BACKUP_ENABLED=false on Render once Postgres is proven as the
+// live source of truth, so the backup stops re-publishing credential
+// hashes + PII to the public repo (S1). Only 'false' (case-insensitive)
+// disables it; any other value (including unset) keeps backups on.
+const STORE_BACKUP_ENABLED =
+  (process.env.STORE_BACKUP_ENABLED || '').trim().toLowerCase() !== 'false';
+if (!STORE_BACKUP_ENABLED) {
+  console.log('[Store Backup] STORE_BACKUP_ENABLED=false — automatic GitHub backup of academic-store.json is DISABLED (Stage 2 cutover).');
+}
 let githubBackupTimer: ReturnType<typeof setTimeout> | null = null;
 let githubBackupLastContent: string | null = null;
 
@@ -7739,6 +8109,10 @@ function scheduleAcademicStoreBackup(): void {
 }
 
 async function pushAcademicStoreBackup(): Promise<void> {
+  // Stage 1 data cutover: the gate above. No other change to this
+  // function — the backup code itself is untouched and Stage 2 turns
+  // it off via the env flag.
+  if (!STORE_BACKUP_ENABLED) return;
   // S1 (redaction considered and REJECTED): this backup is committed
   // whole-file, with no redaction of pinHash/pinSalt/phone/email. That
   // is deliberate, not an oversight — the committed file IS the restore
@@ -7827,10 +8201,13 @@ try {
   // ignore — the next save will trigger a backup attempt instead
 }
 
-app.get('/api/teacher-contacts/access', (_req: Request, res: Response) => {
+app.get('/api/teacher-contacts/access', async (_req: Request, res: Response) => {
+  // Stage 1 data cutover: the access flag reads Postgres first (see
+  // getAppConfigPostgresFirst); the JSON store is the fallback.
+  const config = await getAppConfigPostgresFirst();
   return res.status(200).json({
     success: true,
-    locked: academicStore.teacherContactAccessLocked
+    locked: config.teacherContactAccessLocked
   });
 });
 
@@ -7859,6 +8236,10 @@ app.put('/api/admin/settings/teacher-contact-access', requireSystemAdmin, (req: 
     console.error('Teacher Contact access setting update failed:', error);
     return res.status(500).json({ success: false, error: 'Could not save the Teacher Contact access setting.' });
   }
+
+  // Stage 1 data cutover: the access flag dual-writes to Postgres
+  // (app_config row `teacherContactAccessLocked`).
+  void persistAppConfigToSupabase('teacherContactAccessLocked', locked, 'TeacherContactAccess', admin.name);
 
   return res.status(200).json({
     success: true,
@@ -8639,7 +9020,23 @@ app.patch('/api/me/email', requireAuth, async (req: Request, res: Response) => {
     const takenByTeacher = Array.from(serverTeachers.values()).some(
       t => t.id !== session.userId && (t.email || '').toLowerCase() === normalized
     );
-    if (takenByStudent || takenByTeacher) {
+    // Stage 1 data cutover: the uniqueness check also consults
+    // Postgres — an account that exists only in Postgres (e.g. after
+    // a JSON restore) must still block a duplicate email. A Postgres
+    // error falls back to the JSON-only check above.
+    let takenInPostgres = false;
+    if (!takenByStudent && !takenByTeacher && isSupabaseConfigured()) {
+      try {
+        const pgStudent = await getStudentByEmail(normalized);
+        const pgTeacher = await getTeacherByEmail(normalized);
+        takenInPostgres =
+          (pgStudent !== null && pgStudent.id !== session.userId) ||
+          (pgTeacher !== null && pgTeacher.id !== session.userId);
+      } catch (err) {
+        console.warn('[EmailUpdate] Supabase uniqueness check failed, using JSON store only:', err);
+      }
+    }
+    if (takenByStudent || takenByTeacher || takenInPostgres) {
       return res.status(409).json({ success: false, error: 'This email is already linked to another account.' });
     }
     account.email = email;
@@ -8980,10 +9377,21 @@ app.post('/api/announcements', requireAuth, async (req: Request, res: Response) 
  * cohorts, so they see every announcement in their college +
  * department. System admins see all.
  */
-app.get('/api/announcements', requireAuth, (req: Request, res: Response) => {
+app.get('/api/announcements', requireAuth, async (req: Request, res: Response) => {
   try {
     const session = (req as unknown as { session: ServerSession }).session;
-    let announcements = [...academicStore.announcements];
+    // Stage 1 data cutover: announcements read Postgres first, merged
+    // with the JSON store (see listPostgresFirstMerged); the scope
+    // filtering below is unchanged.
+    let announcements = await listPostgresFirstMerged(
+      'announcements',
+      [...academicStore.announcements],
+      fromAnnouncementRow,
+      'Announcements',
+      undefined,
+      'created_at',
+      false
+    );
     if (session.role === 'system_admin') {
       // all
     } else if (session.role === 'teacher') {
@@ -9100,12 +9508,22 @@ app.post('/api/reminders', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/reminders', requireAuth, (req: Request, res: Response) => {
+app.get('/api/reminders', requireAuth, async (req: Request, res: Response) => {
   try {
     const session = (req as unknown as { session: ServerSession }).session;
-    const reminders = academicStore.reminders
-      .filter(r => (r as StoredReminder).ownerId === session.userId)
-      .sort((a, b) => ((b as StoredReminder).createdAt || '').localeCompare((a as StoredReminder).createdAt || ''));
+    // Stage 1 data cutover: reminders read Postgres first, merged with
+    // the JSON store (see listPostgresFirstMerged).
+    const reminders = (
+      await listPostgresFirstMerged(
+        'reminders',
+        academicStore.reminders.filter(r => (r as StoredReminder).ownerId === session.userId) as StoredReminder[],
+        fromReminderRow,
+        'Reminders',
+        { owner_id: session.userId },
+        'created_at',
+        false
+      )
+    ).sort((a, b) => ((b as StoredReminder).createdAt || '').localeCompare((a as StoredReminder).createdAt || ''));
     return res.status(200).json({ success: true, reminders });
   } catch (error) {
     console.error('Get reminders error:', error);
@@ -9174,8 +9592,20 @@ app.delete('/api/reminders/:id', requireAuth, async (req: Request, res: Response
  * Admin: list all deletion requests, newest first, with the account's
  * board roll and name snapshot.
  */
-app.get('/api/admin/deletion-requests', requireSystemAdmin, (_req: Request, res: Response) => {
-  const requests = [...academicStore.accountDeletionRequests].sort(
+app.get('/api/admin/deletion-requests', requireSystemAdmin, async (_req: Request, res: Response) => {
+  // Stage 1 data cutover: deletion requests read Postgres first,
+  // merged with the JSON store (see listPostgresFirstMerged).
+  const requests = (
+    await listPostgresFirstMerged(
+      'account_deletion_requests',
+      academicStore.accountDeletionRequests,
+      fromDeletionRequestRow,
+      'DeletionRequests',
+      undefined,
+      'requested_at',
+      false
+    )
+  ).sort(
     (a, b) => b.requestedAt.localeCompare(a.requestedAt)
   );
   return res.status(200).json({ success: true, requests });
@@ -9212,6 +9642,10 @@ app.post('/api/admin/deletion-requests/:id/approve', requireSystemAdmin, async (
       admin.userId
     );
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: the approved status dual-writes to
+    // Postgres (the account rows themselves are hard-erased above by
+    // eraseAccountFromSupabase; this only records the decision).
+    void persistDeletionRequestStatusToSupabase(request, 'DeletionApprove');
     return res.status(200).json({
       success: true,
       request,
@@ -9251,6 +9685,8 @@ app.post('/api/admin/deletion-requests/:id/reject', requireSystemAdmin, (req: Re
       admin.userId
     );
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: the rejected status dual-writes to Postgres.
+    void persistDeletionRequestStatusToSupabase(request, 'DeletionReject');
     return res.status(200).json({ success: true, request });
   } catch (error) {
     console.error('Deletion rejection error:', error);
@@ -9909,7 +10345,7 @@ app.post('/api/attendance/roster-ocr', requireAuth, aiRateLimiter, async (req: R
       });
     }
 
-    const existingRoster = getCohortRoster({
+    const existingRoster = await getCohortRosterPostgresFirst({
       college,
       department,
       semester: Number(semester),
@@ -10090,7 +10526,7 @@ app.post('/api/attendance/roster-ocr', requireAuth, aiRateLimiter, async (req: R
  * - Adds verified new students to the cohort roster
  * - Returns the updated cohort roster and newly initialized `not_marked` attendance entries
  */
-app.post('/api/attendance/roster/merge', (req: Request, res: Response) => {
+app.post('/api/attendance/roster/merge', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     const {
@@ -10134,6 +10570,7 @@ app.post('/api/attendance/roster/merge', (req: Request, res: Response) => {
     let skippedDuplicateCount = 0;
     const seenRollsInBatch = new Set<string>();
     const resolvedStudentsForSheet: EnrolledStudent[] = [];
+    const mergedStudents: EnrolledStudent[] = [];
 
     for (let i = 0; i < students.length; i++) {
       const item = students[i];
@@ -10184,12 +10621,21 @@ app.post('/api/attendance/roster/merge', (req: Request, res: Response) => {
         academicStore.students.push(newStudent);
         addedNewCount += 1;
         resolvedStudentsForSheet.push(newStudent);
+        mergedStudents.push(newStudent);
       }
     }
 
     saveAcademicStore(academicStore);
 
-    const updatedRoster = getCohortRoster({
+    // Stage 1 data cutover: a merged student must exist in Postgres
+    // too, or the Postgres-first roster cannot see it. Awaited (the
+    // helper never throws) so the roster returned below already
+    // includes the new students on the Postgres path.
+    await Promise.all(
+      mergedStudents.map((s) => persistMergedStudentToSupabase(s, 'RosterMerge'))
+    );
+
+    const updatedRoster = await getCohortRosterPostgresFirst({
       college: canonicalCollege.name,
       department: canonicalDept.name,
       semester: semNum,
@@ -10750,7 +11196,8 @@ app.get('/api/attendance/monthly', async (req: Request, res: Response) => {
     }
 
     // Collect union of cohort roster + any student appearing in monthlySheets
-    const roster = getCohortRoster({ college, department, semester, shift, section });
+    // Stage 1 data cutover: Postgres-first roster, like GET /api/roster.
+    const roster = await getCohortRosterPostgresFirst({ college, department, semester, shift, section });
     const studentMap = new Map<string, { id: string; name: string; boardRoll: string; classRoll: string; regNumber: string }>();
     for (const s of roster) {
       studentMap.set(s.boardRoll, {
@@ -10906,7 +11353,7 @@ app.get('/api/attendance/monthly', async (req: Request, res: Response) => {
  * device. Teachers/admins get 403 here — they keep using the
  * cohort-gated GETs, whose gating is unchanged.
  */
-app.get('/api/attendance/mine', requireAuth, (req: Request, res: Response) => {
+app.get('/api/attendance/mine', requireAuth, async (req: Request, res: Response) => {
   try {
     const session = (req as unknown as { session: ServerSession }).session;
     if (session.role !== 'student' && session.role !== 'class_captain') {
@@ -10915,6 +11362,31 @@ app.get('/api/attendance/mine', requireAuth, (req: Request, res: Response) => {
     const boardRoll = session.boardRoll || '';
     if (!boardRoll) {
       return res.status(400).json({ success: false, error: 'No board roll on your session. Please sign in again.' });
+    }
+    // Stage 1 data cutover: the student's current-cohort sheets read
+    // Postgres first (via getAttendanceSheetsForCohortAsync, like the
+    // sheets/monthly reads), and sheets from any other cohort the
+    // student appears in are appended from the JSON store — a student
+    // keeps cross-cohort history (e.g. after a semester change) that
+    // a cohort-scoped Postgres query alone would miss. When Supabase
+    // is unconfigured the helper already returns the JSON cohort
+    // sheets, so the union below is a no-op duplicate filter.
+    let sheets: AttendanceSheet[] = academicStore.attendanceSheets;
+    if (session.college && session.department && session.semester && session.shift && session.section) {
+      const cohortSheets = await getAttendanceSheetsForCohortAsync({
+        college: session.college,
+        department: session.department,
+        semester: Number(session.semester),
+        shift: session.shift,
+        section: session.section
+      });
+      const cohortIds = new Set(cohortSheets.map((s) => s.id));
+      sheets = [
+        ...cohortSheets,
+        ...academicStore.attendanceSheets.filter(
+          (s) => !cohortIds.has(s.id) && s.entries.some((e) => e.boardRoll === boardRoll)
+        )
+      ];
     }
     const records: {
       date: string;
@@ -10931,7 +11403,7 @@ app.get('/api/attendance/mine', requireAuth, (req: Request, res: Response) => {
       sheetId: string;
       teacherName: string;
     }[] = [];
-    for (const sheet of academicStore.attendanceSheets) {
+    for (const sheet of sheets) {
       for (const entry of sheet.entries) {
         if (entry.boardRoll !== boardRoll) continue;
         records.push({
@@ -10965,13 +11437,15 @@ app.get('/api/attendance/mine', requireAuth, (req: Request, res: Response) => {
  * ============================================================================
  */
 
-function computeAssignmentSubmissionSummary(
+async function computeAssignmentSubmissionSummary(
   asg: AssignmentItem,
   viewerSession: ServerSession | null
-): AssignmentSubmissionSummary {
+): Promise<AssignmentSubmissionSummary> {
   const asgCollege = asg.college || 'Dhaka Polytechnic Institute';
   const asgDept = asg.department || 'Computer Science and Technology (CST)';
-  const eligibleRoster = getCohortRoster({
+  // Stage 1 data cutover: the eligible roster and the submissions both
+  // read Postgres first (JSON fallback on error), like GET /api/roster.
+  const eligibleRoster = await getCohortRosterPostgresFirst({
     college: asgCollege,
     department: asgDept,
     semester: asg.semester,
@@ -10983,21 +11457,32 @@ function computeAssignmentSubmissionSummary(
   const eligibleStudentIds = new Set(eligibleRoster.map(s => s.id));
   const hasKnownRoster = eligibleRoster.length > 0;
 
-  // All saved submission records for this assignment
-  const rawSubs = academicStore.assignmentSubmissions.filter(s => s.assignmentId === asg.id);
+  // All saved submission records for this assignment (Postgres-first, merged with JSON)
+  const rawSubs = await listPostgresFirstMerged(
+    'assignment_submissions',
+    academicStore.assignmentSubmissions.filter(s => s.assignmentId === asg.id),
+    fromSubmissionRow,
+    'AssignmentSubmissions',
+    { assignment_id: asg.id }
+  );
 
   // Deduplicate by student identifier (boardRoll or studentId) and filter to eligible cohort when roster is known
   const uniqueByStudent = new Map<string, AssignmentSubmissionRecord>();
   let totalAttempts = 0;
 
   for (const sub of rawSubs) {
-    // Check if submission matches assignment's cohort targeting
+    // Check if submission matches assignment's cohort targeting.
+    // A Postgres-only row carries no cohort fields (the table has no
+    // college/department/semester columns) — it is already scoped by
+    // assignment_id, so accept it instead of dropping it.
+    const cohortUnknown = !sub.college && !sub.department;
     const matchesCohort =
-      areCollegesEquivalent(sub.college || asgCollege, asgCollege) &&
-      areDepartmentsEquivalent(sub.department || asgDept, asgDept) &&
-      Number(sub.semester) === Number(asg.semester) &&
-      sub.shift === asg.shift &&
-      sub.section === asg.section;
+      cohortUnknown ||
+      (areCollegesEquivalent(sub.college || asgCollege, asgCollege) &&
+        areDepartmentsEquivalent(sub.department || asgDept, asgDept) &&
+        Number(sub.semester) === Number(asg.semester) &&
+        sub.shift === asg.shift &&
+        sub.section === asg.section);
 
     if (!matchesCohort) continue;
 
@@ -11066,14 +11551,18 @@ function publicSubmission(sub: AssignmentSubmissionRecord): AssignmentSubmission
  * cohort (teachers: their taught cohorts; admins: everything), so the
  * list never advertises a file the caller cannot download.
  */
-app.get('/api/notes', (req: Request, res: Response) => {
+app.get('/api/notes', async (req: Request, res: Response) => {
   const session = getAuthenticatedSession(req);
   if (!session) {
     return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to view study notes.' });
   }
+  // Stage 1 data cutover: notes read Postgres first, merged with the
+  // JSON store (see listPostgresFirstMerged); the cohort visibility
+  // filter below is unchanged.
+  const allNotes = await listPostgresFirstMerged('notes', academicStore.notes, fromNoteRow, 'Notes');
   return res.status(200).json({
     success: true,
-    notes: academicStore.notes
+    notes: allNotes
       .filter(n => isCohortItemVisibleToSession(session, {
         college: n.college,
         collegeId: n.collegeId,
@@ -11295,13 +11784,22 @@ app.post('/api/notes', async (req: Request, res: Response) => {
  * returns only the caller's cohort (teachers: their taught cohorts;
  * admins: everything).
  */
-app.get('/api/assignments', (req: Request, res: Response) => {
+app.get('/api/assignments', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
       return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in to view assignments.' });
     }
-    const enrichedAssignments: AssignmentItem[] = academicStore.assignments.filter(asg => isCohortItemVisibleToSession(session, {
+    // Stage 1 data cutover: assignments read Postgres first, merged
+    // with the JSON store (see listPostgresFirstMerged); the cohort
+    // visibility filter below is unchanged.
+    const allAssignments = await listPostgresFirstMerged(
+      'assignments',
+      academicStore.assignments,
+      fromAssignmentRow,
+      'Assignments'
+    );
+    const visible = allAssignments.filter(asg => isCohortItemVisibleToSession(session, {
       college: asg.college,
       collegeId: asg.collegeId,
       department: asg.department,
@@ -11309,21 +11807,23 @@ app.get('/api/assignments', (req: Request, res: Response) => {
       semester: asg.semester,
       shift: asg.shift,
       section: asg.section
-    })).map((asg): AssignmentItem => {
-      const summary = computeAssignmentSubmissionSummary(asg, session);
+    }));
+    const enrichedAssignments: AssignmentItem[] = [];
+    for (const asg of visible) {
+      const summary = await computeAssignmentSubmissionSummary(asg, session);
       const isSubmittedForStudent =
         session && (session.role === 'student' || session.role === 'class_captain')
           ? Boolean(summary.mySubmission)
           : asg.status === 'Submitted';
 
-      return {
+      enrichedAssignments.push(publicAssignment({
         ...asg,
         status: isSubmittedForStudent ? 'Submitted' : 'Pending',
         submittedAt: summary.mySubmission?.lastUpdatedAt || asg.submittedAt,
         submissionNote: summary.mySubmission?.submissionNote || asg.submissionNote,
         submissionSummary: summary
-      };
-    }).map(publicAssignment);
+      }));
+    }
 
     return res.status(200).json({
       success: true,
@@ -11508,7 +12008,7 @@ app.post('/api/assignments', async (req: Request, res: Response) => {
 
     const enriched: AssignmentItem = {
       ...newAsg,
-      submissionSummary: computeAssignmentSubmissionSummary(newAsg, session)
+      submissionSummary: await computeAssignmentSubmissionSummary(newAsg, session)
     };
 
     return res.status(201).json({
@@ -11546,7 +12046,15 @@ app.post('/api/assignments/:id/submit', async (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const asg = academicStore.assignments.find(a => a.id === id);
+    // Stage 1 data cutover: the assignment itself reads Postgres first,
+    // merged with the JSON store.
+    const allAssignments = await listPostgresFirstMerged(
+      'assignments',
+      academicStore.assignments,
+      fromAssignmentRow,
+      'Assignments'
+    );
+    const asg = allAssignments.find(a => a.id === id);
     if (!asg) {
       return res.status(404).json({ success: false, error: 'Assignment not found.' });
     }
@@ -11699,7 +12207,7 @@ app.post('/api/assignments/:id/submit', async (req: Request, res: Response) => {
     // B19 dual-write (upsert: resubmissions update the same id).
     await persistSubmissionToSupabase(savedSubmission, 'AssignmentSubmit');
 
-    const updatedSummary = computeAssignmentSubmissionSummary(asg, session);
+    const updatedSummary = await computeAssignmentSubmissionSummary(asg, session);
 
     return res.status(200).json({
       success: true,
@@ -11721,7 +12229,7 @@ app.post('/api/assignments/:id/submit', async (req: Request, res: Response) => {
  * - Strictly restricted to Verified Teachers authorized for the assignment's cohort (or System Admins)
  * - Students and Class Captains receive HTTP 403 Forbidden (protecting other students' private submission files)
  */
-app.get('/api/assignments/:id/submissions', (req: Request, res: Response) => {
+app.get('/api/assignments/:id/submissions', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -11763,7 +12271,7 @@ app.get('/api/assignments/:id/submissions', (req: Request, res: Response) => {
       }
     }
 
-    const eligibleRoster = getCohortRoster({
+    const eligibleRoster = await getCohortRosterPostgresFirst({
       college: asgCollege,
       department: asgDept,
       semester: asg.semester,
@@ -11775,18 +12283,29 @@ app.get('/api/assignments/:id/submissions', (req: Request, res: Response) => {
     const eligibleStudentIds = new Set(eligibleRoster.map(s => s.id));
     const hasKnownRoster = eligibleRoster.length > 0;
 
-    const rawSubs = academicStore.assignmentSubmissions.filter(s => s.assignmentId === asg.id);
+    const rawSubs = await listPostgresFirstMerged(
+      'assignment_submissions',
+      academicStore.assignmentSubmissions.filter(s => s.assignmentId === asg.id),
+      fromSubmissionRow,
+      'AssignmentSubmissions',
+      { assignment_id: asg.id }
+    );
     const uniqueSubmissions: AssignmentSubmissionRecord[] = [];
     const submittedRolls = new Set<string>();
     const submittedIds = new Set<string>();
 
     for (const sub of rawSubs) {
+      // A Postgres-only row carries no cohort fields (the table has no
+      // such columns) — it is already scoped by assignment_id, so
+      // accept it instead of dropping it.
+      const cohortUnknown = !sub.college && !sub.department;
       const matchesCohort =
-        areCollegesEquivalent(sub.college || asgCollege, asgCollege) &&
-        areDepartmentsEquivalent(sub.department || asgDept, asgDept) &&
-        Number(sub.semester) === Number(asg.semester) &&
-        sub.shift === asg.shift &&
-        sub.section === asg.section;
+        cohortUnknown ||
+        (areCollegesEquivalent(sub.college || asgCollege, asgCollege) &&
+          areDepartmentsEquivalent(sub.department || asgDept, asgDept) &&
+          Number(sub.semester) === Number(asg.semester) &&
+          sub.shift === asg.shift &&
+          sub.section === asg.section);
       if (!matchesCohort) continue;
 
       if (hasKnownRoster) {
@@ -11816,7 +12335,7 @@ app.get('/api/assignments/:id/submissions', (req: Request, res: Response) => {
           }))
       : [];
 
-    const summary = computeAssignmentSubmissionSummary(asg, session);
+    const summary = await computeAssignmentSubmissionSummary(asg, session);
 
     return res.status(200).json({
       success: true,
@@ -12898,13 +13417,37 @@ app.put('/api/admin/catalog/records/:id', requireSystemAdmin, (req: Request, res
  *   unless explicitly reset by the user
  * - Never overwrites opposite shift settings or existing saved routines
  */
-app.get('/api/schedule-config', (req: Request, res: Response) => {
+app.get('/api/schedule-config', async (req: Request, res: Response) => {
   try {
     const scopeKey = String(req.query.scopeKey || 'default').trim() || 'default';
     const requestedShift = req.query.shift ? (String(req.query.shift) as Shift) : null;
 
     const morningKey = buildShiftScheduleKey('Morning', scopeKey);
     const dayKey = buildShiftScheduleKey('Day', scopeKey);
+
+    // Stage 1 data cutover: schedule configs read Postgres first.
+    // A Postgres row's store key is rebuilt from the schedule's own
+    // shift + scopeKey (the row's `name` is only the scope key and
+    // cannot distinguish Morning from Day). Rows that do not parse
+    // are skipped with a warning; the JSON store stays the fallback.
+    if (isSupabaseConfigured()) {
+      try {
+        for (const { schedule } of await listShiftSchedules()) {
+          const shift = schedule.shift === 'Day' ? 'Day' : schedule.shift === 'Morning' ? 'Morning' : null;
+          const rowScope = typeof schedule.scopeKey === 'string' && schedule.scopeKey.trim()
+            ? schedule.scopeKey.trim()
+            : null;
+          if (!shift || !rowScope) {
+            console.warn('[ScheduleConfig] Skipping Postgres row without shift/scopeKey.');
+            continue;
+          }
+          academicStore.shiftSchedules[buildShiftScheduleKey(shift, rowScope)] =
+            schedule as unknown as ShiftScheduleConfig;
+        }
+      } catch (err) {
+        console.warn('[ScheduleConfig] Supabase read failed, falling back to JSON store:', err);
+      }
+    }
 
     if (!academicStore.shiftSchedules[morningKey]) {
       academicStore.shiftSchedules[morningKey] = buildDefaultShiftScheduleConfig('Morning', { scopeKey });
@@ -13019,11 +13562,17 @@ app.put('/api/schedule-config', requireSystemAdmin, (req: Request, res: Response
 
     academicStore.shiftSchedules[key] = updatedConfig;
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: the saved schedule dual-writes to
+    // Postgres (shift_schedules). The opposite shift is only
+    // default-filled in memory here, so it is dual-written too when
+    // it was just created.
+    void persistShiftScheduleToSupabase(updatedConfig, scopeKey, 'ScheduleConfig');
 
     const oppositeShift: Shift = shift === 'Morning' ? 'Day' : 'Morning';
     const oppositeKey = buildShiftScheduleKey(oppositeShift, scopeKey);
     if (!academicStore.shiftSchedules[oppositeKey]) {
       academicStore.shiftSchedules[oppositeKey] = buildDefaultShiftScheduleConfig(oppositeShift, { scopeKey });
+      void persistShiftScheduleToSupabase(academicStore.shiftSchedules[oppositeKey], scopeKey, 'ScheduleConfig');
     }
 
     return res.status(200).json({
@@ -13068,11 +13617,16 @@ app.post('/api/schedule-config/reset', requireSystemAdmin, (req: Request, res: R
 
     academicStore.shiftSchedules[key] = updatedConfig;
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: the reset schedule dual-writes to
+    // Postgres (shift_schedules), as does a newly default-filled
+    // opposite shift.
+    void persistShiftScheduleToSupabase(updatedConfig, scopeKey, 'ScheduleConfigReset');
 
     const oppositeShift: Shift = shift === 'Morning' ? 'Day' : 'Morning';
     const oppositeKey = buildShiftScheduleKey(oppositeShift, scopeKey);
     if (!academicStore.shiftSchedules[oppositeKey]) {
       academicStore.shiftSchedules[oppositeKey] = buildDefaultShiftScheduleConfig(oppositeShift, { scopeKey });
+      void persistShiftScheduleToSupabase(academicStore.shiftSchedules[oppositeKey], scopeKey, 'ScheduleConfigReset');
     }
 
     return res.status(200).json({
@@ -13101,7 +13655,7 @@ app.post('/api/schedule-config/reset', requireSystemAdmin, (req: Request, res: R
  * - Enforces strict user privacy: users can ONLY read, save, or delete their
  *   own saved records (`ownerUserId === session.userId`)
  */
-app.get('/api/my-semester-results', (req: Request, res: Response) => {
+app.get('/api/my-semester-results', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -13119,8 +13673,16 @@ app.get('/api/my-semester-results', (req: Request, res: Response) => {
       });
     }
 
-    const records = (academicStore.savedSemesterCalculatorRecords || []).filter(
-      (r) => r.ownerUserId === session.userId
+    // Stage 1 data cutover: semester records read Postgres first,
+    // merged with the JSON store (see listPostgresFirstMerged).
+    const records = await listPostgresFirstMerged(
+      'semester_calculator_records',
+      (academicStore.savedSemesterCalculatorRecords || []).filter(
+        (r) => r.ownerUserId === session.userId
+      ),
+      fromSemesterRecordRow,
+      'SemesterRecords',
+      { owner_user_id: session.userId }
     );
 
     return res.status(200).json({
@@ -13744,10 +14306,13 @@ async function persistTeacherEndorsementRegistryToSupabase(
  * helpers: return early when Supabase is unconfigured, never throw —
  * on any query error log a warning and the JSON entry stands alone.
  * `details` is stored as a `{ note }` JSONB object (the column is
- * jsonb, not text). The `system_admins` Postgres table is deliberately
- * NOT wired: admin auth stays in data/system-admins.json by design
- * (see S1 — migrating admin credentials to Postgres is a separate,
- * Secrets-owned decision); the table is left in place, unused.
+ * jsonb, not text). The `system_admins` Postgres table is WIRED since
+ * the Stage-1 auth cutover (v1.0.31): founder auth is Postgres-first
+ * (see resolveAdminAuthRecord / runAuthCutoverBackfill) and the
+ * phase-2 seed row is replaced by the repo-copy founder record at
+ * boot. The old "deliberately NOT wired / Secrets-owned decision"
+ * note was superseded by that cutover — the JSON files are now the
+ * transitional mirror, not the source of truth.
  */
 async function persistAdminAuditToSupabase(entry: {
   id: string;
@@ -13760,15 +14325,7 @@ async function persistAdminAuditToSupabase(entry: {
 }): Promise<void> {
   if (!isSupabaseConfigured()) return;
   try {
-    await insertRecordToSupabase('admin_audit_logs', {
-      id: entry.id,
-      admin_id: entry.adminId,
-      action: entry.action,
-      target_id: entry.targetId,
-      target_name: entry.targetName,
-      details: entry.details ? { note: entry.details } : null,
-      timestamp: entry.timestamp
-    });
+    await insertRecordToSupabase('admin_audit_logs', toAdminAuditRow(entry));
   } catch (err) {
     console.warn('[AdminAudit] Supabase audit-log write failed, continuing with JSON store:', err);
   }
@@ -13797,6 +14354,25 @@ async function persistCommunityCreateToSupabase(
     await insertCommunity(community);
     await insertCommunityMembership(membership);
     await insertCommunityMessage(welcomeMessage);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Stage 1 data cutover: admin-created communities have no welcome
+ * message (unlike the student create flow above), so this variant
+ * dual-writes just the community row + the admin's owner membership.
+ */
+async function persistAdminCommunityCreateToSupabase(
+  community: AcademicCommunity,
+  membership: CommunityMembershipRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertCommunity(community);
+    await insertCommunityMembership(membership);
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
@@ -13869,20 +14445,7 @@ async function persistTeacherProfileToSupabase(
 async function persistAnnouncementToSupabase(ann: ServerAnnouncement, logTag: string): Promise<void> {
   if (!isSupabaseConfigured()) return;
   try {
-    await insertRecordToSupabase('announcements', {
-      id: ann.id,
-      author_id: ann.authorId,
-      author_name: ann.authorName,
-      author_role: ann.authorRole,
-      title: ann.title ?? null,
-      text: ann.text,
-      college: ann.college,
-      department: ann.department,
-      semester: ann.semester,
-      shift: ann.shift,
-      section: ann.section,
-      created_at: ann.createdAt
-    });
+    await insertRecordToSupabase('announcements', toAnnouncementRow(ann));
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
@@ -13894,25 +14457,7 @@ async function persistReminderToSupabase(
 ): Promise<void> {
   if (!isSupabaseConfigured()) return;
   try {
-    await upsertRecordToSupabase('reminders', {
-      id: reminder.id,
-      owner_id: reminder.ownerId,
-      title: reminder.title,
-      category: reminder.category,
-      due_date: toIsoOrUndefined(reminder.dueDate) ?? null,
-      due_time: reminder.dueTime ?? null,
-      priority: reminder.priority,
-      is_completed: reminder.isCompleted,
-      note: reminder.note ?? null,
-      college_id: reminder.college_id ?? null,
-      department_id: reminder.department_id ?? null,
-      semester: reminder.semester ?? null,
-      shift: reminder.shift ?? null,
-      section: reminder.section ?? null,
-      routine_id: reminder.routineId ?? null,
-      created_at: reminder.createdAt,
-      updated_at: reminder.updatedAt
-    });
+    await upsertRecordToSupabase('reminders', toReminderRow(reminder));
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
@@ -13933,24 +14478,7 @@ async function persistRoutineDocumentToSupabase(
 ): Promise<void> {
   if (!isSupabaseConfigured()) return;
   try {
-    await insertRecordToSupabase('routine_documents', {
-      id: doc.id,
-      file_name: doc.fileName,
-      mime_type: doc.mimeType,
-      file_size_bytes: doc.fileSizeBytes,
-      day: doc.day ?? null,
-      subject_code: doc.subjectCode ?? null,
-      college: doc.college,
-      department: doc.department,
-      semester: doc.semester,
-      shift: doc.shift,
-      section: doc.section,
-      uploaded_by: doc.uploadedBy,
-      uploaded_by_id: doc.uploadedById,
-      uploaded_by_role: doc.uploadedByRole,
-      storage_path: doc.storage_path ?? null,
-      created_at: doc.createdAt
-    });
+    await insertRecordToSupabase('routine_documents', toRoutineDocumentRow(doc));
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
@@ -13959,19 +14487,7 @@ async function persistRoutineDocumentToSupabase(
 async function persistNoteToSupabase(note: NoteItem, logTag: string): Promise<void> {
   if (!isSupabaseConfigured()) return;
   try {
-    await insertRecordToSupabase('notes', {
-      id: note.id,
-      owner_id: note.uploadedById ?? null,
-      title: note.title,
-      content: note.summary ?? null,
-      file_url: note.mediaUrl ?? null,
-      file_name: note.mediaName ?? null,
-      file_type: note.fileType ?? null,
-      subject: note.subjectCode ?? null,
-      semester: note.semester ?? null,
-      college: note.college ?? null,
-      department: note.department ?? null
-    });
+    await insertRecordToSupabase('notes', toNoteRow(note));
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
@@ -13980,20 +14496,7 @@ async function persistNoteToSupabase(note: NoteItem, logTag: string): Promise<vo
 async function persistAssignmentToSupabase(asg: AssignmentItem, logTag: string): Promise<void> {
   if (!isSupabaseConfigured()) return;
   try {
-    await insertRecordToSupabase('assignments', {
-      id: asg.id,
-      teacher_id: asg.assignedById ?? null,
-      title: asg.title,
-      description: asg.description ?? null,
-      subject: asg.subjectCode ?? null,
-      semester: asg.semester ?? null,
-      shift: asg.shift ?? null,
-      section: asg.section ?? null,
-      college: asg.college ?? null,
-      department: asg.department ?? null,
-      due_date: toIsoOrUndefined(asg.dueDate) ?? null,
-      file_url: asg.attachmentUrl ?? null
-    });
+    await insertRecordToSupabase('assignments', toAssignmentRow(asg));
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
@@ -14006,15 +14509,7 @@ async function persistSubmissionToSupabase(
   if (!isSupabaseConfigured()) return;
   try {
     // Upsert: a resubmission updates the same id (attemptCount +1).
-    await upsertRecordToSupabase('assignment_submissions', {
-      id: sub.id,
-      assignment_id: sub.assignmentId,
-      student_id: sub.studentId,
-      student_name: sub.studentName ?? null,
-      file_url: sub.attachmentUrl ?? null,
-      file_name: sub.attachmentName ?? null,
-      submitted_at: toIsoOrUndefined(sub.submittedAt) ?? new Date().toISOString()
-    });
+    await upsertRecordToSupabase('assignment_submissions', toSubmissionRow(sub));
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
@@ -14023,31 +14518,7 @@ async function persistSubmissionToSupabase(
 async function persistJobToSupabase(job: JobCircular, logTag: string): Promise<void> {
   if (!isSupabaseConfigured()) return;
   try {
-    await upsertRecordToSupabase('jobs', {
-      id: job.id,
-      title: job.title,
-      company: job.company,
-      location: job.location ?? null,
-      type: job.type ?? null,
-      target_departments: job.targetDepartments ?? [],
-      published_at: toIsoOrUndefined(job.publishedAt) ?? null,
-      deadline: toIsoOrUndefined(job.deadline) ?? null,
-      stipend_or_salary: job.stipendOrSalary ?? null,
-      experience_requirements: job.experienceRequirements ?? null,
-      educational_qualifications: job.educationalQualifications ?? null,
-      description: job.description ?? null,
-      requirements: job.requirements ? [job.requirements] : [],
-      source_name: job.sourceName ?? null,
-      source_url: job.sourceUrl ?? null,
-      posted_by: job.postedBy ?? null,
-      posted_by_id: job.postedById ?? null,
-      posted_by_role: job.postedByRole ?? null,
-      apply_url: job.applyUrl ?? null,
-      application_method: job.applicationMethod ?? null,
-      media_type: job.mediaType ?? null,
-      media_name: job.mediaName ?? null,
-      status: 'active'
-    });
+    await upsertRecordToSupabase('jobs', toJobRow(job));
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
@@ -14059,20 +14530,7 @@ async function persistSemesterRecordToSupabase(
 ): Promise<void> {
   if (!isSupabaseConfigured()) return;
   try {
-    await upsertRecordToSupabase('semester_calculator_records', {
-      id: rec.id,
-      owner_user_id: rec.ownerUserId,
-      owner_name: rec.ownerName,
-      owner_role: rec.ownerRole,
-      technology: rec.technology,
-      technology_key: rec.technologyKey,
-      regulation: rec.regulation,
-      semester: rec.semester,
-      subject_entries: rec.subjectEntries ?? [],
-      calculated_gpa: rec.calculatedGpa ?? null,
-      total_credits_counted: rec.totalCreditsCounted ?? null,
-      total_subjects_counted: rec.totalSubjectsCounted ?? null
-    });
+    await upsertRecordToSupabase('semester_calculator_records', toSemesterRecordRow(rec));
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
@@ -14096,24 +14554,1613 @@ async function persistJobDeleteToSupabase(id: string, logTag: string): Promise<v
   }
 }
 
+/**
+ * ============================================================================
+ * STAGE 1 DATA CUTOVER — generic-table row mapping + Postgres-first merge
+ * ============================================================================
+ * The tables below had dual-write (Postgres) on the write path but no
+ * read path. Their Postgres rows carry only a SUBSET of the JSON-store
+ * fields (e.g. `notes` has no subjectName / chapter / fileSize /
+ * media_data / storage_path), so a pure Postgres-first read would
+ * silently drop fields the client needs. The read pattern for them is
+ * therefore `listPostgresFirstMerged()` below: the Postgres row set is
+ * authoritative, the matching JSON row (same id) supplies the
+ * full-fidelity fields, and JSON rows missing from Postgres are
+ * appended. On any Postgres error (or when Supabase is unconfigured)
+ * the read falls back to the JSON store alone — the response shape is
+ * unchanged. Tables whose typed mapper is complete (students, captains,
+ * communities, routines, notices, attendance) keep the existing pure
+ * Postgres-first reads.
+ *
+ * The `toXRow()` builders are shared by the persist helpers (dual-write)
+ * and the startup backfill, so the two paths cannot drift apart.
+ * The `fromXRow()` mappers are only used for rows that exist in
+ * Postgres but have no JSON twin (e.g. after a restore); they fill
+ * every required domain field with a safe default.
+ */
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function rowString(row: Record<string, unknown>, key: string): string {
+  const v = row[key];
+  return typeof v === 'string' ? v : '';
+}
+
+function rowNullableString(row: Record<string, unknown>, key: string): string | null {
+  const v = row[key];
+  return typeof v === 'string' && v ? v : null;
+}
+
+function rowNumber(row: Record<string, unknown>, key: string): number | null {
+  const v = row[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function rowIso(row: Record<string, unknown>, key: string): string {
+  const v = row[key];
+  if (typeof v === 'string' && v) {
+    const ms = Date.parse(v);
+    return Number.isFinite(ms) ? new Date(ms).toISOString() : v;
+  }
+  return '';
+}
+
+function rowDateOnly(row: Record<string, unknown>, key: string): string {
+  const v = row[key];
+  return typeof v === 'string' ? v.slice(0, 10) : '';
+}
+
+/** True when a thrown Supabase error is a PostgREST PGRST204 unknown-column error naming `column`. Used to retry a write without a column the Stage-1 SQL has not added yet. */
+function isPostgrestUnknownColumnError(err: unknown, column: string): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: unknown; message?: unknown };
+  return e.code === 'PGRST204' && typeof e.message === 'string' && e.message.includes(column);
+}
+
+// --- Notes ---
+function toNoteRow(note: NoteItem): Record<string, unknown> {
+  return {
+    id: note.id,
+    owner_id: note.uploadedById ?? null,
+    title: note.title,
+    content: note.summary ?? null,
+    file_url: note.mediaUrl ?? null,
+    file_name: note.mediaName ?? null,
+    file_type: note.fileType ?? null,
+    subject: note.subjectCode ?? null,
+    semester: note.semester ?? null,
+    college: note.college ?? null,
+    department: note.department ?? null
+  };
+}
+
+function fromNoteRow(row: Record<string, unknown>): NoteItem | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  const fileType = ['PDF', 'DOCX', 'SLIDES', 'IMAGE', 'VIDEO'].includes(String(row.file_type))
+    ? (row.file_type as NoteItem['fileType'])
+    : 'PDF';
+  return {
+    id,
+    title: rowString(row, 'title'),
+    subjectCode: rowString(row, 'subject'),
+    subjectName: '',
+    chapter: '',
+    uploadedBy: '',
+    uploadedById: rowNullableString(row, 'owner_id') ?? undefined,
+    uploadedDate: rowIso(row, 'created_at'),
+    fileType,
+    fileSize: '',
+    summary: rowString(row, 'content'),
+    semester: (rowNumber(row, 'semester') ?? 1) as NoteItem['semester'],
+    college: rowNullableString(row, 'college') ?? undefined,
+    department: rowNullableString(row, 'department') ?? undefined,
+    mediaUrl: rowNullableString(row, 'file_url') ?? undefined,
+    mediaName: rowNullableString(row, 'file_name') ?? undefined
+  };
+}
+
+// --- Assignments ---
+function toAssignmentRow(asg: AssignmentItem): Record<string, unknown> {
+  return {
+    id: asg.id,
+    teacher_id: asg.assignedById ?? null,
+    title: asg.title,
+    description: asg.description ?? null,
+    subject: asg.subjectCode ?? null,
+    semester: asg.semester ?? null,
+    shift: asg.shift ?? null,
+    section: asg.section ?? null,
+    college: asg.college ?? null,
+    department: asg.department ?? null,
+    due_date: toIsoOrUndefined(asg.dueDate) ?? null,
+    file_url: asg.attachmentUrl ?? null
+  };
+}
+
+function fromAssignmentRow(row: Record<string, unknown>): AssignmentItem | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  return {
+    id,
+    title: rowString(row, 'title'),
+    subjectCode: rowString(row, 'subject'),
+    subjectName: '',
+    assignedBy: '',
+    assignedById: rowNullableString(row, 'teacher_id') ?? undefined,
+    dueDate: rowIso(row, 'due_date'),
+    status: 'Pending',
+    description: rowString(row, 'description'),
+    shift: (row.shift === 'Day' ? 'Day' : 'Morning') as AssignmentItem['shift'],
+    section: (['A1', 'A2', 'B1', 'B2'].includes(String(row.section)) ? row.section : 'A1') as AssignmentItem['section'],
+    semester: (rowNumber(row, 'semester') ?? 1) as AssignmentItem['semester'],
+    college: rowNullableString(row, 'college') ?? undefined,
+    department: rowNullableString(row, 'department') ?? undefined,
+    attachmentUrl: rowNullableString(row, 'file_url') ?? undefined
+  };
+}
+
+// --- Assignment submissions ---
+function toSubmissionRow(sub: AssignmentSubmissionRecord): Record<string, unknown> {
+  return {
+    id: sub.id,
+    assignment_id: sub.assignmentId,
+    student_id: sub.studentId,
+    student_name: sub.studentName ?? null,
+    file_url: sub.attachmentUrl ?? null,
+    file_name: sub.attachmentName ?? null,
+    submitted_at: toIsoOrUndefined(sub.submittedAt) ?? new Date().toISOString()
+  };
+}
+
+function fromSubmissionRow(row: Record<string, unknown>): AssignmentSubmissionRecord | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  const submittedAt = rowIso(row, 'submitted_at');
+  return {
+    id,
+    assignmentId: rowString(row, 'assignment_id'),
+    studentId: rowString(row, 'student_id'),
+    studentName: rowString(row, 'student_name'),
+    boardRoll: '',
+    college: '',
+    department: '',
+    semester: 1 as AssignmentSubmissionRecord['semester'],
+    shift: 'Morning',
+    section: 'A1',
+    submittedAt,
+    lastUpdatedAt: submittedAt,
+    submissionNote: '',
+    attachmentUrl: rowNullableString(row, 'file_url') ?? undefined,
+    attachmentName: rowNullableString(row, 'file_name') ?? undefined,
+    attemptCount: 1
+  };
+}
+
+// --- Jobs ---
+function toJobRow(job: JobCircular): Record<string, unknown> {
+  return {
+    id: job.id,
+    title: job.title,
+    company: job.company,
+    location: job.location ?? null,
+    type: job.type ?? null,
+    target_departments: job.targetDepartments ?? [],
+    published_at: toIsoOrUndefined(job.publishedAt) ?? null,
+    deadline: toIsoOrUndefined(job.deadline) ?? null,
+    stipend_or_salary: job.stipendOrSalary ?? null,
+    experience_requirements: job.experienceRequirements ?? null,
+    educational_qualifications: job.educationalQualifications ?? null,
+    description: job.description ?? null,
+    requirements: job.requirements ? [job.requirements] : [],
+    source_name: job.sourceName ?? null,
+    source_url: job.sourceUrl ?? null,
+    posted_by: job.postedBy ?? null,
+    posted_by_id: job.postedById ?? null,
+    posted_by_role: job.postedByRole ?? null,
+    apply_url: job.applyUrl ?? null,
+    application_method: job.applicationMethod ?? null,
+    media_type: job.mediaType ?? null,
+    media_name: job.mediaName ?? null,
+    status: 'active'
+  };
+}
+
+function fromJobRow(row: Record<string, unknown>): JobCircular | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  const type = ['Internship', 'Full-Time', 'Apprenticeship', 'Part-Time', 'Contract'].includes(String(row.type))
+    ? (row.type as JobCircular['type'])
+    : 'Full-Time';
+  const requirements = Array.isArray(row.requirements)
+    ? (row.requirements as unknown[]).map(String).join(', ')
+    : '';
+  return {
+    id,
+    title: rowString(row, 'title'),
+    company: rowString(row, 'company'),
+    location: rowString(row, 'location'),
+    type,
+    targetDepartments: Array.isArray(row.target_departments)
+      ? (row.target_departments as unknown[]).map(String)
+      : [],
+    publishedAt: rowIso(row, 'published_at') || undefined,
+    deadline: rowIso(row, 'deadline'),
+    stipendOrSalary: rowString(row, 'stipend_or_salary'),
+    experienceRequirements: rowNullableString(row, 'experience_requirements') ?? undefined,
+    educationalQualifications: rowNullableString(row, 'educational_qualifications') ?? undefined,
+    description: rowNullableString(row, 'description') ?? undefined,
+    requirements,
+    sourceName: rowNullableString(row, 'source_name') ?? undefined,
+    sourceUrl: rowNullableString(row, 'source_url') ?? undefined,
+    applyUrl: rowNullableString(row, 'apply_url') ?? undefined,
+    applicationMethod:
+      row.application_method === 'external_url' || row.application_method === 'authorized_partner'
+        ? row.application_method
+        : undefined,
+    status: 'Open',
+    postedBy: rowString(row, 'posted_by'),
+    postedById: rowNullableString(row, 'posted_by_id') ?? undefined,
+    postedByRole: (rowNullableString(row, 'posted_by_role') ?? undefined) as JobCircular['postedByRole'],
+    postedAt: rowIso(row, 'posted_at'),
+    mediaType: rowNullableString(row, 'media_type') as JobCircular['mediaType'],
+    mediaName: rowNullableString(row, 'media_name') ?? undefined
+  };
+}
+
+// --- Semester calculator records ---
+function toSemesterRecordRow(rec: SavedSemesterCalculatorRecord): Record<string, unknown> {
+  return {
+    id: rec.id,
+    owner_user_id: rec.ownerUserId,
+    owner_name: rec.ownerName,
+    owner_role: rec.ownerRole,
+    technology: rec.technology,
+    technology_key: rec.technologyKey,
+    regulation: rec.regulation,
+    semester: rec.semester,
+    subject_entries: rec.subjectEntries ?? [],
+    calculated_gpa: rec.calculatedGpa ?? null,
+    total_credits_counted: rec.totalCreditsCounted ?? null,
+    total_subjects_counted: rec.totalSubjectsCounted ?? null
+  };
+}
+
+function fromSemesterRecordRow(row: Record<string, unknown>): SavedSemesterCalculatorRecord | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  return {
+    id,
+    ownerUserId: rowString(row, 'owner_user_id'),
+    ownerName: rowString(row, 'owner_name'),
+    ownerRole: (row.owner_role as SavedSemesterCalculatorRecord['ownerRole']) ?? 'student',
+    technology: rowString(row, 'technology'),
+    technologyKey: rowString(row, 'technology_key'),
+    regulation: (row.regulation === '2010' || row.regulation === '2016' || row.regulation === '2022'
+      ? row.regulation
+      : '2022') as SavedSemesterCalculatorRecord['regulation'],
+    semester: (rowNumber(row, 'semester') ?? 1) as SavedSemesterCalculatorRecord['semester'],
+    subjectEntries: Array.isArray(row.subject_entries)
+      ? (row.subject_entries as SavedSemesterCalculatorRecord['subjectEntries'])
+      : [],
+    calculatedGpa: rowNumber(row, 'calculated_gpa'),
+    totalCreditsCounted: rowNumber(row, 'total_credits_counted') ?? 0,
+    totalSubjectsCounted: rowNumber(row, 'total_subjects_counted') ?? 0,
+    hasFailedSubject: false,
+    isEstimate: false,
+    estimateReasons: [],
+    updatedAt: rowIso(row, 'created_at')
+  };
+}
+
+// --- Announcements ---
+function toAnnouncementRow(ann: ServerAnnouncement): Record<string, unknown> {
+  return {
+    id: ann.id,
+    author_id: ann.authorId,
+    author_name: ann.authorName,
+    author_role: ann.authorRole,
+    title: ann.title ?? null,
+    text: ann.text,
+    college: ann.college,
+    department: ann.department,
+    semester: ann.semester,
+    shift: ann.shift,
+    section: ann.section,
+    created_at: ann.createdAt
+  };
+}
+
+function fromAnnouncementRow(row: Record<string, unknown>): ServerAnnouncement | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  return {
+    id,
+    authorId: rowString(row, 'author_id'),
+    authorName: rowString(row, 'author_name'),
+    authorRole: (row.author_role as ServerAnnouncement['authorRole']) ?? 'teacher',
+    title: rowNullableString(row, 'title') ?? undefined,
+    text: rowString(row, 'text'),
+    college: rowString(row, 'college'),
+    department: rowString(row, 'department'),
+    semester: (rowNumber(row, 'semester') ?? 1) as ServerAnnouncement['semester'],
+    shift: (row.shift === 'Day' ? 'Day' : 'Morning') as ServerAnnouncement['shift'],
+    section: (['A1', 'A2', 'B1', 'B2'].includes(String(row.section)) ? row.section : 'A1') as ServerAnnouncement['section'],
+    createdAt: rowIso(row, 'created_at')
+  };
+}
+
+// --- Reminders ---
+function toReminderRow(reminder: StoredReminder): Record<string, unknown> {
+  return {
+    id: reminder.id,
+    owner_id: reminder.ownerId,
+    title: reminder.title,
+    category: reminder.category,
+    due_date: toIsoOrUndefined(reminder.dueDate) ?? null,
+    due_time: reminder.dueTime ?? null,
+    priority: reminder.priority,
+    is_completed: reminder.isCompleted,
+    note: reminder.note ?? null,
+    college_id: reminder.college_id ?? null,
+    department_id: reminder.department_id ?? null,
+    semester: reminder.semester ?? null,
+    shift: reminder.shift ?? null,
+    section: reminder.section ?? null,
+    routine_id: reminder.routineId ?? null,
+    created_at: reminder.createdAt,
+    updated_at: reminder.updatedAt
+  };
+}
+
+function fromReminderRow(row: Record<string, unknown>): StoredReminder | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  const category = ['Exam', 'Assignment', 'Lab Report', 'BTEB Notice', 'Personal', 'Routine'].includes(String(row.category))
+    ? (row.category as StoredReminder['category'])
+    : 'Personal';
+  const priority = ['High', 'Medium', 'Normal'].includes(String(row.priority))
+    ? (row.priority as StoredReminder['priority'])
+    : 'Normal';
+  return {
+    id,
+    title: rowString(row, 'title'),
+    category,
+    dueDate: rowDateOnly(row, 'due_date'),
+    dueTime: rowString(row, 'due_time'),
+    priority,
+    isCompleted: row.is_completed === true,
+    note: rowNullableString(row, 'note') ?? undefined,
+    college_id: rowNullableString(row, 'college_id') ?? undefined,
+    department_id: rowNullableString(row, 'department_id') ?? undefined,
+    semester: (rowNumber(row, 'semester') ?? undefined) as StoredReminder['semester'],
+    shift: (row.shift === 'Morning' || row.shift === 'Day' ? row.shift : undefined) as StoredReminder['shift'],
+    section: (['A1', 'A2', 'B1', 'B2'].includes(String(row.section)) ? row.section : undefined) as StoredReminder['section'],
+    routineId: rowNullableString(row, 'routine_id') ?? undefined,
+    ownerId: rowString(row, 'owner_id'),
+    createdAt: rowIso(row, 'created_at'),
+    updatedAt: rowIso(row, 'updated_at')
+  };
+}
+
+// --- Routine documents ---
+function toRoutineDocumentRow(doc: RoutineDocumentRecord): Record<string, unknown> {
+  return {
+    id: doc.id,
+    file_name: doc.fileName,
+    mime_type: doc.mimeType,
+    file_size_bytes: doc.fileSizeBytes,
+    day: doc.day ?? null,
+    subject_code: doc.subjectCode ?? null,
+    college: doc.college,
+    department: doc.department,
+    semester: doc.semester,
+    shift: doc.shift,
+    section: doc.section,
+    uploaded_by: doc.uploadedBy,
+    uploaded_by_id: doc.uploadedById,
+    uploaded_by_role: doc.uploadedByRole,
+    storage_path: doc.storage_path ?? null,
+    created_at: doc.createdAt
+  };
+}
+
+function fromRoutineDocumentRow(row: Record<string, unknown>): RoutineDocumentRecord | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  const day = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'].includes(String(row.day))
+    ? (row.day as RoutineDocumentRecord['day'])
+    : undefined;
+  return {
+    id,
+    fileName: rowString(row, 'file_name'),
+    mimeType: rowString(row, 'mime_type'),
+    fileSizeBytes: rowNumber(row, 'file_size_bytes') ?? 0,
+    day,
+    subjectCode: rowNullableString(row, 'subject_code') ?? undefined,
+    college: rowString(row, 'college'),
+    department: rowString(row, 'department'),
+    semester: (rowNumber(row, 'semester') ?? 1) as RoutineDocumentRecord['semester'],
+    shift: (row.shift === 'Day' ? 'Day' : 'Morning') as RoutineDocumentRecord['shift'],
+    section: (['A1', 'A2', 'B1', 'B2'].includes(String(row.section)) ? row.section : 'A1') as RoutineDocumentRecord['section'],
+    uploadedBy: rowString(row, 'uploaded_by'),
+    uploadedById: rowString(row, 'uploaded_by_id'),
+    uploadedByRole: (row.uploaded_by_role as RoutineDocumentRecord['uploadedByRole']) ?? 'teacher',
+    storage_path: rowNullableString(row, 'storage_path') ?? undefined,
+    createdAt: rowIso(row, 'created_at')
+  };
+}
+
+// --- Support tickets ---
+function toSupportTicketRow(ticket: SupportTicket): Record<string, unknown> {
+  return {
+    id: ticket.id,
+    user_id: ticket.userId,
+    user_name: ticket.userName ?? null,
+    user_roll: ticket.userRoll ?? null,
+    subject: ticket.subject,
+    description: ticket.description,
+    category: ticket.category,
+    priority: ticket.priority,
+    status: ticket.status,
+    assignee_id: ticket.assigneeId ?? null,
+    internal_notes: ticket.internalNotes ?? [],
+    resolution: ticket.resolution ?? null,
+    resolved_at: ticket.resolvedAt ?? null,
+    created_at: ticket.createdAt,
+    updated_at: ticket.updatedAt
+  };
+}
+
+function fromSupportTicketRow(row: Record<string, unknown>): SupportTicket | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  return {
+    id,
+    userId: rowString(row, 'user_id'),
+    userName: rowString(row, 'user_name'),
+    userRoll: rowString(row, 'user_roll'),
+    subject: rowString(row, 'subject'),
+    description: rowString(row, 'description'),
+    category: (row.category as SupportTicket['category']) ?? 'other',
+    priority: (row.priority as SupportTicket['priority']) ?? 'normal',
+    status: (row.status as SupportTicket['status']) ?? 'open',
+    assigneeId: rowNullableString(row, 'assignee_id'),
+    internalNotes: Array.isArray(row.internal_notes)
+      ? (row.internal_notes as SupportTicket['internalNotes'])
+      : [],
+    resolution: rowString(row, 'resolution'),
+    createdAt: rowIso(row, 'created_at'),
+    updatedAt: rowIso(row, 'updated_at'),
+    resolvedAt: rowNullableString(row, 'resolved_at') ?? undefined
+  };
+}
+
+// --- Deletion requests ---
+function toDeletionRequestRow(request: AccountDeletionRequest): Record<string, unknown> {
+  return {
+    id: request.id,
+    account_id: request.accountId,
+    account_type: request.accountType,
+    board_roll: request.boardRoll ?? null,
+    account_name: request.accountName,
+    status: request.status,
+    requested_at: request.requestedAt,
+    source: request.source,
+    reason: request.reason ?? null,
+    reviewed_at: request.reviewedAt ?? null,
+    reviewed_by: request.reviewedBy ?? null,
+    review_note: request.reviewNote ?? null
+  };
+}
+
+function fromDeletionRequestRow(row: Record<string, unknown>): AccountDeletionRequest | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  return {
+    id,
+    accountId: rowString(row, 'account_id'),
+    accountType: row.account_type === 'teacher' ? 'teacher' : 'student',
+    boardRoll: rowString(row, 'board_roll'),
+    accountName: rowString(row, 'account_name'),
+    status: (['pending', 'approved', 'rejected'].includes(String(row.status))
+      ? row.status
+      : 'pending') as AccountDeletionRequest['status'],
+    requestedAt: rowIso(row, 'requested_at'),
+    source: row.source === 'in-app' ? 'in-app' : 'public-form',
+    reason: rowNullableString(row, 'reason') ?? undefined,
+    reviewedAt: rowNullableString(row, 'reviewed_at') ?? undefined,
+    reviewedBy: rowNullableString(row, 'reviewed_by') ?? undefined,
+    reviewNote: rowNullableString(row, 'review_note') ?? undefined
+  };
+}
+
+// --- Community reports ---
+function toCommunityReportRow(report: CommunityReportRecord): Record<string, unknown> {
+  return {
+    id: report.id,
+    community_id: report.community_id,
+    message_id: report.reported_message_id ?? null,
+    reporter_id: report.reported_by_id ?? null,
+    reported_user_id: report.reported_user_id ?? null,
+    reason: report.reason,
+    status: report.status === 'resolved' ? 'Resolved' : report.status === 'dismissed' ? 'Dismissed' : 'Pending',
+    resolution_notes: report.resolution_notes ?? null,
+    created_at: report.created_at
+  };
+}
+
+function fromCommunityReportRow(row: Record<string, unknown>): CommunityReportRecord | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  const status =
+    String(row.status).toLowerCase() === 'resolved'
+      ? 'resolved'
+      : String(row.status).toLowerCase() === 'dismissed'
+        ? 'dismissed'
+        : 'pending';
+  return {
+    id,
+    community_id: rowString(row, 'community_id'),
+    reported_message_id: rowNullableString(row, 'message_id') ?? undefined,
+    reported_user_id: rowString(row, 'reported_user_id'),
+    reported_by_id: rowString(row, 'reporter_id'),
+    reported_by_name: '',
+    reason: rowString(row, 'reason'),
+    status: status as CommunityReportRecord['status'],
+    created_at: rowIso(row, 'created_at'),
+    resolution_notes: rowNullableString(row, 'resolution_notes') ?? undefined
+  };
+}
+
+// --- Campus notice reports ---
+function toCampusNoticeReportRow(report: CampusNoticeReportRecord): Record<string, unknown> {
+  return {
+    id: report.id,
+    notice_id: report.noticeId,
+    reporter_id: report.reportedById,
+    reason: report.reason,
+    status: report.status,
+    created_at: report.createdAt
+  };
+}
+
+function fromCampusNoticeReportRow(row: Record<string, unknown>): CampusNoticeReportRecord | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  return {
+    id,
+    noticeId: rowString(row, 'notice_id'),
+    noticeTitle: '',
+    reportedById: rowString(row, 'reporter_id'),
+    reportedByName: '',
+    reason: rowString(row, 'reason'),
+    createdAt: rowIso(row, 'created_at'),
+    status: (['pending', 'reviewed', 'dismissed'].includes(String(row.status))
+      ? row.status
+      : 'pending') as CampusNoticeReportRecord['status']
+  };
+}
+
+// --- Admin audit log ---
+function toAdminAuditRow(entry: AdminAuditEntry): Record<string, unknown> {
+  return {
+    id: entry.id,
+    admin_id: entry.adminId,
+    action: entry.action,
+    target_id: entry.targetId,
+    target_name: entry.targetName,
+    details: entry.details ? { note: entry.details } : null,
+    timestamp: entry.timestamp
+  };
+}
+
+function fromAdminAuditRow(row: Record<string, unknown>): AdminAuditEntry | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  const details = asRecord(row.details);
+  return {
+    id,
+    adminId: rowString(row, 'admin_id'),
+    action: rowString(row, 'action'),
+    targetId: rowString(row, 'target_id'),
+    targetName: rowString(row, 'target_name'),
+    timestamp: rowIso(row, 'timestamp'),
+    details: details && typeof details.note === 'string' ? details.note : undefined
+  };
+}
+
+// --- Admin notifications ---
+function toAdminNotificationRow(n: AdminNotificationRecord): AdminNotificationRow {
+  return {
+    id: n.id,
+    title: n.title,
+    message: n.message,
+    audience_type: n.audienceType,
+    audience: n.audience ?? {},
+    channel: n.channel,
+    status: n.status,
+    created_by: n.createdBy,
+    created_at: n.createdAt
+  };
+}
+
+function fromAdminNotificationRow(row: Record<string, unknown>): AdminNotificationRecord | null {
+  const id = rowString(row, 'id');
+  if (!id) return null;
+  const audience = asRecord(row.audience) ?? {};
+  return {
+    id,
+    title: rowString(row, 'title'),
+    message: rowString(row, 'message'),
+    audienceType:
+      row.audience_type === 'department' || row.audience_type === 'semester' ? row.audience_type : 'all',
+    audience: {
+      department: typeof audience.department === 'string' ? audience.department : undefined,
+      semester: typeof audience.semester === 'number' ? audience.semester : undefined
+    },
+    channel: 'in-app',
+    status: 'sent',
+    createdBy: rowString(row, 'created_by'),
+    createdAt: rowIso(row, 'created_at')
+  };
+}
+
+// --- Teacher contacts ---
+// The whole contact (incl. its auditTrail) is stored as one `data`
+// jsonb document so the Postgres copy is never a lossy subset; the
+// indexed columns (teacher_id / name / college / department /
+// is_archived) exist only for filtering.
+function toTeacherContactRow(contact: ServerTeacherContact): TeacherContactRow {
+  return {
+    id: contact.id,
+    teacher_id: contact.teacherId ?? null,
+    name: contact.name,
+    college: contact.college,
+    department: contact.department,
+    is_archived: contact.isArchived,
+    data: contact as unknown as Record<string, unknown>,
+    created_at: null,
+    updated_at: null
+  };
+}
+
+function fromTeacherContactRow(row: Record<string, unknown>): ServerTeacherContact | null {
+  const data = asRecord(row.data);
+  if (!data || typeof data.id !== 'string' || !data.id) return null;
+  const contact = data as unknown as ServerTeacherContact;
+  // Indexed columns win when the stored document predates them.
+  if (typeof row.name === 'string' && row.name) contact.name = row.name;
+  if (typeof row.college === 'string' && row.college) contact.college = row.college;
+  if (typeof row.department === 'string' && row.department) contact.department = row.department;
+  if (typeof row.teacher_id === 'string') contact.teacherId = row.teacher_id || undefined;
+  if (typeof row.is_archived === 'boolean') contact.isArchived = row.is_archived;
+  if (!Array.isArray(contact.auditTrail)) contact.auditTrail = [];
+  return contact;
+}
+
+/**
+ * Postgres-first list read with JSON merge (see the Stage 1 block
+ * header above). `jsonRows` must already be scoped exactly like `eq`
+ * (e.g. reminders filtered to the owner, submissions to the
+ * assignment) — the Postgres query applies the same `eq`, so the two
+ * sets are comparable. On any Postgres error the JSON rows are
+ * returned unchanged. The Postgres row set is authoritative; a JSON
+ * row with the same id supplies the full-fidelity fields (the
+ * Postgres row is only used when no JSON twin exists).
+ */
+async function listPostgresFirstMerged<T extends { id: string }>(
+  table: string,
+  jsonRows: T[],
+  fromRow: (row: Record<string, unknown>) => T | null,
+  logTag: string,
+  eq?: Record<string, string | number | boolean>,
+  orderBy?: string,
+  ascending?: boolean
+): Promise<T[]> {
+  if (!isSupabaseConfigured()) return jsonRows;
+  try {
+    const rows = await listRecordsFromSupabase(table, { eq, orderBy, ascending });
+    const pgById = new Map<string, T>();
+    for (const row of rows) {
+      const mapped = fromRow(row);
+      if (mapped) pgById.set(mapped.id, mapped);
+    }
+    const jsonById = new Map(jsonRows.map((j) => [j.id, j]));
+    const out: T[] = [];
+    for (const mapped of pgById.values()) out.push(jsonById.get(mapped.id) ?? mapped);
+    for (const j of jsonRows) if (!pgById.has(j.id)) out.push(j);
+    return out;
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase read failed, falling back to JSON store:`, err);
+    return jsonRows;
+  }
+}
+
+/**
+ * Roster, Postgres-first. Same contract as GET /api/roster: narrow
+ * the SQL slice on the exact-match-safe fields + canonical ids, run
+ * the shared in-memory cohort filter, fall back to the JSON store
+ * (getCohortRoster) on missing env or any query error. Used by the
+ * internal roster consumers (roster import/merge, monthly attendance,
+ * submission summaries, AI roster scan) that previously read JSON
+ * only while GET /api/roster already read Postgres first.
+ */
+async function getCohortRosterPostgresFirst(params: {
+  college: string;
+  department: string;
+  semester: number;
+  shift: string;
+  section: string;
+}): Promise<EnrolledStudent[]> {
+  if (!isSupabaseConfigured()) return getCohortRoster(params);
+  try {
+    const cohortRows = await listStudentsByCohort({
+      collegeId: normalizeCollege(params.college).id,
+      departmentId: normalizeTechnology(params.department).id,
+      semester: params.semester,
+      shift: params.shift === 'Day' ? 'Day' : 'Morning',
+      section: params.section || 'A1'
+    });
+    return filterStudentsByCohort(cohortRows, params);
+  } catch (err) {
+    console.warn('[Roster] Supabase read failed, falling back to JSON store:', err);
+    return getCohortRoster(params);
+  }
+}
+
+// --- App config (Stage 1: `app_config` table) ---
+type AppConfigValues = {
+  featureFlags: Record<string, FeatureFlagEntry>;
+  maintenanceMode: MaintenanceModeState;
+  appVersionControl: AppVersionControlState;
+  teacherContactAccessLocked: boolean;
+};
+
+function isValidFeatureFlags(value: unknown): value is Record<string, FeatureFlagEntry> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  return Object.values(value as Record<string, unknown>).every(
+    (v) => typeof v === 'object' && v !== null && typeof (v as { enabled?: unknown }).enabled === 'boolean'
+  );
+}
+
+function isValidMaintenanceMode(value: unknown): value is MaintenanceModeState {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { enabled?: unknown }).enabled === 'boolean'
+  );
+}
+
+function isValidAppVersionControl(value: unknown): value is AppVersionControlState {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { minVersionCode?: unknown }).minVersionCode === 'number' &&
+    typeof (value as { latestVersionCode?: unknown }).latestVersionCode === 'number'
+  );
+}
+
+/**
+ * Read the four app-config keys from Postgres first, falling back to
+ * the JSON store per key. A Postgres value that fails validation is
+ * ignored (with a warning) and the JSON value is used instead, so a
+ * corrupt row can never change client behaviour. Returns the JSON
+ * values unchanged when Supabase is unconfigured or the query throws.
+ */
+async function getAppConfigPostgresFirst(): Promise<AppConfigValues> {
+  const jsonValues: AppConfigValues = {
+    featureFlags: academicStore.featureFlags,
+    maintenanceMode: academicStore.maintenanceMode,
+    appVersionControl: academicStore.appVersionControl,
+    teacherContactAccessLocked: academicStore.teacherContactAccessLocked
+  };
+  if (!isSupabaseConfigured()) return jsonValues;
+  try {
+    const rows = await listAppConfigValues();
+    const byKey = new Map(rows.map((r) => [r.key, r.value]));
+    const out = { ...jsonValues };
+    const flags = byKey.get('featureFlags');
+    if (flags !== undefined) {
+      if (isValidFeatureFlags(flags)) out.featureFlags = flags;
+      else console.warn('[AppConfig] Postgres featureFlags failed validation, keeping JSON store value.');
+    }
+    const maintenance = byKey.get('maintenanceMode');
+    if (maintenance !== undefined) {
+      if (isValidMaintenanceMode(maintenance)) out.maintenanceMode = maintenance;
+      else console.warn('[AppConfig] Postgres maintenanceMode failed validation, keeping JSON store value.');
+    }
+    const version = byKey.get('appVersionControl');
+    if (version !== undefined) {
+      if (isValidAppVersionControl(version)) out.appVersionControl = version;
+      else console.warn('[AppConfig] Postgres appVersionControl failed validation, keeping JSON store value.');
+    }
+    const locked = byKey.get('teacherContactAccessLocked');
+    if (locked !== undefined) {
+      if (typeof locked === 'boolean') out.teacherContactAccessLocked = locked;
+      else console.warn('[AppConfig] Postgres teacherContactAccessLocked failed validation, keeping JSON store value.');
+    }
+    return out;
+  } catch (err) {
+    console.warn('[AppConfig] Supabase read failed, falling back to JSON store:', err);
+    return jsonValues;
+  }
+}
+
+/** Dual-write one app-config key (Postgres upsert, warn-and-continue). The JSON store is written by the caller first. */
+async function persistAppConfigToSupabase(
+  key: string,
+  value: unknown,
+  logTag: string,
+  updatedBy?: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await upsertAppConfigValue(key, value, updatedBy);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/** Dual-write one admin notification (insert, warn-and-continue). */
+async function persistAdminNotificationToSupabase(
+  n: AdminNotificationRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertAdminNotification(toAdminNotificationRow(n));
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/** Dual-write one teacher contact (upsert, warn-and-continue). */
+async function persistTeacherContactToSupabase(
+  contact: ServerTeacherContact,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await upsertTeacherContact(toTeacherContactRow(contact));
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with in-memory Map:`, err);
+  }
+}
+
+/**
+ * Boot-load the teacher-contact directory from Postgres into the
+ * in-memory Map. Contacts never lived in the JSON store, so there is
+ * no JSON fallback — when Supabase is unconfigured or the query
+ * throws, the Map stays empty (today's behaviour) and a warning is
+ * logged. Never throws; called once after the server starts listening.
+ */
+async function loadTeacherContactsFromSupabase(): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const rows = await listTeacherContacts();
+    let loaded = 0;
+    for (const row of rows) {
+      const contact = fromTeacherContactRow(row as unknown as Record<string, unknown>);
+      if (contact) {
+        serverTeacherContacts.set(contact.id, contact);
+        loaded += 1;
+      }
+    }
+    console.log(`[TeacherContacts] Loaded ${loaded} contact(s) from Postgres.`);
+  } catch (err) {
+    console.warn('[TeacherContacts] Supabase load failed, starting with an empty directory:', err);
+  }
+}
+
+/** Dual-write one shift-schedule config (upsert by config id, warn-and-continue). */
+async function persistShiftScheduleToSupabase(
+  config: ShiftScheduleConfig,
+  scopeKey: string,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await upsertShiftSchedule(config.id, scopeKey, config as unknown as Record<string, unknown>);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/** Dual-write one routine notification (insert, warn-and-continue). */
+async function persistRoutineNotificationToSupabase(
+  n: RoutineNotificationRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertRoutineNotification(n);
+  } catch (err) {
+    console.warn(`[RoutineNotification] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/** Dual-write one campus-notice report (insert, warn-and-continue). */
+async function persistCampusNoticeReportToSupabase(
+  report: CampusNoticeReportRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertRecordToSupabase('campus_notice_reports', toCampusNoticeReportRow(report));
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/** Dual-write a campus-notice delete (warn-and-continue). */
+async function persistNoticeDeleteToSupabase(id: string, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await deleteCampusNoticeById(id);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase delete failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Dual-write an admin community update (edit / toggle-active /
+ * soft-delete / member-count). Retries once without `image_url` /
+ * `deleted_at` when the Stage-1 SQL has not run yet, so the rest of
+ * the update still lands.
+ */
+async function persistCommunityUpdateToSupabase(
+  community: AcademicCommunity,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const { id: _communityId, created_at: _createdAt, ...patch } = toCommunityRow(community);
+    await updateCommunityById(community.id, patch);
+  } catch (err) {
+    if (
+      isPostgrestUnknownColumnError(err, 'image_url') ||
+      isPostgrestUnknownColumnError(err, 'deleted_at')
+    ) {
+      try {
+        const { id: _communityId, created_at: _createdAt, image_url: _droppedImage, deleted_at: _droppedDeleted, ...patchWithoutNew } =
+          toCommunityRow(community);
+        await updateCommunityById(community.id, patchWithoutNew);
+        return;
+      } catch (retryErr) {
+        console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, retryErr);
+        return;
+      }
+    }
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/** Dual-write a community-report resolve (status + notes, warn-and-continue; retries without `resolution_notes` pre-SQL). */
+async function persistCommunityReportResolveToSupabase(
+  report: CommunityReportRecord,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  const status = report.status === 'resolved' ? 'Resolved' : 'Dismissed';
+  try {
+    await updateRecordByIdToSupabase('community_reports', report.id, {
+      status,
+      resolution_notes: report.resolution_notes ?? null
+    });
+  } catch (err) {
+    if (isPostgrestUnknownColumnError(err, 'resolution_notes')) {
+      try {
+        await updateRecordByIdToSupabase('community_reports', report.id, { status });
+        return;
+      } catch (retryErr) {
+        console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, retryErr);
+        return;
+      }
+    }
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Dual-write an admin ticket update (status / priority / assignee /
+ * resolution / notes). Retries once without the Stage-1 columns
+ * (`internal_notes` / `resolution` / `resolved_at`) when that SQL has
+ * not run yet, so the status change still lands.
+ */
+async function persistSupportTicketUpdateToSupabase(
+  ticket: SupportTicket,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  const fullPatch: Record<string, unknown> = {
+    status: ticket.status,
+    priority: ticket.priority,
+    assignee_id: ticket.assigneeId ?? null,
+    internal_notes: ticket.internalNotes ?? [],
+    resolution: ticket.resolution ?? null,
+    resolved_at: ticket.resolvedAt ?? null,
+    updated_at: ticket.updatedAt
+  };
+  try {
+    await updateRecordByIdToSupabase('support_tickets', ticket.id, fullPatch);
+  } catch (err) {
+    if (
+      isPostgrestUnknownColumnError(err, 'internal_notes') ||
+      isPostgrestUnknownColumnError(err, 'resolution') ||
+      isPostgrestUnknownColumnError(err, 'resolved_at')
+    ) {
+      try {
+        const { internal_notes: _droppedNotes, resolution: _droppedResolution, resolved_at: _droppedResolved, ...patchWithoutNew } =
+          fullPatch;
+        await updateRecordByIdToSupabase('support_tickets', ticket.id, patchWithoutNew);
+        return;
+      } catch (retryErr) {
+        console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, retryErr);
+        return;
+      }
+    }
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/** Dual-write a deletion-request status change (approve/reject, warn-and-continue). */
+async function persistDeletionRequestStatusToSupabase(
+  request: AccountDeletionRequest,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await updateRecordByIdToSupabase('account_deletion_requests', request.id, {
+      status: request.status,
+      reviewed_at: request.reviewedAt ?? null,
+      reviewed_by: request.reviewedBy ?? null,
+      review_note: request.reviewNote ?? null
+    });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/** Dual-write one roster-merged student (insert, warn-and-continue). Matched students are never re-written — their profile is preserved as-is. */
+async function persistMergedStudentToSupabase(
+  student: EnrolledStudent,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertStudent(student);
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/** Dual-write one deleted-account tombstone (insert, warn-and-continue). */
+async function persistDeletedAccountIdToSupabase(id: string, logTag: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    await insertRecordToSupabase('deleted_account_ids', { id });
+  } catch (err) {
+    console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * ============================================================================
+ * STAGE 1 DATA CUTOVER — startup backfill (JSON -> Postgres)
+ * ============================================================================
+ * Runs once, after the server starts listening. For every migrated
+ * table it copies JSON rows that are ABSENT from Postgres into
+ * Postgres (by id); it NEVER overwrites an existing Postgres row and
+ * NEVER deletes Postgres rows. A Postgres row is therefore always the
+ * winner on conflict — a newer Postgres value (e.g. a v2 teacher PIN
+ * hash written after the JSON copy, or an admin-side edit) can never
+ * be downgraded by a stale JSON row. Each table is independent: a
+ * failure in one (missing table, network error, bad row) is logged
+ * and the rest still run. The whole backfill never throws and never
+ * blocks boot: when Supabase is unconfigured it logs once and skips,
+ * and when Postgres is unreachable every table reports failed=0 with
+ * a warning and the JSON store carries on as before.
+ *
+ * Tables covered: students, teacher_accounts, captain_records,
+ * pending_teacher_endorsements, communities, community_memberships,
+ * community_messages, community_reports, campus_notices,
+ * campus_notice_reports, notes, assignments, assignment_submissions,
+ * attendance_sheets, routines, routine_notifications,
+ * shift_schedules, semester_calculator_records, jobs,
+ * admin_audit_logs, support_tickets, account_deletion_requests,
+ * announcements, reminders, routine_documents, deleted_account_ids,
+ * admin_notifications, app_config.
+ * Deliberately NOT covered: system_admins / admin_accounts (founder
+ * + sub-admin auth — the auth worker's scope), teacher_contacts (no
+ * JSON source exists; the boot-load above is the only direction),
+ * subject_catalog (static seed file), BTEB results / notices cache
+ * (separate files), sessions (ephemeral by design).
+ */
+
+let supabaseBackfillStarted = false;
+
+async function backfillOneTable(
+  table: string,
+  jsonItems: { id: string; write: () => Promise<void> }[],
+  existingIds: Set<string>
+): Promise<{ inserted: number; skipped: number; failed: number }> {
+  let inserted = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const item of jsonItems) {
+    if (existingIds.has(item.id)) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      await item.write();
+      inserted += 1;
+      existingIds.add(item.id);
+    } catch (err) {
+      failed += 1;
+      console.warn(`[Backfill] ${table}: failed to insert ${item.id}, continuing:`, err);
+    }
+  }
+  console.log(`[Backfill] ${table}: inserted=${inserted} skipped=${skipped} failed=${failed}`);
+  return { inserted, skipped, failed };
+}
+
+/** Insert with a retry that drops `columns` on a PGRST204 unknown-column error (Stage-1 SQL not run yet). */
+async function insertRecordWithColumnRetry(
+  table: string,
+  row: Record<string, unknown>,
+  droppableColumns: string[]
+): Promise<void> {
+  try {
+    await insertRecordToSupabase(table, row);
+  } catch (err) {
+    if (droppableColumns.some((c) => isPostgrestUnknownColumnError(err, c))) {
+      const retryRow = { ...row };
+      for (const c of droppableColumns) delete retryRow[c];
+      await insertRecordToSupabase(table, retryRow);
+      return;
+    }
+    throw err;
+  }
+}
+
+async function runSupabaseBackfill(): Promise<void> {
+  if (supabaseBackfillStarted) return;
+  supabaseBackfillStarted = true;
+  if (!isSupabaseConfigured()) {
+    console.log('[Backfill] Supabase is not configured — skipping Postgres backfill (JSON store remains the source of truth).');
+    return;
+  }
+  console.log('[Backfill] Starting JSON -> Postgres backfill (insert-if-absent; Postgres rows are never overwritten).');
+  const startedAt = Date.now();
+  let tablesOk = 0;
+  let tablesFailed = 0;
+  const runTable = async (table: string, fn: () => Promise<void>): Promise<void> => {
+    try {
+      await fn();
+      tablesOk += 1;
+    } catch (err) {
+      tablesFailed += 1;
+      console.warn(`[Backfill] ${table}: table backfill failed, continuing with the next table:`, err);
+    }
+  };
+
+  // Students — skip when the id OR the board_roll already exists in
+  // Postgres (board_roll is unique there); a re-registration under a
+  // different id must not create a duplicate row.
+  await runTable('students', async () => {
+    const rows = await listRecordsFromSupabase('students', { columns: 'id,board_roll' });
+    const ids = new Set(rows.map((r) => String(r.id)));
+    const rolls = new Set(rows.map((r) => String(r.board_roll)).filter(Boolean));
+    await backfillOneTable(
+      'students',
+      academicStore.students
+        .filter((s) => !rolls.has(s.boardRoll))
+        .map((s) => ({ id: s.id, write: () => insertStudent(s).then(() => undefined) })),
+      ids
+    );
+  });
+
+  // Teachers — skip when the id, email or phone already exists. The
+  // insert is the ONLY write, so a v2 Postgres hash can never be
+  // overwritten (or downgraded) by a v1 JSON hash.
+  await runTable('teacher_accounts', async () => {
+    const rows = await listRecordsFromSupabase('teacher_accounts', { columns: 'id,email,phone' });
+    const ids = new Set(rows.map((r) => String(r.id)));
+    const emails = new Set(
+      rows.map((r) => String(r.email || '').toLowerCase()).filter(Boolean)
+    );
+    const phones = new Set(rows.map((r) => String(r.phone || '')).filter(Boolean));
+    await backfillOneTable(
+      'teacher_accounts',
+      Array.from(serverTeachers.values())
+        .filter(
+          (t) =>
+            !(t.email && emails.has(t.email.toLowerCase())) &&
+            !(t.phone && phones.has(t.phone))
+        )
+        .map((t) => ({ id: t.id, write: () => insertTeacher(t).then(() => undefined) })),
+      ids
+    );
+  });
+
+  await runTable('captain_records', async () => {
+    const ids = new Set(await listIdsFromSupabase('captain_records'));
+    await backfillOneTable(
+      'captain_records',
+      academicStore.captainRecords.map((c) => ({
+        id: c.id,
+        write: () => insertCaptainRecord(c).then(() => undefined)
+      })),
+      ids
+    );
+  });
+
+  await runTable('pending_teacher_endorsements', async () => {
+    const rows = await listRecordsFromSupabase('pending_teacher_endorsements', {
+      columns: 'application_id'
+    });
+    const ids = new Set(rows.map((r) => String(r.application_id)));
+    await backfillOneTable(
+      'pending_teacher_endorsements',
+      Object.entries(academicStore.pendingTeacherEndorsements).map(([applicationId, endorsement]) => ({
+        id: applicationId,
+        write: () => upsertPendingTeacherEndorsement(applicationId, endorsement).then(() => undefined)
+      })),
+      ids
+    );
+  });
+
+  await runTable('communities', async () => {
+    const ids = new Set(await listIdsFromSupabase('communities'));
+    await backfillOneTable(
+      'communities',
+      academicStore.communities.map((c) => ({
+        id: c.id,
+        write: () => insertCommunity(c).then(() => undefined)
+      })),
+      ids
+    );
+  });
+
+  await runTable('community_memberships', async () => {
+    const ids = new Set(await listIdsFromSupabase('community_memberships'));
+    await backfillOneTable(
+      'community_memberships',
+      academicStore.communityMemberships.map((m) => ({
+        id: m.id,
+        write: () => insertCommunityMembership(m).then(() => undefined)
+      })),
+      ids
+    );
+  });
+
+  await runTable('community_messages', async () => {
+    const ids = new Set(await listIdsFromSupabase('community_messages'));
+    await backfillOneTable(
+      'community_messages',
+      academicStore.communityMessages.map((m) => ({
+        id: m.id,
+        // insertCommunityMessage strips file_data bytes (D10), so the
+        // backfill never copies base64 blobs into Postgres.
+        write: () => insertCommunityMessage(m).then(() => undefined)
+      })),
+      ids
+    );
+  });
+
+  await runTable('community_reports', async () => {
+    const ids = new Set(await listIdsFromSupabase('community_reports'));
+    await backfillOneTable(
+      'community_reports',
+      academicStore.communityReports.map((r) => ({
+        id: r.id,
+        write: () =>
+          insertRecordWithColumnRetry('community_reports', toCommunityReportRow(r), [
+            'resolution_notes'
+          ])
+      })),
+      ids
+    );
+  });
+
+  await runTable('campus_notices', async () => {
+    const ids = new Set(await listIdsFromSupabase('campus_notices'));
+    await backfillOneTable(
+      'campus_notices',
+      academicStore.campusNotices.map((n) => ({
+        id: n.id,
+        write: () => insertCampusNotice(n).then(() => undefined)
+      })),
+      ids
+    );
+  });
+
+  await runTable('campus_notice_reports', async () => {
+    const ids = new Set(await listIdsFromSupabase('campus_notice_reports'));
+    await backfillOneTable(
+      'campus_notice_reports',
+      academicStore.campusNoticeReports.map((r) => ({
+        id: r.id,
+        write: () => insertRecordToSupabase('campus_notice_reports', toCampusNoticeReportRow(r))
+      })),
+      ids
+    );
+  });
+
+  await runTable('notes', async () => {
+    const ids = new Set(await listIdsFromSupabase('notes'));
+    await backfillOneTable(
+      'notes',
+      academicStore.notes.map((n) => ({
+        id: n.id,
+        write: () => insertRecordToSupabase('notes', toNoteRow(n))
+      })),
+      ids
+    );
+  });
+
+  await runTable('assignments', async () => {
+    const ids = new Set(await listIdsFromSupabase('assignments'));
+    await backfillOneTable(
+      'assignments',
+      academicStore.assignments.map((a) => ({
+        id: a.id,
+        write: () => insertRecordToSupabase('assignments', toAssignmentRow(a))
+      })),
+      ids
+    );
+  });
+
+  await runTable('assignment_submissions', async () => {
+    const ids = new Set(await listIdsFromSupabase('assignment_submissions'));
+    await backfillOneTable(
+      'assignment_submissions',
+      academicStore.assignmentSubmissions.map((s) => ({
+        id: s.id,
+        write: () => upsertRecordToSupabase('assignment_submissions', toSubmissionRow(s))
+      })),
+      ids
+    );
+  });
+
+  await runTable('attendance_sheets', async () => {
+    const ids = new Set(await listIdsFromSupabase('attendance_sheets'));
+    await backfillOneTable(
+      'attendance_sheets',
+      academicStore.attendanceSheets.map((s) => ({
+        id: s.id,
+        write: () => insertAttendanceSheet(s).then(() => undefined)
+      })),
+      ids
+    );
+  });
+
+  await runTable('routines', async () => {
+    const ids = new Set(await listIdsFromSupabase('routines'));
+    await backfillOneTable(
+      'routines',
+      academicStore.routines.map((r) => ({
+        id: r.id,
+        write: () => insertRoutine(r).then(() => undefined)
+      })),
+      ids
+    );
+  });
+
+  await runTable('routine_notifications', async () => {
+    const ids = new Set(await listIdsFromSupabase('routine_notifications'));
+    await backfillOneTable(
+      'routine_notifications',
+      academicStore.routineNotifications.map((n) => ({
+        id: n.id,
+        write: () => insertRoutineNotification(n)
+      })),
+      ids
+    );
+  });
+
+  await runTable('shift_schedules', async () => {
+    const ids = new Set(await listIdsFromSupabase('shift_schedules'));
+    await backfillOneTable(
+      'shift_schedules',
+      Object.entries(academicStore.shiftSchedules).map(([key, config]) => ({
+        id: config.id,
+        write: () =>
+          upsertShiftSchedule(config.id, key, config as unknown as Record<string, unknown>)
+      })),
+      ids
+    );
+  });
+
+  await runTable('semester_calculator_records', async () => {
+    const ids = new Set(await listIdsFromSupabase('semester_calculator_records'));
+    await backfillOneTable(
+      'semester_calculator_records',
+      academicStore.savedSemesterCalculatorRecords.map((r) => ({
+        id: r.id,
+        write: () => upsertRecordToSupabase('semester_calculator_records', toSemesterRecordRow(r))
+      })),
+      ids
+    );
+  });
+
+  await runTable('jobs', async () => {
+    const ids = new Set(await listIdsFromSupabase('jobs'));
+    await backfillOneTable(
+      'jobs',
+      academicStore.jobs.map((j) => ({
+        id: j.id,
+        write: () => upsertRecordToSupabase('jobs', toJobRow(j))
+      })),
+      ids
+    );
+  });
+
+  await runTable('admin_audit_logs', async () => {
+    const ids = new Set(await listIdsFromSupabase('admin_audit_logs'));
+    await backfillOneTable(
+      'admin_audit_logs',
+      academicStore.adminAuditLogs.map((e) => ({
+        id: e.id,
+        write: () => insertRecordToSupabase('admin_audit_logs', toAdminAuditRow(e))
+      })),
+      ids
+    );
+  });
+
+  await runTable('support_tickets', async () => {
+    const ids = new Set(await listIdsFromSupabase('support_tickets'));
+    await backfillOneTable(
+      'support_tickets',
+      academicStore.supportTickets.map((t) => ({
+        id: t.id,
+        write: () =>
+          insertRecordWithColumnRetry('support_tickets', toSupportTicketRow(t), [
+            'internal_notes',
+            'resolution',
+            'resolved_at'
+          ])
+      })),
+      ids
+    );
+  });
+
+  await runTable('account_deletion_requests', async () => {
+    const ids = new Set(await listIdsFromSupabase('account_deletion_requests'));
+    await backfillOneTable(
+      'account_deletion_requests',
+      academicStore.accountDeletionRequests.map((r) => ({
+        id: r.id,
+        write: () => insertRecordToSupabase('account_deletion_requests', toDeletionRequestRow(r))
+      })),
+      ids
+    );
+  });
+
+  await runTable('announcements', async () => {
+    const ids = new Set(await listIdsFromSupabase('announcements'));
+    await backfillOneTable(
+      'announcements',
+      academicStore.announcements.map((a) => ({
+        id: a.id,
+        write: () => insertRecordToSupabase('announcements', toAnnouncementRow(a))
+      })),
+      ids
+    );
+  });
+
+  await runTable('reminders', async () => {
+    const ids = new Set(await listIdsFromSupabase('reminders'));
+    await backfillOneTable(
+      'reminders',
+      academicStore.reminders.map((r) => ({
+        id: r.id,
+        write: () =>
+          upsertRecordToSupabase('reminders', toReminderRow(r as StoredReminder))
+      })),
+      ids
+    );
+  });
+
+  await runTable('routine_documents', async () => {
+    const ids = new Set(await listIdsFromSupabase('routine_documents'));
+    await backfillOneTable(
+      'routine_documents',
+      academicStore.routineDocuments.map((d) => ({
+        id: d.id,
+        write: () => insertRecordToSupabase('routine_documents', toRoutineDocumentRow(d))
+      })),
+      ids
+    );
+  });
+
+  await runTable('deleted_account_ids', async () => {
+    const ids = new Set(await listIdsFromSupabase('deleted_account_ids'));
+    await backfillOneTable(
+      'deleted_account_ids',
+      academicStore.deletedAccountIds.map((id) => ({
+        id,
+        write: () => insertRecordToSupabase('deleted_account_ids', { id })
+      })),
+      ids
+    );
+  });
+
+  await runTable('admin_notifications', async () => {
+    const ids = new Set(await listIdsFromSupabase('admin_notifications'));
+    await backfillOneTable(
+      'admin_notifications',
+      academicStore.adminNotifications.map((n) => ({
+        id: n.id,
+        write: () => insertAdminNotification(toAdminNotificationRow(n))
+      })),
+      ids
+    );
+  });
+
+  // App config — the table's key column is `key`, not `id`, so the
+  // existing ids are fetched by key. A key present in Postgres is
+  // never overwritten: the backfill only seeds keys Postgres lacks.
+  await runTable('app_config', async () => {
+    const existingKeys = new Set((await listAppConfigValues()).map((r) => r.key));
+    const items: { id: string; write: () => Promise<void> }[] = [
+      {
+        id: 'featureFlags',
+        write: () => upsertAppConfigValue('featureFlags', academicStore.featureFlags)
+      },
+      {
+        id: 'maintenanceMode',
+        write: () => upsertAppConfigValue('maintenanceMode', academicStore.maintenanceMode)
+      },
+      {
+        id: 'appVersionControl',
+        write: () => upsertAppConfigValue('appVersionControl', academicStore.appVersionControl)
+      },
+      {
+        id: 'teacherContactAccessLocked',
+        write: () =>
+          upsertAppConfigValue(
+            'teacherContactAccessLocked',
+            academicStore.teacherContactAccessLocked
+          )
+      }
+    ];
+    await backfillOneTable('app_config', items, existingKeys);
+  });
+
+  console.log(
+    `[Backfill] Done in ${Date.now() - startedAt}ms: ${tablesOk} table(s) ok, ${tablesFailed} table(s) failed (see warnings above).`
+  );
+}
+
 async function persistSupportTicketToSupabase(ticket: SupportTicket, logTag: string): Promise<void> {
   if (!isSupabaseConfigured()) return;
   try {
-    await insertRecordToSupabase('support_tickets', {
-      id: ticket.id,
-      user_id: ticket.userId,
-      user_name: ticket.userName ?? null,
-      user_roll: ticket.userRoll ?? null,
-      subject: ticket.subject,
-      description: ticket.description,
-      category: ticket.category,
-      priority: ticket.priority,
-      status: ticket.status,
-      assignee_id: ticket.assigneeId ?? null,
-      created_at: ticket.createdAt,
-      updated_at: ticket.updatedAt
-    });
+    await insertRecordToSupabase('support_tickets', toSupportTicketRow(ticket));
   } catch (err) {
+    // The Stage-1 SQL adds internal_notes / resolution / resolved_at.
+    // Until it runs, retry without them so the ticket still lands.
+    if (
+      isPostgrestUnknownColumnError(err, 'internal_notes') ||
+      isPostgrestUnknownColumnError(err, 'resolution') ||
+      isPostgrestUnknownColumnError(err, 'resolved_at')
+    ) {
+      try {
+        const { internal_notes: _droppedNotes, resolution: _droppedResolution, resolved_at: _droppedResolved, ...rowWithoutNew } =
+          toSupportTicketRow(ticket);
+        await insertRecordToSupabase('support_tickets', rowWithoutNew);
+        return;
+      } catch (retryErr) {
+        console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, retryErr);
+        return;
+      }
+    }
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
 }
@@ -14124,20 +16171,7 @@ async function persistDeletionRequestToSupabase(
 ): Promise<void> {
   if (!isSupabaseConfigured()) return;
   try {
-    await insertRecordToSupabase('account_deletion_requests', {
-      id: request.id,
-      account_id: request.accountId,
-      account_type: request.accountType,
-      board_roll: request.boardRoll ?? null,
-      account_name: request.accountName,
-      status: request.status,
-      requested_at: request.requestedAt,
-      source: request.source,
-      reason: request.reason ?? null,
-      reviewed_at: request.reviewedAt ?? null,
-      reviewed_by: request.reviewedBy ?? null,
-      review_note: request.reviewNote ?? null
-    });
+    await insertRecordToSupabase('account_deletion_requests', toDeletionRequestRow(request));
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
@@ -14207,19 +16241,20 @@ async function persistCommunityReportToSupabase(
 ): Promise<void> {
   if (!isSupabaseConfigured()) return;
   try {
-    await insertRecordToSupabase('community_reports', {
-      id: report.id,
-      community_id: report.community_id,
-      message_id: report.reported_message_id ?? null,
-      reporter_id: report.reported_by_id ?? null,
-      reported_user_id: report.reported_user_id ?? null,
-      reason: report.reason,
-      // Table default casing is 'Pending' (phase1); the JSON record
-      // uses lowercase — normalise so Postgres reads stay consistent.
-      status: report.status === 'resolved' ? 'Resolved' : report.status === 'dismissed' ? 'Dismissed' : 'Pending',
-      created_at: report.created_at
-    });
+    await insertRecordToSupabase('community_reports', toCommunityReportRow(report));
   } catch (err) {
+    // The Stage-1 SQL adds resolution_notes. Until it runs, retry
+    // without it so the report still lands.
+    if (isPostgrestUnknownColumnError(err, 'resolution_notes')) {
+      try {
+        const { resolution_notes: _droppedNotes, ...rowWithoutNew } = toCommunityReportRow(report);
+        await insertRecordToSupabase('community_reports', rowWithoutNew);
+        return;
+      } catch (retryErr) {
+        console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, retryErr);
+        return;
+      }
+    }
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
   }
 }
@@ -14395,6 +16430,489 @@ async function persistTeacherAuthStateToSupabase(
     }
   } catch (err) {
     console.warn(`[${logTag}] Supabase write failed, continuing with JSON store:`, err);
+  }
+}
+
+// ===========================================================================
+// AUTH CUTOVER — STAGE 1 (v1.0.31): founder + sub-admin auth in Postgres.
+// ===========================================================================
+// Founder auth (`system_admin`) and sub-admin accounts (`adminAccounts`)
+// used to live only in data/system-admins.json and the JSON store.
+// They now live in Postgres first — public.system_admins (founder) and
+// public.admin_accounts (sub-admins) — with the JSON files kept as a
+// transitional mirror (dual-written on every mutation) until the JSON
+// files are removed in a later stage.
+//
+// CREDENTIAL DECISIONS ARE POSTGRES-AUTHORITATIVE. When Supabase is
+// configured and the lookup SUCCEEDS, an absent Postgres row means "no
+// such account" and the login is rejected — the JSON mirror is NEVER
+// consulted for the credential decision, so a stale/seed JSON record
+// cannot resurrect a deleted account or an old password. The JSON
+// mirror is used only when Supabase is unconfigured or the query
+// throws (transitional safety, with a loud warning), exactly like the
+// teacher-login and student-login fallbacks.
+//
+// CRITICAL SEQUENCE (password-revert risk): the live v2 founder hash
+// exists only on Render's ephemeral disk; the REPO copy of
+// data/system-admins.json still holds the OLD v1 hash. The backfill
+// below therefore migrates the REPO copy (v1) into Postgres — after
+// the cutover deploy the founder logs in once with the OLD password
+// (transparent upgrade to v2, dual-written) and changes it again via
+// Settings → Change Password. Never commit a disk hash to the repo.
+//
+// Version rule: a legacy (v1) hash is stored with
+// password_hash_version = 1 (or NULL), NEVER 2 — marking a 10k-iteration
+// hash as v2 would make verification compute 600k iterations against
+// it and the founder could never log in again.
+
+/** Map a founder record to its Postgres row (see supabaseClient.ts). */
+function toSystemAdminAccount(admin: StoredSystemAdmin): SystemAdminAccount {
+  return {
+    id: admin.id,
+    name: admin.name,
+    email: admin.email,
+    passwordHash: admin.passwordHash,
+    passwordSalt: admin.passwordSalt,
+    passwordHashVersion: admin.passwordHashVersion,
+    role: 'system_admin',
+    failedAttempts: admin.failedAttempts ?? 0,
+    lockoutUntil: admin.lockoutUntil ?? null,
+    createdAt: admin.createdAt,
+    lastLoginAt: admin.lastLoginAt,
+  };
+}
+
+/** Map a sub-admin record to its Postgres row (see supabaseClient.ts). */
+function toSubAdminAccount(account: AdminAccount): SubAdminAccount {
+  return {
+    id: account.id,
+    name: account.name,
+    email: account.email,
+    role: account.role,
+    status: account.status ?? 'active',
+    passwordHash: account.passwordHash,
+    passwordSalt: account.passwordSalt,
+    passwordHashVersion: account.passwordHashVersion,
+    failedAttempts: account.failedAttempts ?? 0,
+    lockoutUntil: account.lockoutUntil ?? null,
+    createdAt: account.createdAt,
+    lastLoginAt: account.lastLoginAt,
+  };
+}
+
+/**
+ * Postgres-first write of one admin record (founder or sub-admin).
+ * Same warn-and-continue contract as the other persist helpers: return
+ * early when Supabase is unconfigured, never throw — on any query error
+ * (or a missing row, which upsert cannot produce) log a warning and
+ * mark the divergence, and the caller carries on with the JSON write
+ * so a password change is never lost because Postgres is down. Callers
+ * invoke this BEFORE the JSON/disk save, so Postgres is written first.
+ */
+async function persistAdminRecordToSupabase(
+  record: StoredSystemAdmin | AdminAccount,
+  logTag: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    if (record.role === 'system_admin') {
+      await upsertSystemAdmin(toSystemAdminAccount(record as StoredSystemAdmin));
+    } else {
+      await upsertSubAdmin(toSubAdminAccount(record as AdminAccount));
+    }
+  } catch (err) {
+    markSupabaseDiverged(record.id);
+    reportSupabaseDivergence(logTag, `Admin ${record.id} not persisted to Postgres; change kept in JSON store only: ${err instanceof Error ? err.message : String(err)}`);
+    console.warn(`[${logTag}] Admin ${record.id} not persisted to Postgres, continuing with JSON store:`, err);
+  }
+}
+
+/**
+ * Mirror a Postgres founder row into the in-memory systemAdmins map and
+ * return the map object, so the existing login / session code keeps
+ * mutating one object and its disk save stays in sync. Postgres fields
+ * win: the mirror is overwritten, never merged.
+ */
+function mirrorSystemAdminFromPostgres(pgAdmin: SystemAdminAccount): StoredSystemAdmin {
+  const record: StoredSystemAdmin = {
+    id: pgAdmin.id,
+    name: pgAdmin.name,
+    email: pgAdmin.email,
+    passwordHash: pgAdmin.passwordHash,
+    passwordSalt: pgAdmin.passwordSalt,
+    passwordHashVersion: pgAdmin.passwordHashVersion,
+    role: 'system_admin',
+    failedAttempts: pgAdmin.failedAttempts ?? 0,
+    lockoutUntil: pgAdmin.lockoutUntil ?? null,
+    createdAt: pgAdmin.createdAt,
+    lastLoginAt: pgAdmin.lastLoginAt,
+  };
+  systemAdmins.set(record.id, record);
+  return record;
+}
+
+/**
+ * Mirror a Postgres sub-admin row into academicStore.adminAccounts and
+ * return the store object, so the existing login / session code (which
+ * validates sub-admin sessions against the JSON store) keeps working.
+ * Postgres fields win; a row the JSON store does not know is appended.
+ */
+function mirrorSubAdminFromPostgres(pgAdmin: SubAdminAccount): AdminAccount {
+  const existing = (academicStore.adminAccounts || []).find(a => a.id === pgAdmin.id);
+  const record: AdminAccount = {
+    id: pgAdmin.id,
+    email: pgAdmin.email,
+    name: pgAdmin.name,
+    role: pgAdmin.role as AdminAccount['role'],
+    status: pgAdmin.status,
+    passwordHash: pgAdmin.passwordHash,
+    passwordSalt: pgAdmin.passwordSalt,
+    passwordHashVersion: pgAdmin.passwordHashVersion,
+    createdAt: pgAdmin.createdAt,
+    lastLoginAt: pgAdmin.lastLoginAt,
+    failedAttempts: pgAdmin.failedAttempts ?? 0,
+    lockoutUntil: pgAdmin.lockoutUntil ?? null,
+  };
+  if (existing) {
+    Object.assign(existing, record);
+    return existing;
+  }
+  academicStore.adminAccounts.push(record);
+  return record;
+}
+
+/**
+ * Postgres-first admin lookup for POST /api/admin/login. Returns the
+ * source that answered so the caller knows whether the JSON mirror may
+ * be consulted: `{ source: 'postgres' }` with no record means Postgres
+ * answered and has no such account — the caller must reject WITHOUT
+ * falling back to JSON. `{ source: 'json' }` means Supabase is
+ * unconfigured or the query threw (loud warning logged here); only
+ * then is the JSON mirror the credential source.
+ */
+async function resolveAdminAuthRecord(
+  cleanEmail: string
+): Promise<{ source: 'postgres' | 'json'; founder?: StoredSystemAdmin; subAdmin?: AdminAccount }> {
+  if (isSupabaseConfigured()) {
+    try {
+      const pgFounder = await getSystemAdminByEmail(cleanEmail);
+      if (pgFounder && pgFounder.role === 'system_admin') {
+        return { source: 'postgres', founder: mirrorSystemAdminFromPostgres(pgFounder) };
+      }
+      const pgSub = await getSubAdminByEmail(cleanEmail);
+      if (pgSub) {
+        return { source: 'postgres', subAdmin: mirrorSubAdminFromPostgres(pgSub) };
+      }
+      // Postgres answered and has neither account: authoritative absence.
+      return { source: 'postgres' };
+    } catch (err) {
+      console.warn('[AdminLogin] Supabase admin lookup failed, falling back to JSON store (transitional safety — Postgres is authoritative once it answers):', err);
+    }
+  }
+  for (const a of systemAdmins.values()) {
+    if (a.email.toLowerCase() === cleanEmail) return { source: 'json', founder: a };
+  }
+  const subAdmin = (academicStore.adminAccounts || []).find(a => a.email.toLowerCase() === cleanEmail);
+  if (subAdmin) return { source: 'json', subAdmin };
+  return { source: 'json' };
+}
+
+/**
+ * Postgres-first admin lookup by id (POST /api/admin/change-password).
+ * When Postgres answers with a row, it is mirrored and returned. When
+ * Postgres answers with NO row for a live session's userId, the disk /
+ * JSON record is self-healed into Postgres (upsert, logged) and the
+ * disk record is returned — a password change must not strand an admin
+ * whose row the boot backfill missed. When the query throws or
+ * Supabase is unconfigured, the disk / JSON record is returned.
+ */
+async function resolveAdminRecordById(
+  userId: string,
+  role: 'system_admin' | AdminRole
+): Promise<StoredSystemAdmin | AdminAccount | undefined> {
+  if (role === 'system_admin') {
+    const diskAdmin = systemAdmins.get(userId);
+    if (isSupabaseConfigured()) {
+      try {
+        const pg = await getSystemAdminById(userId);
+        if (pg) return mirrorSystemAdminFromPostgres(pg);
+        if (diskAdmin) {
+          console.warn('[AdminPassword] Founder has no Postgres row; self-healing from the disk record before the password change.');
+          await persistAdminRecordToSupabase(diskAdmin, 'AdminPasswordChange');
+        }
+      } catch (err) {
+        console.warn('[AdminPassword] Supabase founder lookup failed, using the disk record:', err);
+      }
+    }
+    return diskAdmin;
+  }
+  const jsonAdmin = (academicStore.adminAccounts || []).find(a => a.id === userId);
+  if (isSupabaseConfigured()) {
+    try {
+      const pg = await getSubAdminById(userId);
+      if (pg) return mirrorSubAdminFromPostgres(pg);
+      if (jsonAdmin) {
+        console.warn('[AdminPassword] Sub-admin has no Postgres row; self-healing from the JSON record before the password change.');
+        await persistAdminRecordToSupabase(jsonAdmin, 'AdminPasswordChange');
+      }
+    } catch (err) {
+      console.warn('[AdminPassword] Supabase sub-admin lookup failed, using the JSON record:', err);
+    }
+  }
+  return jsonAdmin;
+}
+
+/**
+ * Dual-write for the admin PIN-gate lockout (admin_pin_lockout table,
+ * single row id = 'global'). Fire-and-forget: the pin-verify handlers
+ * are sync, so this never throws and never blocks the response — on
+ * failure it only logs, and the JSON store stays the fallback. Called
+ * after every mutation of academicStore.adminPinLockout. Writes are
+ * SERIALISED through one promise chain (each call snapshots the state
+ * at call time): three rapid wrong PINs must not land out of order and
+ * leave Postgres showing failed=2 after the panel already locked.
+ */
+let adminPinLockoutPersistQueue: Promise<void> = Promise.resolve();
+function persistAdminPinLockoutToSupabase(logTag: string): void {
+  if (!isSupabaseConfigured()) return;
+  const lockout = getAdminPinLockout();
+  const snapshot = {
+    failedAttempts: lockout.failedAttempts || 0,
+    lockedUntil: lockout.lockedUntil ?? null,
+  };
+  adminPinLockoutPersistQueue = adminPinLockoutPersistQueue.then(async () => {
+    try {
+      await upsertAdminPinLockout(snapshot);
+    } catch (err) {
+      console.warn(`[${logTag}] Admin PIN lockout not persisted to Postgres, continuing with JSON store:`, err);
+    }
+  });
+}
+
+/**
+ * Dual-write for one student's login-failure state (students table,
+ * failed_pin_attempts / lockout_until columns — they exist since
+ * phase 1). Fire-and-forget, never throws, console warning only: a
+ * lockout write must never fail a login. Only `student:<id>` keys
+ * have a Postgres row; `roll:<boardRoll>` keys (unknown accounts)
+ * are intentionally skipped. Writes are serialised per student
+ * (same out-of-order hazard as the PIN lockout above: five rapid
+ * wrong PINs must not leave Postgres showing count=3 after the
+ * account already locked at 5).
+ */
+const studentLockoutPersistQueues = new Map<string, Promise<void>>();
+/**
+ * Queue one student's lockout write behind any earlier write for the
+ * same student and return the queued promise, so callers that must
+ * guarantee ordering (admin PIN reset) can await it. Fire-and-forget
+ * callers use `void` and never block a login on it.
+ */
+function persistStudentLockoutToSupabase(
+  studentId: string,
+  count: number,
+  lockoutUntilMs: number | null
+): Promise<void> {
+  if (!isSupabaseConfigured()) return Promise.resolve();
+  const prev = studentLockoutPersistQueues.get(studentId) ?? Promise.resolve();
+  const next = prev.then(async () => {
+    try {
+      await updateStudentById(studentId, {
+        failed_pin_attempts: count,
+        lockout_until: lockoutUntilMs ? new Date(lockoutUntilMs).toISOString() : null,
+      });
+    } catch (err) {
+      console.warn('[StudentLogin] Login-failure state not persisted to Postgres, continuing with JSON store:', err);
+    }
+  });
+  studentLockoutPersistQueues.set(studentId, next);
+  return next;
+}
+
+/**
+ * Seed the in-memory student lockout Map from the Postgres row before
+ * the lockout check in student login / session refresh. Postgres is
+ * the durable copy: when its lockout is fresher (a later lockoutUntil
+ * or a higher failure count) it wins; the Map is never downgraded, so
+ * failures recorded while Postgres was down are not lost. No-op when
+ * Supabase is unconfigured or the row is absent.
+ */
+async function seedStudentLockoutFromPostgres(boardRoll: string, studentId: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const row = await getStudentRowByBoardRoll(boardRoll);
+    if (!row || row.id !== studentId) return;
+    const pgCount = row.failed_pin_attempts ?? 0;
+    const pgUntil = row.lockout_until ? Date.parse(row.lockout_until) : null;
+    if (pgCount <= 0 && !pgUntil) return;
+    const lockoutKey = `student:${studentId}`;
+    const current = studentLoginFailures.get(lockoutKey);
+    const mergedUntil = Math.max(pgUntil ?? 0, current?.lockoutUntil ?? 0) || null;
+    const mergedCount = Math.max(pgCount, current?.count ?? 0);
+    if (!current || mergedCount !== current.count || mergedUntil !== current.lockoutUntil) {
+      studentLoginFailures.set(lockoutKey, { count: mergedCount, lockoutUntil: mergedUntil });
+    }
+  } catch (err) {
+    console.warn('[StudentLogin] Supabase lockout seed failed, using the in-memory / JSON state:', err);
+  }
+}
+
+/**
+ * Startup backfill for the auth cutover (Stage 1). Idempotent, logged,
+ * runs once per boot before the server starts listening (see
+ * startServer), never throws — a failure only logs, and auth continues
+ * with the JSON fallback wherever Postgres errors.
+ *
+ * - FOUNDER: every disk admin is UPSERTED into public.system_admins by
+ *   id. The phase-2 seed row carries the SAME id/email as the repo
+ *   copy, so the upsert REPLACES the stale seed in place (never
+ *   duplicates it). A Postgres row sharing the email under a different
+ *   id is the same identity under a stale id and is deleted first so
+ *   the upsert cannot violate the unique email. Postgres founder rows
+ *   matching no disk admin are left untouched and logged loudly.
+ *   The repo-copy hash is v1, so password_hash_version is written as
+ *   1 — never 2 (see the version rule above).
+ * - SUB-ADMINS: inserted into public.admin_accounts ONLY where absent
+ *   (by id or email) — an existing Postgres row is never overwritten.
+ * - TEACHERS: inserted into public.teacher_accounts ONLY where absent
+ *   (by id; skipped with a warning on an email collision) — a teacher
+ *   registered before the migration keeps logging in from Postgres.
+ * - ADMIN PIN LOCKOUT: the Postgres row is adopted when it is fresher
+ *   (a live lockout or a higher failure count); otherwise the JSON
+ *   state is pushed to Postgres.
+ */
+async function runAuthCutoverBackfill(): Promise<void> {
+  if (!isSupabaseConfigured()) {
+    console.log('[AuthCutover] Supabase is not configured — auth stays JSON-only; backfill skipped.');
+    return;
+  }
+  try {
+    // 1. Founder records (disk -> system_admins, upsert by id).
+    let foundersUpserted = 0;
+    try {
+      const pgAdmins = await listSystemAdmins();
+      for (const diskAdmin of systemAdmins.values()) {
+        const emailCollision = pgAdmins.find(
+          p => p.id !== diskAdmin.id && p.email.toLowerCase() === diskAdmin.email.toLowerCase()
+        );
+        if (emailCollision) {
+          try {
+            await deleteSystemAdminById(emailCollision.id);
+            console.log(`[AuthCutover] Removed stale system_admins row (same email as the disk admin, stale id) before upserting the disk record.`);
+          } catch (err) {
+            console.warn('[AuthCutover] Could not remove the stale same-email system_admins row; upsert may fail on the unique email:', err);
+          }
+        }
+        await upsertSystemAdmin(toSystemAdminAccount(diskAdmin));
+        foundersUpserted += 1;
+      }
+      const leftover = pgAdmins.filter(
+        p => ![...systemAdmins.values()].some(d => d.id === p.id || d.email.toLowerCase() === p.email.toLowerCase())
+      );
+      if (leftover.length > 0) {
+        console.error(`[AuthCutover] WARNING: ${leftover.length} system_admins row(s) in Postgres match no disk admin and were left untouched — review them in the Supabase Table Editor before removing the JSON files.`);
+      }
+    } catch (err) {
+      console.warn('[AuthCutover] Founder backfill failed (founder login falls back to JSON until Postgres answers):', err);
+    }
+
+    // 2. Sub-admins (JSON -> admin_accounts, insert-only).
+    let subAdminsInserted = 0;
+    let subAdminsSkipped = 0;
+    try {
+      const pgSubs = await listSubAdmins();
+      for (const sub of academicStore.adminAccounts || []) {
+        if (pgSubs.some(p => p.id === sub.id || p.email.toLowerCase() === sub.email.toLowerCase())) {
+          subAdminsSkipped += 1;
+          continue;
+        }
+        await upsertSubAdmin(toSubAdminAccount(sub));
+        subAdminsInserted += 1;
+      }
+    } catch (err) {
+      console.warn('[AuthCutover] Sub-admin backfill failed:', err);
+    }
+
+    // 3. Teachers (JSON -> teacher_accounts, insert-only, PIN hashes).
+    let teachersInserted = 0;
+    let teachersSkipped = 0;
+    try {
+      for (const teacher of serverTeachers.values()) {
+        if (!teacher.pinHash) continue;
+        try {
+          if (await getTeacherById(teacher.id)) {
+            teachersSkipped += 1;
+            continue;
+          }
+          if (teacher.email) {
+            const byEmail = await getTeacherByEmail(teacher.email);
+            if (byEmail) {
+              console.warn(`[AuthCutover] Teacher ${teacher.id} skipped: a Postgres row already uses the same email under a different id.`);
+              teachersSkipped += 1;
+              continue;
+            }
+          }
+          await insertTeacher({
+            id: teacher.id,
+            name: teacher.name,
+            email: teacher.email || null,
+            phone: teacher.phone || null,
+            college: teacher.college || null,
+            department: teacher.department || null,
+            designation: teacher.designation || null,
+            teachingSubjects: teacher.teachingSubjects,
+            semestersTaught: teacher.semestersTaught,
+            shift: teacher.shift,
+            sectionsTaught: teacher.sectionsTaught,
+            verificationStatus: teacher.verificationStatus,
+            pinHash: teacher.pinHash,
+            pinSalt: teacher.pinSalt,
+            pinHashVersion: teacher.pinHashVersion,
+            consentAccepted: teacher.consentAccepted,
+            consentVersion: teacher.consentVersion,
+            consentAt: teacher.consentAt,
+            isGuideTeacher: teacher.isGuideTeacher,
+            guideTeacherCohort: teacher.guideTeacherCohort,
+            failedPinAttempts: teacher.failedPinAttempts ?? 0,
+            createdAt: teacher.createdAt,
+            adminNotes: teacher.adminNotes,
+          });
+          teachersInserted += 1;
+        } catch (err) {
+          console.warn(`[AuthCutover] Teacher ${teacher.id} backfill failed (teacher login falls back to JSON for this account):`, err);
+        }
+      }
+    } catch (err) {
+      console.warn('[AuthCutover] Teacher backfill failed:', err);
+    }
+
+    // 4. Admin PIN lockout (adopt the fresher side).
+    try {
+      const pgLock = await getAdminPinLockoutRow();
+      const jsonLock = getAdminPinLockout();
+      if (pgLock) {
+        const pgUntil = pgLock.locked_until ? Date.parse(pgLock.locked_until) : null;
+        const pgLive = pgUntil !== null && pgUntil > Date.now();
+        if (pgLive || (pgLock.failed_attempts ?? 0) > (jsonLock.failedAttempts || 0)) {
+          jsonLock.failedAttempts = pgLock.failed_attempts ?? 0;
+          jsonLock.lockedUntil = pgLive ? pgUntil : null;
+          saveAcademicStore(academicStore);
+          console.log('[AuthCutover] Adopted admin PIN lockout state from Postgres.');
+        }
+      } else if ((jsonLock.failedAttempts || 0) > 0 || jsonLock.lockedUntil) {
+        await upsertAdminPinLockout({
+          failedAttempts: jsonLock.failedAttempts || 0,
+          lockedUntil: jsonLock.lockedUntil ?? null,
+        });
+      }
+    } catch (err) {
+      console.warn('[AuthCutover] Admin PIN lockout backfill failed:', err);
+    }
+
+    console.log(
+      `[AuthCutover] Backfill done: founders upserted=${foundersUpserted}, sub-admins inserted=${subAdminsInserted} (skipped ${subAdminsSkipped}), teachers inserted=${teachersInserted} (skipped ${teachersSkipped}).`
+    );
+  } catch (err) {
+    console.error('[AuthCutover] Backfill failed unexpectedly (auth continues with the JSON fallback where Postgres errors):', err);
   }
 }
 
@@ -14913,6 +17431,11 @@ function createScopedRoutineNotification(
   if (academicStore.routineNotifications.length > 200) {
     academicStore.routineNotifications = academicStore.routineNotifications.slice(0, 200);
   }
+  // Stage 1 data cutover: routine notifications dual-write to
+  // Postgres (the routine_notifications table existed since phase 1
+  // but was never written until now). Fire-and-forget — the helper
+  // never throws, and the JSON write above is the source of truth.
+  void persistRoutineNotificationToSupabase(notif, 'RoutineNotification');
   return notif;
 }
 
@@ -15175,7 +17698,7 @@ app.get('/api/routines', async (req: Request, res: Response) => {
  * (`GET /api/routines/notifications`)
  * NOTE: Declared before `/api/routines/:id` so `notifications` is not matched as `:id`.
  */
-app.get('/api/routines/notifications', (req: Request, res: Response) => {
+app.get('/api/routines/notifications', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -15193,7 +17716,20 @@ app.get('/api/routines/notifications', (req: Request, res: Response) => {
       });
     }
 
-    const matchingNotifications = academicStore.routineNotifications.filter(
+    // Stage 1 data cutover: routine notifications read Postgres first,
+    // merged with the JSON store (see listPostgresFirstMerged). The
+    // table existed since phase 1 but was never read or written until
+    // now (the create path dual-writes too).
+    const allNotifications = await listPostgresFirstMerged(
+      'routine_notifications',
+      academicStore.routineNotifications,
+      (row) => toRoutineNotification(row as unknown as RoutineNotificationRow),
+      'RoutineNotifications',
+      undefined,
+      'created_at',
+      false
+    );
+    const matchingNotifications = allNotifications.filter(
       (n) =>
         n.college_id === userGroup.college_id &&
         n.department_id === userGroup.department_id &&
@@ -15344,13 +17880,24 @@ app.post('/api/routines/documents', async (req: Request, res: Response) => {
 });
 
 /** 14B-2. LIST THE CALLER'S COHORT ROUTINE DOCUMENTS (`GET /api/routines/documents`). Metadata only — bytes are never returned in a list payload. */
-app.get('/api/routines/documents', (req: Request, res: Response) => {
+app.get('/api/routines/documents', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
       return res.status(401).json({ success: false, error: 'Authentication Required: Please sign in.' });
     }
-    let docs = [...academicStore.routineDocuments];
+    // Stage 1 data cutover: routine documents read Postgres first,
+    // merged with the JSON store (see listPostgresFirstMerged); the
+    // scope filtering below is unchanged.
+    let docs = await listPostgresFirstMerged(
+      'routine_documents',
+      [...academicStore.routineDocuments],
+      fromRoutineDocumentRow,
+      'RoutineDocuments',
+      undefined,
+      'created_at',
+      false
+    );
     if (session.role === 'system_admin') {
       // all
     } else if (session.role === 'teacher') {
@@ -15462,7 +18009,7 @@ app.get('/api/routines/documents/:id/file', async (req: Request, res: Response) 
  * - Prevents any student or captain from accessing another college, department, or semester's
  *   routine by guessing or requesting its routine ID directly (Scenario F).
  */
-app.get('/api/routines/:id', (req: Request, res: Response) => {
+app.get('/api/routines/:id', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -15473,7 +18020,27 @@ app.get('/api/routines/:id', (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const routine = academicStore.routines.find((r) => r.id === id);
+    // Stage 1 data cutover: the single routine reads Postgres first
+    // (via listRoutines, the same helper as GET /api/routines),
+    // falling back to the JSON store on error or when unconfigured.
+    // A JSON twin wins when one exists: the Postgres row drops the
+    // review/OCR metadata fields (migration_review_reason, confidence,
+    // uncertainFields), which the admin review UI still needs.
+    let routine: RoutinePeriod | undefined;
+    if (isSupabaseConfigured()) {
+      try {
+        const rows = await listRoutines({});
+        const pgRoutine = rows.find((r) => r.id === id);
+        routine =
+          pgRoutine &&
+          (academicStore.routines.find((r) => r.id === id) ?? pgRoutine);
+      } catch (err) {
+        console.warn('[RoutineDetail] Supabase read failed, falling back to JSON store:', err);
+      }
+    }
+    if (!routine) {
+      routine = academicStore.routines.find((r) => r.id === id);
+    }
     if (!routine) {
       return res.status(404).json({
         success: false,
@@ -16404,8 +18971,11 @@ app.post('/api/captains/sync', requireAuth, async (req: Request, res: Response) 
  * - Phase 4 write routes: `migrate-legacy` and `assign-group` dual-write to Postgres first
  *   (`persistRoutineToSupabase()`), then the JSON store. `review-queue` is a read and is unchanged.
  */
-app.get('/api/admin/routines/review-queue', requireSystemAdmin, (_req: Request, res: Response) => {
-  const reviewQueue = academicStore.routines.filter(
+app.get('/api/admin/routines/review-queue', requireSystemAdmin, async (_req: Request, res: Response) => {
+  // Stage 1 data cutover: the review queue reads Postgres first (see
+  // getRoutinesMerged); a quarantined routine that exists only in
+  // Postgres is included too.
+  const reviewQueue = (await getRoutinesMerged()).filter(
     (r) => r.publication_status === 'needs_admin_review' || !r.college_id || !r.department_id || !r.semester
   );
   return res.status(200).json({
@@ -16795,19 +19365,61 @@ app.get('/api/communities/recommended', async (req: Request, res: Response) => {
 });
 
 // 15C. GET COMMUNITY BY ID WITH AUTHORIZATION
-app.get('/api/communities/:id', (req: Request, res: Response) => {
+// Stage 1 data cutover: community detail/members/messages read Postgres
+// first (via getCommunityById / listMembershipsForCommunity /
+// listCommunityMessages), falling back to the JSON store on error or
+// when unconfigured. A JSON twin wins when one exists: the Postgres
+// mappers drop a few JSON-only fields (community image_url until the
+// Stage-1 SQL runs, message deleted_by/updated_at). Rows present only
+// in Postgres are appended.
+async function getCommunityPostgresFirst(id: string): Promise<AcademicCommunity | undefined> {
+  if (isSupabaseConfigured()) {
+    try {
+      const pg = await getCommunityById(id);
+      if (pg) {
+        return academicStore.communities.find((c) => c.id === id) ?? pg;
+      }
+    } catch (err) {
+      console.warn('[Community] Supabase read failed, falling back to JSON store:', err);
+    }
+  }
+  return academicStore.communities.find((c) => c.id === id);
+}
+
+async function getCommunityMembershipsPostgresFirst(
+  communityId: string
+): Promise<CommunityMembershipRecord[]> {
+  const jsonMembers = academicStore.communityMemberships.filter(
+    (m) => m.community_id === communityId
+  );
+  if (!isSupabaseConfigured()) return jsonMembers;
+  try {
+    const pg = await listMembershipsForCommunity(communityId);
+    const byUser = new Map(jsonMembers.map((m) => [m.user_id, m]));
+    const pgUsers = new Set(pg.map((m) => m.user_id));
+    return [
+      ...pg.map((m) => byUser.get(m.user_id) ?? m),
+      ...jsonMembers.filter((m) => !pgUsers.has(m.user_id))
+    ];
+  } catch (err) {
+    console.warn('[CommunityMembers] Supabase read failed, falling back to JSON store:', err);
+    return jsonMembers;
+  }
+}
+
+app.get('/api/communities/:id', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
       return res.status(401).json({ success: false, error: 'Unauthorized.' });
     }
 
-    const comm = academicStore.communities.find(c => c.id === req.params.id);
+    const comm = await getCommunityPostgresFirst(req.params.id);
     if (!comm || (comm.deleted_at && session.role !== 'system_admin')) {
       return res.status(404).json({ success: false, error: 'Community not found.' });
     }
 
-    const membership = academicStore.communityMemberships.find(
+    const membership = (await getCommunityMembershipsPostgresFirst(comm.id)).find(
       m => m.community_id === comm.id && m.user_id === session.userId
     );
 
@@ -17085,27 +19697,28 @@ app.post('/api/communities/:id/leave', (req: Request, res: Response) => {
 });
 
 // 15G. GET MEMBERS OF COMMUNITY
-app.get('/api/communities/:id/members', (req: Request, res: Response) => {
+app.get('/api/communities/:id/members', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
       return res.status(401).json({ success: false, error: 'Unauthorized.' });
     }
 
-    const comm = academicStore.communities.find(c => c.id === req.params.id);
+    const comm = await getCommunityPostgresFirst(req.params.id);
     if (!comm) {
       return res.status(404).json({ success: false, error: 'Community not found.' });
     }
 
+    const allMembers = await getCommunityMembershipsPostgresFirst(comm.id);
     // Active membership check
-    const userMem = academicStore.communityMemberships.find(
+    const userMem = allMembers.find(
       m => m.community_id === comm.id && m.user_id === session.userId && m.status === 'active'
     );
     if (!userMem && session.role !== 'system_admin') {
       return res.status(403).json({ success: false, error: 'Must be an active member to view member roster.' });
     }
 
-    const members = academicStore.communityMemberships.filter(m => m.community_id === comm.id);
+    const members = allMembers.filter(m => m.community_id === comm.id);
     return res.status(200).json({
       success: true,
       members,
@@ -17118,20 +19731,21 @@ app.get('/api/communities/:id/members', (req: Request, res: Response) => {
 });
 
 // 15H. GET MESSAGES IN COMMUNITY (WITH SEARCH & PINNED FILTER)
-app.get('/api/communities/:id/messages', (req: Request, res: Response) => {
+app.get('/api/communities/:id/messages', async (req: Request, res: Response) => {
   try {
     const session = getAuthenticatedSession(req);
     if (!session) {
       return res.status(401).json({ success: false, error: 'Unauthorized.' });
     }
 
-    const comm = academicStore.communities.find(c => c.id === req.params.id);
+    const comm = await getCommunityPostgresFirst(req.params.id);
     if (!comm || (!comm.is_active && session.role !== 'system_admin')) {
       return res.status(404).json({ success: false, error: 'Community not found or deactivated.' });
     }
 
     // Must be active member, moderator, teacher, or system admin
-    const userMem = academicStore.communityMemberships.find(
+    const allMembers = await getCommunityMembershipsPostgresFirst(comm.id);
+    const userMem = allMembers.find(
       m => m.community_id === comm.id && m.user_id === session.userId && m.status === 'active'
     );
     const isMod = isUserCommunityModerator(session, comm);
@@ -17140,7 +19754,23 @@ app.get('/api/communities/:id/messages', (req: Request, res: Response) => {
     }
 
     const q = String(req.query.q || '').trim().toLowerCase();
+    // Stage 1 data cutover: messages read Postgres first (newest
+    // 5000; older rows survive via the JSON append below), merged
+    // with the JSON store — a JSON twin wins when one exists.
     let messages = academicStore.communityMessages.filter(m => m.community_id === comm.id && !m.is_deleted);
+    if (isSupabaseConfigured()) {
+      try {
+        const pg = await listCommunityMessages(comm.id, 5000);
+        const byId = new Map(messages.map((m) => [m.id, m]));
+        const pgIds = new Set(pg.map((m) => m.id));
+        messages = [
+          ...pg.map((m) => byId.get(m.id) ?? m),
+          ...messages.filter((m) => !pgIds.has(m.id))
+        ];
+      } catch (err) {
+        console.warn('[CommunityMessages] Supabase read failed, falling back to JSON store:', err);
+      }
+    }
 
     if (q) {
       messages = messages.filter(m => {
@@ -17900,9 +20530,20 @@ app.post('/api/communities/revalidate-memberships', (req: Request, res: Response
       if (body.semester) academicStore.students[stIndex].semester = Number(body.semester) as SemesterNumber;
       if (body.college) academicStore.students[stIndex].college = String(body.college);
       if (body.department) academicStore.students[stIndex].department = String(body.department);
+      // Stage 1 data cutover: the student's cohort change dual-writes
+      // to Postgres (the revalidation below revokes memberships the
+      // new cohort no longer qualifies for).
+      const cohortPatch: Parameters<typeof updateStudentById>[1] = {};
+      if (body.semester) cohortPatch.semester = Number(body.semester);
+      if (body.college) cohortPatch.college = String(body.college);
+      if (body.department) cohortPatch.department = String(body.department);
+      if (Object.keys(cohortPatch).length > 0) {
+        void persistStudentUpdateToSupabase(academicStore.students[stIndex].id, cohortPatch, 'RevalidateMemberships');
+      }
     }
 
     let revokedCount = 0;
+    const touchedCommunities = new Set<AcademicCommunity>();
 
     academicStore.communityMemberships.forEach(mem => {
       if (mem.user_id === session.userId && mem.status === 'active') {
@@ -17914,6 +20555,10 @@ app.post('/api/communities/revalidate-memberships', (req: Request, res: Response
             mem.updated_at = new Date().toISOString();
             comm.member_count = Math.max(0, comm.member_count - 1);
             revokedCount++;
+            touchedCommunities.add(comm);
+            // Stage 1 data cutover: the revoked membership dual-writes
+            // to Postgres (status banned).
+            void persistMembershipToSupabase(mem, 'RevalidateMemberships');
           }
         }
       }
@@ -17921,6 +20566,9 @@ app.post('/api/communities/revalidate-memberships', (req: Request, res: Response
 
     if (revokedCount > 0) {
       saveAcademicStore(academicStore);
+      for (const comm of touchedCommunities) {
+        void persistCommunityUpdateToSupabase(comm, 'RevalidateMemberships');
+      }
     }
 
     return res.status(200).json({
@@ -18095,7 +20743,27 @@ function appendAdminAudit(
 // JSON store; students/teachers still come from the JSON store.
 app.get('/api/admin/management', requireSystemAdmin, async (_req: Request, res: Response) => {
   const accounts = getAdminManagedAccounts(await loadCaptainRecordsForAdminList()).filter(account => !account.deleted);
-  const communities = academicStore.communities.filter(community => !community.deleted_at);
+  // Stage 1 data cutover: communities + audit logs read Postgres
+  // first, merged with the JSON store (see listPostgresFirstMerged).
+  const allCommunities = await listPostgresFirstMerged(
+    'communities',
+    academicStore.communities,
+    (row) => toCommunity(row as unknown as CommunityRow),
+    'Communities',
+    undefined,
+    'created_at',
+    false
+  );
+  const communities = allCommunities.filter(community => !community.deleted_at);
+  const auditLogs = await listPostgresFirstMerged(
+    'admin_audit_logs',
+    academicStore.adminAuditLogs || [],
+    fromAdminAuditRow,
+    'AdminAuditLogs',
+    undefined,
+    'timestamp',
+    false
+  );
   return res.status(200).json({
     success: true,
     stats: {
@@ -18109,7 +20777,7 @@ app.get('/api/admin/management', requireSystemAdmin, async (_req: Request, res: 
     },
     accounts,
     communities,
-    auditLogs: academicStore.adminAuditLogs.slice(0, 100)
+    auditLogs: auditLogs.slice(0, 100)
   });
 });
 
@@ -18224,6 +20892,7 @@ app.delete('/api/admin/accounts/:id', requireSystemAdmin, (req: Request, res: Re
   if (account.deleted) return res.status(409).json({ success: false, error: 'Account is already deleted.' });
 
   deletedAccountIds.add(accountId);
+  const touchedCommunities: AcademicCommunity[] = [];
   academicStore.communityMemberships.forEach(membership => {
     if (membership.user_id === accountId && membership.status === 'active') {
       membership.status = 'banned';
@@ -18231,24 +20900,71 @@ app.delete('/api/admin/accounts/:id', requireSystemAdmin, (req: Request, res: Re
     }
   });
   academicStore.communities.forEach(community => {
+    const hadModerator = (Array.isArray(community.moderators) ? community.moderators : []).includes(accountId);
+    const prevCount = community.member_count;
     community.moderators = (Array.isArray(community.moderators) ? community.moderators : []).filter(id => id !== accountId);
     community.member_count = academicStore.communityMemberships.filter(
       membership => membership.community_id === community.id && membership.status === 'active' && !deletedAccountIds.has(membership.user_id)
     ).length;
+    if (hadModerator || prevCount !== community.member_count) touchedCommunities.push(community);
   });
   appendAdminAudit(admin, 'account_deleted', accountId, account.name, 'Soft-deleted; related academic records retained.');
   saveAcademicStore(academicStore);
+  // Stage 1 data cutover: the soft-delete dual-writes to Postgres —
+  // the tombstone id, the banned memberships, and the touched
+  // communities' moderators/member_count. This is NOT the hard erase
+  // (eraseAccountFromSupabase): the account's academic records are
+  // deliberately retained.
+  void persistDeletedAccountIdToSupabase(accountId, 'AccountDelete');
+  void updateRecordsByColumnToSupabase('community_memberships', 'user_id', accountId, {
+    status: 'banned',
+    updated_at: new Date().toISOString()
+  });
+  for (const community of touchedCommunities) {
+    void persistCommunityUpdateToSupabase(community, 'AccountDelete');
+  }
   return res.status(200).json({ success: true, message: `${account.name} was deactivated. Related academic records were retained.` });
 });
 
-app.get('/api/admin/communities', requireSystemAdmin, (_req: Request, res: Response) => {
+app.get('/api/admin/communities', requireSystemAdmin, async (_req: Request, res: Response) => {
+  // Stage 1 data cutover: the admin community dump reads Postgres
+  // first, merged with the JSON store (see listPostgresFirstMerged);
+  // a JSON twin wins when one exists (the Postgres community row
+  // drops image_url until the Stage-1 SQL runs).
+  const communities = await listPostgresFirstMerged(
+    'communities',
+    academicStore.communities,
+    (row) => toCommunity(row as unknown as CommunityRow),
+    'Communities',
+    undefined,
+    'created_at',
+    false
+  );
+  const memberships = await listPostgresFirstMerged(
+    'community_memberships',
+    academicStore.communityMemberships,
+    (row) => toMembership(row as unknown as MembershipRow),
+    'CommunityMemberships',
+    undefined,
+    'joined_at',
+    true
+  );
+  const reports = await listPostgresFirstMerged(
+    'community_reports',
+    academicStore.communityReports,
+    fromCommunityReportRow,
+    'CommunityReports',
+    undefined,
+    'created_at',
+    false
+  );
   return res.status(200).json({
     success: true,
-    communities: academicStore.communities,
-    memberships: academicStore.communityMemberships,
-    totalMemberships: academicStore.communityMemberships.length,
+    communities,
+    memberships,
+    totalMemberships: memberships.length,
     totalMessages: academicStore.communityMessages.length,
-    reports: academicStore.communityReports
+    reports
   });
 });
 
@@ -18312,7 +21028,7 @@ app.post('/api/admin/communities', requireSystemAdmin, (req: Request, res: Respo
     updated_at: now
   };
   academicStore.communities.push(community);
-  academicStore.communityMemberships.push({
+  const adminMembership: CommunityMembershipRecord = {
     id: `mem_${id}_${admin.userId}`,
     community_id: id,
     user_id: admin.userId,
@@ -18326,9 +21042,13 @@ app.post('/api/admin/communities', requireSystemAdmin, (req: Request, res: Respo
     is_muted: false,
     joined_at: now,
     updated_at: now
-  });
+  };
+  academicStore.communityMemberships.push(adminMembership);
   appendAdminAudit(admin, 'community_created', id, name);
   saveAcademicStore(academicStore);
+  // Stage 1 data cutover: admin community create dual-writes to
+  // Postgres (community + owner membership).
+  void persistAdminCommunityCreateToSupabase(community, adminMembership, 'AdminCommunityCreate');
   return res.status(201).json({ success: true, message: `Community "${name}" created.`, community });
 });
 
@@ -18376,6 +21096,8 @@ app.put('/api/admin/communities/:id', requireSystemAdmin, (req: Request, res: Re
   community.updated_at = new Date().toISOString();
   appendAdminAudit(admin, 'community_edited', community.id, community.name);
   saveAcademicStore(academicStore);
+  // Stage 1 data cutover: admin community edits dual-write to Postgres.
+  void persistCommunityUpdateToSupabase(community, 'AdminCommunityUpdate');
   return res.status(200).json({ success: true, message: `Community "${community.name}" updated.`, community });
 });
 
@@ -18390,6 +21112,9 @@ app.delete('/api/admin/communities/:id', requireSystemAdmin, (req: Request, res:
   community.updated_at = community.deleted_at;
   appendAdminAudit(admin, 'community_deleted', community.id, community.name, 'Soft-deleted; messages and memberships retained.');
   saveAcademicStore(academicStore);
+  // Stage 1 data cutover: the soft-delete dual-writes to Postgres
+  // (deleted_at + is_active via the community update helper).
+  void persistCommunityUpdateToSupabase(community, 'AdminCommunityDelete');
   return res.status(200).json({ success: true, message: `Community "${community.name}" was deleted. Its history was retained.` });
 });
 
@@ -18429,6 +21154,11 @@ app.post('/api/admin/communities/:id/members', requireSystemAdmin, (req: Request
   community.member_count = academicStore.communityMemberships.filter(item => item.community_id === community.id && item.status === 'active').length;
   appendAdminAudit(admin, 'community_member_added', community.id, community.name, `Added ${account.name} (${userId}).`);
   saveAcademicStore(academicStore);
+  // Stage 1 data cutover: the member add dual-writes the membership
+  // row (upsert — re-activating a removed member reuses its id) and
+  // the community's new member_count.
+  void persistMembershipToSupabase(membership, 'AdminCommunityMemberAdd');
+  void persistCommunityUpdateToSupabase(community, 'AdminCommunityMemberAdd');
   return res.status(200).json({ success: true, message: `${account.name} added to ${community.name}.`, membership });
 });
 
@@ -18446,6 +21176,11 @@ app.delete('/api/admin/communities/:id/members/:userId', requireSystemAdmin, (re
   community.updated_at = new Date().toISOString();
   appendAdminAudit(admin, 'community_member_removed', community.id, community.name, `Removed ${membership.user_name} (${membership.user_id}).`);
   saveAcademicStore(academicStore);
+  // Stage 1 data cutover: the member removal deletes the Postgres
+  // membership row and dual-writes the community's new member_count
+  // + moderators list.
+  void persistMembershipDeleteToSupabase(membership.id, 'AdminCommunityMemberRemove');
+  void persistCommunityUpdateToSupabase(community, 'AdminCommunityMemberRemove');
   return res.status(200).json({ success: true, message: `${membership.user_name} removed from ${community.name}.` });
 });
 
@@ -18470,6 +21205,10 @@ app.put('/api/admin/communities/:id/members/:userId/moderator', requireSystemAdm
   community.updated_at = membership.updated_at;
   appendAdminAudit(admin, isModerator ? 'community_moderator_assigned' : 'community_moderator_removed', community.id, community.name, `${membership.user_name} (${membership.user_id}).`);
   saveAcademicStore(academicStore);
+  // Stage 1 data cutover: the moderator change dual-writes the
+  // membership row (role) and the community's moderators list.
+  void persistMembershipToSupabase(membership, 'AdminCommunityModerator');
+  void persistCommunityUpdateToSupabase(community, 'AdminCommunityModerator');
   return res.status(200).json({ success: true, message: isModerator ? 'Moderator assigned.' : 'Moderator removed.', membership });
 });
 
@@ -18484,6 +21223,9 @@ app.post('/api/admin/communities/:id/toggle-active', requireSystemAdmin, (req: R
   comm.updated_at = new Date().toISOString();
   appendAdminAudit(admin, 'community_edited', comm.id, comm.name, comm.is_active ? 'Activated.' : 'Deactivated.');
   saveAcademicStore(academicStore);
+  // Stage 1 data cutover: the activate/deactivate toggle dual-writes
+  // to Postgres.
+  void persistCommunityUpdateToSupabase(comm, 'AdminCommunityToggle');
 
   return res.status(200).json({
     success: true,
@@ -18502,6 +21244,9 @@ app.post('/api/admin/communities/reports/:id/resolve', requireSystemAdmin, (req:
   report.status = status === 'dismissed' ? 'dismissed' : 'resolved';
   report.resolution_notes = notes ? String(notes).trim() : 'Resolved by System Administrator.';
   saveAcademicStore(academicStore);
+  // Stage 1 data cutover: the report resolution dual-writes to
+  // Postgres (status + resolution_notes).
+  void persistCommunityReportResolveToSupabase(report, 'AdminCommunityReportResolve');
 
   return res.status(200).json({
     success: true,
@@ -19569,6 +22314,10 @@ app.post('/api/notices/campus', async (req: Request, res: Response) => {
 
       academicStore.campusNotices.unshift(newNotice);
       saveAcademicStore(academicStore);
+      // Stage 1 data cutover: campus notice writers dual-write to
+      // Postgres (the read was already PG-first; the writers were
+      // JSON-only, so a notice published here never reached Postgres).
+      void persistNoticeToSupabase(newNotice, 'CampusNotices');
 
       return res.status(201).json({
         success: true,
@@ -19643,6 +22392,9 @@ app.post('/api/notices/campus', async (req: Request, res: Response) => {
 
       academicStore.campusNotices.unshift(newNotice);
       saveAcademicStore(academicStore);
+      // Stage 1 data cutover: campus notice writers dual-write to
+      // Postgres (see the captain branch above).
+      void persistNoticeToSupabase(newNotice, 'CampusNotices');
 
       return res.status(201).json({
         success: true,
@@ -19685,6 +22437,9 @@ app.post('/api/notices/campus', async (req: Request, res: Response) => {
 
     academicStore.campusNotices.unshift(newNotice);
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: campus notice writers dual-write to
+    // Postgres (see the captain branch above).
+    void persistNoticeToSupabase(newNotice, 'CampusNotices');
 
     return res.status(201).json({
       success: true,
@@ -19764,6 +22519,8 @@ app.put('/api/notices/campus/:id', async (req: Request, res: Response) => {
     existing.updatedAt = new Date().toISOString();
 
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: notice edits dual-write to Postgres.
+    void persistNoticeToSupabase(existing, 'CampusNotices');
     return res.status(200).json({
       success: true,
       message: 'Notice updated successfully.',
@@ -19807,6 +22564,9 @@ app.delete('/api/notices/campus/:id', (req: Request, res: Response) => {
 
     academicStore.campusNotices = academicStore.campusNotices.filter(n => n.id !== req.params.id);
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: notice deletes remove the Postgres row
+    // too (persistNoticeDeleteToSupabase deletes by id).
+    void persistNoticeDeleteToSupabase(req.params.id, 'CampusNotices');
 
     return res.status(200).json({
       success: true,
@@ -19852,6 +22612,10 @@ app.post('/api/notices/campus/:id/report', (req: Request, res: Response) => {
     academicStore.campusNoticeReports.push(report);
     notice.reportsCount = (notice.reportsCount || 0) + 1;
     saveAcademicStore(academicStore);
+    // Stage 1 data cutover: the report row and the bumped
+    // reportsCount both dual-write to Postgres.
+    void persistCampusNoticeReportToSupabase(report, 'CampusNoticeReport');
+    void persistNoticeToSupabase(notice, 'CampusNotices');
 
     return res.status(201).json({
       success: true,
@@ -20106,7 +22870,7 @@ async function syncCareerjetJobs(): Promise<{
 /**
  * 16C-1. GET DIPLOMA ENGINEERING JOB CIRCULARS (`GET /api/jobs`)
  */
-app.get('/api/jobs', (req: Request, res: Response) => {
+app.get('/api/jobs', async (req: Request, res: Response) => {
   try {
     const q = String(req.query.q || '').trim().toLowerCase();
     const department = String(req.query.department || 'all').trim();
@@ -20117,7 +22881,11 @@ app.get('/api/jobs', (req: Request, res: Response) => {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize || '20'), 10) || 20));
 
-    const enrichedAll = academicStore.jobs.map(enrichJobCircular);
+    // Stage 1 data cutover: jobs read Postgres first, merged with the
+    // JSON store (see listPostgresFirstMerged); filtering/sorting
+    // below is unchanged.
+    const allJobs = await listPostgresFirstMerged('jobs', academicStore.jobs, fromJobRow, 'Jobs');
+    const enrichedAll = allJobs.map(enrichJobCircular);
 
     const filtered = enrichedAll.filter(job => {
       if (
@@ -20662,6 +23430,20 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 // Mount Vite middleware in development
 async function startServer() {
+  // Auth cutover (Stage 1): backfill the repo-copy founder record
+  // (upsert, replacing the stale phase-2 seed), sub-admins and teacher
+  // PIN hashes into Postgres, and adopt the fresher admin PIN lockout
+  // state — once per boot, before listening, so the first login after
+  // a deploy already sees Postgres state. Bounded by a 20 s race so a
+  // hung Supabase connection can never stall boot; the backfill keeps
+  // running in the background and logs loudly if it timed out.
+  await Promise.race([
+    runAuthCutoverBackfill(),
+    new Promise(resolve => setTimeout(() => {
+      console.error('[AuthCutover] Backfill still running after 20 s — continuing to listen; founder login may 401 until the backfill lands (Postgres is authoritative).');
+      resolve(undefined);
+    }, 20000)),
+  ]);
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -20702,6 +23484,12 @@ async function startServer() {
 
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[DiplomaMate Server] Running on http://0.0.0.0:${PORT}`);
+    // Stage 1 data cutover: startup backfill (insert-if-absent only,
+    // never overwrites or deletes Postgres rows) + teacher-contact
+    // boot load (Postgres → in-memory Map). Both are non-blocking and
+    // never throw — an unreachable Postgres must never crash boot.
+    void runSupabaseBackfill();
+    void loadTeacherContactsFromSupabase();
   });
 
   server.on('error', (err) => {

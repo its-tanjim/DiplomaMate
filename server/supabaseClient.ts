@@ -116,6 +116,25 @@ export function getSupabaseClient(): SupabaseClient {
   const { url, serviceRoleKey } = getSupabaseConfig();
   cachedClient = createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    // Stage 1 data cutover: bound every Supabase fetch. supabase-js
+    // has no default timeout, so an unreachable-but-not-refusing host
+    // (DNS/connect hang) stalled PG-first reads forever and the JSON
+    // fallback never triggered — verified in the sandbox against a
+    // bogus SUPABASE_URL, where /api/app-config hung past 60s while
+    // non-Supabase routes answered in ~50ms. A 10s cap turns that
+    // stall into a normal query error, which every caller already
+    // handles by falling back to the JSON store. Overridable via
+    // SUPABASE_FETCH_TIMEOUT_MS; normal Supabase queries answer in
+    // well under a second, so 10s is generous, not tight.
+    global: {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+        fetch(input, {
+          ...init,
+          signal: AbortSignal.timeout(
+            Number(process.env.SUPABASE_FETCH_TIMEOUT_MS || 10000) || 10000
+          )
+        })
+    }
   });
   return cachedClient;
 }
@@ -515,6 +534,11 @@ export interface CommunityRow {
   member_count: number | null;
   is_active: boolean | null;
   avatar_emoji: string | null;
+  // Added by supabase-cutover-data-stage1.sql (Stage 1 data cutover):
+  // the admin panel sets both, but phase-1 had no columns for them.
+  // NULL until that SQL runs / the row is rewritten.
+  image_url: string | null;
+  deleted_at: string | null;
   pinned_notice_id: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -802,9 +826,95 @@ export function toCommunity(row: CommunityRow): AcademicCommunity {
     is_active: row.is_active ?? true,
     pinned_notice_id: row.pinned_notice_id ?? undefined,
     avatar_emoji: row.avatar_emoji ?? undefined,
+    // image_url / deleted_at ride as extensions (same pattern as the
+    // consent fields on toStudent): the shared AcademicCommunity type
+    // carries them, and an absent column maps to undefined.
+    ...(row.image_url ? { image_url: row.image_url } : {}),
+    ...(row.deleted_at ? { deleted_at: row.deleted_at } : {}),
     created_at: row.created_at ?? '',
     updated_at: row.updated_at ?? '',
   };
+}
+
+/** AcademicCommunity -> CommunityRow (camelCase -> snake_case). */
+export function toCommunityRow(community: AcademicCommunity): CommunityRow {
+  return {
+    id: community.id,
+    name: community.name,
+    description: community.description ?? null,
+    college_id: community.college_id ?? null,
+    college: community.college ?? null,
+    department_id: community.department_id ?? null,
+    department: community.department ?? null,
+    semester: community.semester ?? null,
+    regulation: community.regulation ?? null,
+    shift: community.shift ?? null,
+    section: community.section ?? null,
+    visibility: community.visibility ?? 'public',
+    created_by: community.created_by ?? null,
+    created_by_name: community.created_by_name ?? null,
+    created_by_role: community.created_by_role ?? null,
+    moderators: community.moderators ?? [],
+    member_count: community.member_count ?? 0,
+    is_active: community.is_active ?? true,
+    avatar_emoji: community.avatar_emoji ?? null,
+    image_url: community.image_url ?? null,
+    deleted_at: community.deleted_at ?? null,
+    pinned_notice_id: community.pinned_notice_id ?? null,
+    created_at: community.created_at ?? null,
+    updated_at: community.updated_at ?? null,
+  };
+}
+
+/** CommunityMembershipRecord -> MembershipRow (camelCase -> snake_case). */
+export function toMembershipRow(membership: CommunityMembershipRecord): MembershipRow {
+  return {
+    id: membership.id,
+    community_id: membership.community_id,
+    user_id: membership.user_id,
+    user_name: membership.user_name ?? null,
+    user_role: membership.user_role ?? null,
+    college_id: membership.college_id ?? null,
+    department_id: membership.department_id ?? null,
+    semester: membership.semester ?? null,
+    shift: membership.shift ?? null,
+    section: membership.section ?? null,
+    membership_role: membership.membership_role ?? 'member',
+    status: membership.status ?? 'active',
+    is_muted: membership.is_muted ?? false,
+    joined_at: membership.joined_at ?? null,
+    updated_at: membership.updated_at ?? null,
+  };
+}
+
+/** Upsert one membership (insert, or replace on id conflict) — the admin member-add path re-activates a previously banned membership under the same id. */
+export async function upsertCommunityMembership(
+  membership: CommunityMembershipRecord,
+): Promise<CommunityMembershipRecord> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('community_memberships')
+    .upsert(toMembershipRow(membership), { onConflict: 'id' })
+    .select('*')
+    .single();
+  throwIfError(error, 'upsertCommunityMembership');
+  return toMembership(data as MembershipRow);
+}
+
+/** Partial update of one community (admin edit / toggle-active / soft-delete / member-count). Only columns present in CommunityRow may be patched. */
+export async function updateCommunityById(
+  id: string,
+  patch: Partial<Omit<CommunityRow, 'id' | 'created_at'>>,
+): Promise<AcademicCommunity | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('communities')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('*')
+    .maybeSingle();
+  throwIfError(error, 'updateCommunityById');
+  return data ? toCommunity(data as CommunityRow) : null;
 }
 
 export function toMembership(row: MembershipRow): CommunityMembershipRecord {
@@ -1531,6 +1641,335 @@ export async function deleteTeacherById(id: string): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
+// Auth cutover (Stage 1, v1.0.31) — founder + sub-admins + PIN lockout
+// ---------------------------------------------------------------------------
+// `public.system_admins` was deliberately unwired until now (the S1
+// "Secrets-owned decision" comment in server.ts) and still holds its
+// stale phase-2 seed row; `public.admin_accounts` and
+// `public.admin_pin_lockout` are new tables from
+// supabase-auth-cutover-v1.0.31.sql. The server reads these tables
+// Postgres-first for credential decisions: when a lookup SUCCEEDS,
+// an absent row means "no such account" (no JSON fallback); the JSON
+// store is consulted only when Supabase is unconfigured or the query
+// throws. All helpers throw on query error — callers decide fallback.
+//
+// `password_hash_version` is added by the same SQL file; until it runs,
+// upsert/update retry once without the column (same PGRST204 grace as
+// updateStudentById / updateTeacherById), so the credential still
+// lands and verification treats a NULL version as legacy v1 — which
+// is exactly what the repo-copy founder hash is.
+
+export interface SystemAdminRow {
+  id: string;
+  name: string | null;
+  email: string;
+  password_hash: string | null;
+  password_salt: string | null;
+  // Added by supabase-auth-cutover-v1.0.31.sql; null until that ALTER runs.
+  password_hash_version: number | null;
+  role: string | null;
+  failed_attempts: number | null;
+  lockout_until: string | null;
+  auth_user_id: string | null;
+  created_at: string | null;
+  last_login_at: string | null;
+}
+
+/** Founder shape as defined in server.ts (StoredSystemAdmin). */
+export interface SystemAdminAccount {
+  id: string;
+  name: string;
+  email: string;
+  passwordHash: string;
+  passwordSalt: string;
+  passwordHashVersion?: number;
+  role: 'system_admin';
+  failedAttempts: number;
+  lockoutUntil: number | null;
+  createdAt: string;
+  lastLoginAt?: string;
+}
+
+export function toSystemAdmin(row: SystemAdminRow): SystemAdminAccount {
+  return {
+    id: row.id,
+    name: row.name ?? '',
+    email: row.email,
+    passwordHash: row.password_hash ?? '',
+    passwordSalt: row.password_salt ?? '',
+    // NULL version = legacy v1 (PBKDF2 10k). The repo-copy founder hash
+    // is v1, so a missing column/version must NEVER be read as v2.
+    passwordHashVersion: row.password_hash_version ?? undefined,
+    role: 'system_admin',
+    failedAttempts: row.failed_attempts ?? 0,
+    lockoutUntil: row.lockout_until ? Date.parse(row.lockout_until) : null,
+    createdAt: row.created_at ?? '',
+    lastLoginAt: row.last_login_at ?? undefined,
+  };
+}
+
+function toSystemAdminRow(admin: SystemAdminAccount): SystemAdminRow {
+  return {
+    id: admin.id,
+    name: admin.name,
+    email: admin.email,
+    password_hash: admin.passwordHash,
+    password_salt: admin.passwordSalt,
+    // Explicit 1 for a legacy hash (never 2 unless the hash really is
+    // v2 — see the version warning in supabase-auth-cutover-v1.0.31.sql).
+    password_hash_version: admin.passwordHashVersion ?? 1,
+    role: 'system_admin',
+    failed_attempts: admin.failedAttempts ?? 0,
+    lockout_until: admin.lockoutUntil ? new Date(admin.lockoutUntil).toISOString() : null,
+    auth_user_id: null,
+    created_at: admin.createdAt,
+    last_login_at: admin.lastLoginAt ?? null,
+  };
+}
+
+export async function getSystemAdminByEmail(email: string): Promise<SystemAdminAccount | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('system_admins')
+    .select('*')
+    .eq('email', email.trim().toLowerCase())
+    .maybeSingle();
+  throwIfError(error, 'getSystemAdminByEmail');
+  return data ? toSystemAdmin(data as SystemAdminRow) : null;
+}
+
+export async function getSystemAdminById(id: string): Promise<SystemAdminAccount | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('system_admins').select('*').eq('id', id).maybeSingle();
+  throwIfError(error, 'getSystemAdminById');
+  return data ? toSystemAdmin(data as SystemAdminRow) : null;
+}
+
+export async function listSystemAdmins(): Promise<SystemAdminAccount[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('system_admins').select('*');
+  throwIfError(error, 'listSystemAdmins');
+  return ((data ?? []) as SystemAdminRow[]).map(toSystemAdmin);
+}
+
+/**
+ * Insert-or-replace one founder row by id. This is the backfill write:
+ * the phase-2 seed row carries the SAME id as the repo-copy founder, so
+ * an upsert on `id` replaces the stale seed in place instead of
+ * duplicating it. Throws on query error (callers catch / warn).
+ */
+export async function upsertSystemAdmin(admin: SystemAdminAccount): Promise<SystemAdminAccount> {
+  const client = getSupabaseClient();
+  let insertRow: Partial<SystemAdminRow> = toSystemAdminRow(admin);
+  let { data, error } = await client
+    .from('system_admins')
+    .upsert(insertRow, { onConflict: 'id' })
+    .select('*')
+    .single();
+  if (error && isMissingColumnError(error, 'password_hash_version')) {
+    const { password_hash_version: _dropped, ...rest } = insertRow;
+    insertRow = rest;
+    ({ data, error } = await client
+      .from('system_admins')
+      .upsert(insertRow, { onConflict: 'id' })
+      .select('*')
+      .single());
+  }
+  throwIfError(error, 'upsertSystemAdmin');
+  return toSystemAdmin(data as SystemAdminRow);
+}
+
+export async function updateSystemAdminById(
+  id: string,
+  patch: Partial<Omit<SystemAdminRow, 'id' | 'created_at'>>,
+): Promise<SystemAdminAccount | null> {
+  const client = getSupabaseClient();
+  const runUpdate = (p: Partial<Omit<SystemAdminRow, 'id' | 'created_at'>>) =>
+    client.from('system_admins').update(p).eq('id', id).select('*').maybeSingle();
+  let { data, error } = await runUpdate(patch);
+  let currentPatch = patch;
+  if (error && 'password_hash_version' in currentPatch && isMissingColumnError(error, 'password_hash_version')) {
+    const { password_hash_version: _dropped, ...patchWithoutVersion } = currentPatch;
+    currentPatch = patchWithoutVersion;
+    ({ data, error } = await runUpdate(currentPatch));
+  }
+  throwIfError(error, 'updateSystemAdminById');
+  return data ? toSystemAdmin(data as SystemAdminRow) : null;
+}
+
+export async function deleteSystemAdminById(id: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('system_admins').delete().eq('id', id).select('id');
+  throwIfError(error, 'deleteSystemAdminById');
+  return (data?.length ?? 0) > 0;
+}
+
+// --- Sub-admins: public.admin_accounts (new table, Stage 1) ------------
+// One row per sub-admin (adminAccounts in the JSON store). The founder
+// never lives here — founder rows are in system_admins with
+// role = 'system_admin'. `status` is 'active' | 'deactivated'.
+
+export interface SubAdminRow {
+  id: string;
+  name: string | null;
+  email: string;
+  password_hash: string | null;
+  password_salt: string | null;
+  password_hash_version: number | null;
+  role: string | null;
+  status: string | null;
+  failed_attempts: number | null;
+  lockout_until: string | null;
+  created_at: string | null;
+  last_login_at: string | null;
+}
+
+/** Sub-admin shape as defined in server.ts (AdminAccount). */
+export interface SubAdminAccount {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: 'active' | 'deactivated';
+  passwordHash: string;
+  passwordSalt: string;
+  passwordHashVersion?: number;
+  failedAttempts?: number;
+  lockoutUntil?: number | null;
+  createdAt: string;
+  lastLoginAt?: string;
+}
+
+export function toSubAdmin(row: SubAdminRow): SubAdminAccount {
+  return {
+    id: row.id,
+    name: row.name ?? '',
+    email: row.email,
+    role: row.role ?? '',
+    status: row.status === 'deactivated' ? 'deactivated' : 'active',
+    passwordHash: row.password_hash ?? '',
+    passwordSalt: row.password_salt ?? '',
+    passwordHashVersion: row.password_hash_version ?? undefined,
+    failedAttempts: row.failed_attempts ?? 0,
+    lockoutUntil: row.lockout_until ? Date.parse(row.lockout_until) : null,
+    createdAt: row.created_at ?? '',
+    lastLoginAt: row.last_login_at ?? undefined,
+  };
+}
+
+function toSubAdminRow(account: SubAdminAccount): SubAdminRow {
+  return {
+    id: account.id,
+    name: account.name,
+    email: account.email,
+    password_hash: account.passwordHash,
+    password_salt: account.passwordSalt,
+    password_hash_version: account.passwordHashVersion ?? 1,
+    role: account.role,
+    status: account.status ?? 'active',
+    failed_attempts: account.failedAttempts ?? 0,
+    lockout_until: account.lockoutUntil ? new Date(account.lockoutUntil).toISOString() : null,
+    created_at: account.createdAt,
+    last_login_at: account.lastLoginAt ?? null,
+  };
+}
+
+export async function getSubAdminByEmail(email: string): Promise<SubAdminAccount | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('admin_accounts')
+    .select('*')
+    .eq('email', email.trim().toLowerCase())
+    .maybeSingle();
+  throwIfError(error, 'getSubAdminByEmail');
+  return data ? toSubAdmin(data as SubAdminRow) : null;
+}
+
+export async function getSubAdminById(id: string): Promise<SubAdminAccount | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('admin_accounts').select('*').eq('id', id).maybeSingle();
+  throwIfError(error, 'getSubAdminById');
+  return data ? toSubAdmin(data as SubAdminRow) : null;
+}
+
+export async function listSubAdmins(): Promise<SubAdminAccount[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('admin_accounts').select('*');
+  throwIfError(error, 'listSubAdmins');
+  return ((data ?? []) as SubAdminRow[]).map(toSubAdmin);
+}
+
+/** Insert-or-replace one sub-admin row by id (backfill + dual-write). */
+export async function upsertSubAdmin(account: SubAdminAccount): Promise<SubAdminAccount> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('admin_accounts')
+    .upsert(toSubAdminRow(account), { onConflict: 'id' })
+    .select('*')
+    .single();
+  throwIfError(error, 'upsertSubAdmin');
+  return toSubAdmin(data as SubAdminRow);
+}
+
+export async function updateSubAdminById(
+  id: string,
+  patch: Partial<Omit<SubAdminRow, 'id' | 'created_at'>>,
+): Promise<SubAdminAccount | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('admin_accounts')
+    .update(patch)
+    .eq('id', id)
+    .select('*')
+    .maybeSingle();
+  throwIfError(error, 'updateSubAdminById');
+  return data ? toSubAdmin(data as SubAdminRow) : null;
+}
+
+// --- Admin PIN-gate lockout: public.admin_pin_lockout (new table) ------
+// Single global row, id = 'global'. Mirrors academicStore.adminPinLockout.
+
+export interface AdminPinLockoutRow {
+  id: string;
+  failed_attempts: number | null;
+  locked_until: string | null;
+  updated_at?: string | null;
+}
+
+export async function getAdminPinLockoutRow(): Promise<AdminPinLockoutRow | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('admin_pin_lockout')
+    .select('*')
+    .eq('id', 'global')
+    .maybeSingle();
+  throwIfError(error, 'getAdminPinLockoutRow');
+  return (data as AdminPinLockoutRow | null) ?? null;
+}
+
+export async function upsertAdminPinLockout(state: {
+  failedAttempts: number;
+  lockedUntil: number | null;
+}): Promise<AdminPinLockoutRow> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('admin_pin_lockout')
+    .upsert(
+      {
+        id: 'global',
+        failed_attempts: state.failedAttempts,
+        locked_until: state.lockedUntil ? new Date(state.lockedUntil).toISOString() : null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' },
+    )
+    .select('*')
+    .single();
+  throwIfError(error, 'upsertAdminPinLockout');
+  return data as AdminPinLockoutRow;
+}
+
+// ---------------------------------------------------------------------------
 // Captains — replaces `academicStore.captainRecords.find/filter`
 // ---------------------------------------------------------------------------
 
@@ -1969,31 +2408,21 @@ export async function listCommunityMessages(
  */
 export async function insertCommunity(community: AcademicCommunity): Promise<AcademicCommunity> {
   const client = getSupabaseClient();
-  const row: CommunityRow = {
-    id: community.id,
-    name: community.name,
-    description: community.description,
-    college_id: community.college_id,
-    college: community.college,
-    department_id: community.department_id,
-    department: community.department,
-    semester: community.semester,
-    regulation: community.regulation,
-    shift: community.shift,
-    section: community.section,
-    visibility: community.visibility,
-    created_by: community.created_by,
-    created_by_name: community.created_by_name,
-    created_by_role: community.created_by_role,
-    moderators: community.moderators,
-    member_count: community.member_count,
-    is_active: community.is_active,
-    avatar_emoji: community.avatar_emoji ?? null,
-    pinned_notice_id: community.pinned_notice_id ?? null,
-    created_at: community.created_at,
-    updated_at: community.updated_at,
-  };
-  const { data, error } = await client.from('communities').insert(row).select('*').single();
+  // toCommunityRow() carries image_url / deleted_at (added by
+  // supabase-cutover-data-stage1.sql). Until that SQL runs, the insert
+  // is retried once without them on a PGRST204 error, so the community
+  // still lands in Postgres.
+  const runInsert = (row: CommunityRow) =>
+    client.from('communities').insert(row).select('*').single();
+  let { data, error } = await runInsert(toCommunityRow(community));
+  if (
+    error &&
+    (isMissingColumnError(error, 'image_url') || isMissingColumnError(error, 'deleted_at'))
+  ) {
+    const { image_url: _droppedImage, deleted_at: _droppedDeleted, ...rowWithoutNew } =
+      toCommunityRow(community);
+    ({ data, error } = await runInsert(rowWithoutNew as CommunityRow));
+  }
   throwIfError(error, 'insertCommunity');
   return toCommunity(data as CommunityRow);
 }
@@ -2002,24 +2431,11 @@ export async function insertCommunityMembership(
   membership: CommunityMembershipRecord,
 ): Promise<CommunityMembershipRecord> {
   const client = getSupabaseClient();
-  const row: MembershipRow = {
-    id: membership.id,
-    community_id: membership.community_id,
-    user_id: membership.user_id,
-    user_name: membership.user_name,
-    user_role: membership.user_role,
-    college_id: membership.college_id,
-    department_id: membership.department_id,
-    semester: membership.semester,
-    shift: membership.shift ?? null,
-    section: membership.section ?? null,
-    membership_role: membership.membership_role,
-    status: membership.status,
-    is_muted: membership.is_muted,
-    joined_at: membership.joined_at,
-    updated_at: membership.updated_at,
-  };
-  const { data, error } = await client.from('community_memberships').insert(row).select('*').single();
+  const { data, error } = await client
+    .from('community_memberships')
+    .insert(toMembershipRow(membership))
+    .select('*')
+    .single();
   throwIfError(error, 'insertCommunityMembership');
   return toMembership(data as MembershipRow);
 }
@@ -2691,4 +3107,401 @@ export async function downloadRoutineDocumentFile(storagePath: string): Promise<
     // same error shape, so a genuinely missing file still surfaces.
     return downloadStorageFile('community-files', storagePath);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Stage 1 data cutover — generic record reads, email lookup, orphan tables
+// ---------------------------------------------------------------------------
+//
+// The tables below had typed write helpers (or no helpers at all) but no
+// read path: notes, assignments (+ submissions), jobs, announcements,
+// reminders, routine documents, routine notifications, shift schedules,
+// support tickets, deletion requests, admin audit logs, community
+// reports, campus notice reports, semester records. Their Postgres rows
+// carry only a SUBSET of the JSON-store fields (e.g. `notes` has no
+// subjectName / chapter / fileSize / media_data), so a pure
+// Postgres-first read would silently drop fields the client needs.
+// The server therefore reads them with `listRecordsFromSupabase()` and
+// merges: the Postgres row set is authoritative, the matching JSON row
+// (same id) supplies the full-fidelity fields, and JSON rows missing
+// from Postgres are appended. See `listPostgresFirstMerged()` in
+// server.ts. Tables whose typed mapper is complete (students, captains,
+// communities, routines, notices, attendance) keep the existing pure
+// Postgres-first reads.
+
+const GENERIC_PAGE_SIZE = 1000;
+
+/** One page of raw rows from `table`, honouring eq filters and an optional order. Throws on any query error. */
+async function listRecordsPage(
+  table: string,
+  opts: {
+    columns?: string;
+    eq?: Record<string, string | number | boolean>;
+    orderBy?: string;
+    ascending?: boolean;
+    from: number;
+    to: number;
+  },
+): Promise<Record<string, unknown>[]> {
+  const client = getSupabaseClient();
+  let query = client.from(table).select(opts.columns ?? '*');
+  for (const [column, value] of Object.entries(opts.eq ?? {})) {
+    query = query.eq(column, value);
+  }
+  if (opts.orderBy) query = query.order(opts.orderBy, { ascending: opts.ascending ?? true });
+  const { data, error } = await query.range(opts.from, opts.to);
+  throwIfError(error, `listRecords(${table})`);
+  return (data ?? []) as unknown as Record<string, unknown>[];
+}
+
+/**
+ * List every row of `table` (raw objects, no mapping). Pages through
+ * PostgREST's 1000-row default limit so a large table is never silently
+ * truncated. Throws on any query error — callers catch and fall back
+ * to the JSON store.
+ */
+export async function listRecordsFromSupabase(
+  table: string,
+  opts?: {
+    columns?: string;
+    eq?: Record<string, string | number | boolean>;
+    orderBy?: string;
+    ascending?: boolean;
+  },
+): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  let from = 0;
+  for (;;) {
+    const page = await listRecordsPage(table, {
+      columns: opts?.columns,
+      eq: opts?.eq,
+      orderBy: opts?.orderBy,
+      ascending: opts?.ascending,
+      from,
+      to: from + GENERIC_PAGE_SIZE - 1,
+    });
+    out.push(...page);
+    if (page.length < GENERIC_PAGE_SIZE) break;
+    from += GENERIC_PAGE_SIZE;
+  }
+  return out;
+}
+
+/** One raw row by id, or null. Throws on any query error. */
+export async function getRecordByIdFromSupabase(
+  table: string,
+  id: string,
+): Promise<Record<string, unknown> | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from(table).select('*').eq('id', id).maybeSingle();
+  throwIfError(error, `getRecordById(${table})`);
+  return (data as Record<string, unknown> | null) ?? null;
+}
+
+/** Every id in `table` (paginated). Used by the startup backfill to decide which JSON rows are absent from Postgres. Throws on any query error. */
+export async function listIdsFromSupabase(table: string): Promise<string[]> {
+  const rows = await listRecordsFromSupabase(table, { columns: 'id' });
+  return rows.map((r) => String(r.id)).filter(Boolean);
+}
+
+/** Bulk update: set `patch` on every row where `column = value`. Returns rows touched. Table/column/patch come from the server's own code, never from request input. */
+export async function updateRecordsByColumnToSupabase(
+  table: string,
+  column: string,
+  value: string,
+  patch: Record<string, unknown>,
+): Promise<number> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from(table)
+    .update(patch)
+    .eq(column, value)
+    .select('id');
+  throwIfError(error, `updateRecordsByColumn(${table}.${column})`);
+  return data?.length ?? 0;
+}
+
+/**
+ * Student lookup by verified email (Google/Facebook sign-in). The
+ * email match is case-insensitive (Postgres `ilike`, with LIKE
+ * wildcards escaped) and restricted to registered accounts, mirroring
+ * the JSON lookup in `resolveSocialStudent()`. Throws when Supabase
+ * is unconfigured or the query fails — callers fall back to JSON.
+ */
+export async function getStudentByEmail(email: string): Promise<EnrolledStudent | null> {
+  const clean = String(email || '').trim().toLowerCase();
+  if (!clean) return null;
+  const escaped = clean.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('students')
+    .select('*')
+    .ilike('email', escaped)
+    .eq('is_registered_account', true)
+    .maybeSingle();
+  throwIfError(error, 'getStudentByEmail');
+  return data ? toStudent(data as StudentRow) : null;
+}
+
+/** Every teacher account (public directory / admin list). Paginated; maps with toTeacher(). Throws on any query error. */
+export async function listTeachers(): Promise<TeacherAccount[]> {
+  const rows = await listRecordsFromSupabase('teacher_accounts', {
+    orderBy: 'created_at',
+    ascending: true,
+  });
+  return rows.map((r) => toTeacher(r as unknown as TeacherRow));
+}
+
+// ---------------------------------------------------------------------------
+// Routine notifications — `public.routine_notifications` existed since
+// phase 1 but no code ever read or wrote it (orphan). Domain type is in
+// src/types; the Postgres row drops created_by / created_by_name (no
+// such columns) and the mapper restores them as empty strings.
+// ---------------------------------------------------------------------------
+
+export interface RoutineNotificationRow {
+  id: string;
+  routine_id: string | null;
+  title: string | null;
+  message: string | null;
+  college_id: string | null;
+  college: string | null;
+  department_id: string | null;
+  technology_id: string | null;
+  department: string | null;
+  regulation: string | null;
+  semester: number | null;
+  shift: string | null;
+  section: string | null;
+  created_at: string | null;
+}
+
+export function toRoutineNotificationRow(
+  n: import('../src/types').RoutineNotificationRecord,
+): RoutineNotificationRow {
+  return {
+    id: n.id,
+    routine_id: n.routineId ?? null,
+    title: n.title ?? null,
+    message: n.message ?? null,
+    college_id: n.college_id ?? null,
+    college: n.college ?? null,
+    department_id: n.department_id ?? null,
+    technology_id: n.technology_id ?? null,
+    department: n.department ?? null,
+    regulation: n.regulation ?? null,
+    semester: n.semester ?? null,
+    shift: n.shift ?? null,
+    section: n.section ?? null,
+    created_at: n.created_at ?? null,
+  };
+}
+
+export function toRoutineNotification(
+  row: RoutineNotificationRow,
+): import('../src/types').RoutineNotificationRecord {
+  return {
+    id: row.id,
+    routineId: row.routine_id ?? '',
+    title: row.title ?? '',
+    message: row.message ?? '',
+    college_id: row.college_id ?? '',
+    college: row.college ?? '',
+    department_id: row.department_id ?? '',
+    technology_id: row.technology_id ?? '',
+    department: row.department ?? '',
+    regulation: (row.regulation ?? '2022') as import('../src/types').RoutineNotificationRecord['regulation'],
+    semester: (row.semester ?? 1) as import('../src/types').RoutineNotificationRecord['semester'],
+    shift: (row.shift === 'Day' ? 'Day' : 'Morning') as import('../src/types').RoutineNotificationRecord['shift'],
+    section: (row.section ?? 'A1') as import('../src/types').RoutineNotificationRecord['section'],
+    created_by: '',
+    created_by_name: '',
+    created_at: row.created_at ?? '',
+  };
+}
+
+export async function insertRoutineNotification(
+  n: import('../src/types').RoutineNotificationRecord,
+): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client.from('routine_notifications').insert(toRoutineNotificationRow(n));
+  throwIfError(error, 'insertRoutineNotification');
+}
+
+export async function listRoutineNotifications(): Promise<
+  import('../src/types').RoutineNotificationRecord[]
+> {
+  const rows = await listRecordsFromSupabase('routine_notifications', {
+    orderBy: 'created_at',
+    ascending: false,
+  });
+  return rows.map((r) => toRoutineNotification(r as unknown as RoutineNotificationRow));
+}
+
+// ---------------------------------------------------------------------------
+// Shift schedules — `public.shift_schedules` (phase 1: id, name,
+// schedule jsonb) existed but no code ever referenced it. One row per
+// scope key: id = the config's own id (`sched_<shift>_<scopeKey>`),
+// name = the scope key, schedule = the whole ShiftScheduleConfig.
+// ---------------------------------------------------------------------------
+
+export interface ShiftScheduleRow {
+  id: string;
+  name: string | null;
+  schedule: unknown;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** Upsert one schedule config by its id (insert, or replace on conflict). */
+export async function upsertShiftSchedule(
+  id: string,
+  name: string,
+  schedule: Record<string, unknown>,
+): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client.from('shift_schedules').upsert(
+    { id, name, schedule, updated_at: new Date().toISOString() },
+    { onConflict: 'id' },
+  );
+  throwIfError(error, 'upsertShiftSchedule');
+}
+
+/** Every stored schedule config, as { id, key, schedule } pairs (key = the scope key in `name`). The store key is rebuilt by the caller from schedule.shift + schedule.scopeKey — `name` alone cannot distinguish Morning from Day. */
+export async function listShiftSchedules(): Promise<
+  { id: string; key: string; schedule: Record<string, unknown> }[]
+> {
+  const rows = await listRecordsFromSupabase('shift_schedules');
+  return rows
+    .filter((r) => typeof r.schedule === 'object' && r.schedule !== null)
+    .map((r) => ({
+      id: String(r.id),
+      key: typeof r.name === 'string' && r.name ? r.name : String(r.id),
+      schedule: r.schedule as Record<string, unknown>,
+    }));
+}
+
+// ---------------------------------------------------------------------------
+// App config — `public.app_config` (supabase-cutover-data-stage1.sql).
+// One row per key (`featureFlags`, `maintenanceMode`,
+// `appVersionControl`, `teacherContactAccessLocked`); `value` is the
+// whole JSON-store value for that key. The JSON store stays the
+// fallback: a missing row or any query error reads JSON instead.
+// RLS is enabled with a deny-by-default policy (same as the RLS file);
+// the server uses service_role, which bypasses RLS.
+// ---------------------------------------------------------------------------
+
+export interface AppConfigRow {
+  key: string;
+  value: unknown;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+/** The stored value for one config key, or null when the row does not exist. Throws on any query error. */
+export async function getAppConfigValue(key: string): Promise<unknown | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('app_config')
+    .select('value')
+    .eq('key', key)
+    .maybeSingle();
+  throwIfError(error, `getAppConfigValue(${key})`);
+  return data ? (data as AppConfigRow).value ?? null : null;
+}
+
+/** Every app_config row, as { key, value } pairs. Throws on any query error. */
+export async function listAppConfigValues(): Promise<{ key: string; value: unknown }[]> {
+  const rows = await listRecordsFromSupabase('app_config');
+  return rows.map((r) => ({ key: String(r.key), value: r.value ?? null }));
+}
+
+/** Upsert one config key (insert, or replace on key conflict). */
+export async function upsertAppConfigValue(
+  key: string,
+  value: unknown,
+  updatedBy?: string,
+): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client.from('app_config').upsert(
+    {
+      key,
+      value,
+      updated_by: updatedBy ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'key' },
+  );
+  throwIfError(error, `upsertAppConfigValue(${key})`);
+}
+
+// ---------------------------------------------------------------------------
+// Admin notifications — `public.admin_notifications`
+// (supabase-cutover-data-stage1.sql). The domain type
+// (AdminNotificationRecord) lives in server.ts, so this file only
+// carries the raw row shape; mapping is in server.ts.
+// ---------------------------------------------------------------------------
+
+export interface AdminNotificationRow {
+  id: string;
+  title: string | null;
+  message: string | null;
+  audience_type: string | null;
+  audience: unknown;
+  channel: string | null;
+  status: string | null;
+  created_by: string | null;
+  created_at: string | null;
+}
+
+export async function insertAdminNotification(row: AdminNotificationRow): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client.from('admin_notifications').insert(row);
+  throwIfError(error, 'insertAdminNotification');
+}
+
+export async function listAdminNotifications(): Promise<AdminNotificationRow[]> {
+  const rows = await listRecordsFromSupabase('admin_notifications', {
+    orderBy: 'created_at',
+    ascending: false,
+  });
+  return rows as unknown as AdminNotificationRow[];
+}
+
+// ---------------------------------------------------------------------------
+// Teacher contacts — `public.teacher_contacts`
+// (supabase-cutover-data-stage1.sql). The domain type
+// (ServerTeacherContact, with its auditTrail array) lives in server.ts,
+// so this file only carries the raw row shape; mapping is in server.ts.
+// The whole contact (including auditTrail) is stored as one `data`
+// jsonb document so the Postgres copy is never a lossy subset.
+// ---------------------------------------------------------------------------
+
+export interface TeacherContactRow {
+  id: string;
+  teacher_id: string | null;
+  name: string | null;
+  college: string | null;
+  department: string | null;
+  is_archived: boolean | null;
+  data: unknown;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export async function upsertTeacherContact(row: TeacherContactRow): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client.from('teacher_contacts').upsert(
+    { ...row, updated_at: new Date().toISOString() },
+    { onConflict: 'id' },
+  );
+  throwIfError(error, 'upsertTeacherContact');
+}
+
+export async function listTeacherContacts(): Promise<TeacherContactRow[]> {
+  const rows = await listRecordsFromSupabase('teacher_contacts', {
+    orderBy: 'created_at',
+    ascending: true,
+  });
+  return rows as unknown as TeacherContactRow[];
 }
