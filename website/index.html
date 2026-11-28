@@ -464,8 +464,11 @@ window.__dataFail = function(name){ window['__' + name + 'Failed'] = true; };
 })();
 </script>
 
-<script defer>
-(function(){
+<script>
+/* NOTE: `defer` is ignored on inline scripts, so this init must wait for
+   DOMContentLoaded — deferred external data scripts run before that event,
+   which is what guarantees TECHNOLOGIES_DATA / POLYTECHNIC_DATA exist. */
+document.addEventListener('DOMContentLoaded', function(){
   var API = 'https://api.diplomamate.online';
   function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function show(el, msg, isErr){ if(!el) return; el.hidden = false; el.textContent = msg; if (isErr) el.classList.add('err'); }
@@ -703,7 +706,7 @@ window.__dataFail = function(name){ window['__' + name + 'Failed'] = true; };
         show(noticeStatus, 'Could not load the latest notices right now — open the DiplomaMate app to see them.', true);
       });
   }
-})();
+});
 </script>
 </body>
 </html>

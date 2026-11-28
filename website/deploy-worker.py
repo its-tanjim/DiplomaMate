@@ -29,7 +29,7 @@ WORKER_FETCH = """addEventListener('fetch', (event) => {
     event.respondWith(new Response('ok', {headers: {'content-type': 'text/plain'}}));
     return;
   }
-  event.respondWith(new Response(HTML, {headers: {'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600'}}));
+  event.respondWith(new Response(HTML, {headers: {'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300'}}));
 });"""
 assert "`" not in WORKER_FETCH and "${" not in WORKER_FETCH
 
