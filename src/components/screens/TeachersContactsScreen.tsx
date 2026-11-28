@@ -253,7 +253,7 @@ export const TeachersContactsScreen: React.FC = () => {
               <div className="w-8 h-8 rounded-lg bg-teal-50 text-brand-teal flex items-center justify-center font-bold">
                 <Contact2 aria-hidden="true" className="w-4 h-4" />
               </div>
-              <h1 className="text-base sm:text-lg font-bold text-text-primary">
+              <h1 className="ios-large-title text-base sm:text-lg font-bold text-text-primary">
                 Teachers' Contacts
               </h1>
             </div>

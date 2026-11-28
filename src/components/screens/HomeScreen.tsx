@@ -168,7 +168,7 @@ export const HomeScreen: React.FC = () => {
               )}
             </div>
 
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+            <h1 className="ios-large-title text-xl sm:text-2xl font-bold tracking-tight text-white">
               {userProfile.name}
             </h1>
 

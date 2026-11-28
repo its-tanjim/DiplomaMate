@@ -186,7 +186,7 @@ const AppContent: React.FC = () => {
     activeScreen === 'privacy_policy' || activeScreen === 'terms' || activeScreen === 'delete_account';
   if (isPublicLegalScreen) {
     return (
-      <div className="min-h-screen bg-app-bg">
+      <div className="ios-shell min-h-screen bg-app-bg">
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:bg-white focus:text-slate-900 focus:px-3 focus:py-2 focus:rounded-lg focus:text-sm focus:font-semibold"
@@ -211,7 +211,7 @@ const AppContent: React.FC = () => {
   // If not signed in or currently on welcome screen, show WelcomeScreen
   if (!isLoggedIn || activeScreen === 'welcome') {
     return (
-      <div className="min-h-screen bg-app-bg">
+      <div className="ios-shell min-h-screen bg-app-bg">
         <WelcomeScreen />
         {toastMessage && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-text-primary text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-150">
@@ -226,7 +226,7 @@ const AppContent: React.FC = () => {
   const isWideScreen = activeScreen === 'notes' || activeScreen === 'bteb_results' || activeScreen === 'book_list' || activeScreen === 'teacher_portal' || activeScreen === 'community';
 
   return (
-    <div className="min-h-screen bg-app-bg text-text-primary flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
+    <div className="ios-shell min-h-screen bg-app-bg text-text-primary flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
       {/* Skip link — visually hidden until focused (keyboard users) */}
       <a
         href="#main-content"

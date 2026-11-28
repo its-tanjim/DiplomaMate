@@ -56,9 +56,14 @@ export interface ModalProps {
   labelledBy?: string;
   /** Accessible name when the modal has no heading to point at (aria-label). */
   label?: string;
-  /** Classes for the centred panel. Defaults to the standard panel style. */
+  /** Classes for the centred panel. Defaults to the standard panel style.
+   * iOS reskin (v1.0.36): inside .ios-shell the default panel renders as
+   * a bottom sheet (see index.css .dm-modal-panel); callers passing a
+   * custom panelClassName keep their own style. */
   panelClassName?: string;
-  /** Classes for the backdrop overlay. Defaults to the standard overlay style. */
+  /** Classes for the backdrop overlay. Defaults to the standard overlay style.
+   * iOS reskin (v1.0.36): inside .ios-shell the default overlay anchors
+   * the sheet to the bottom (see index.css .dm-modal-overlay). */
   overlayClassName?: string;
   /** Render the panel as a <form> instead of a <div> (submit-on-Enter modals). */
   panelAsForm?: boolean;
@@ -74,8 +79,8 @@ export const Modal: React.FC<ModalProps> = ({
   labelledBy,
   label,
   children,
-  panelClassName = 'bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150',
-  overlayClassName = 'fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4',
+  panelClassName = 'dm-modal-panel bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150',
+  overlayClassName = 'dm-modal-overlay fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4',
   panelAsForm = false,
   onSubmit,
   showCloseButton = true,

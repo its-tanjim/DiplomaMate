@@ -207,7 +207,7 @@ export const ProfileScreen: React.FC = () => {
             <div className="w-8 h-8 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
               <UserCircle aria-hidden="true" className="w-4 h-4" />
             </div>
-            <h1 className="text-lg font-bold text-text-primary">
+            <h1 className="ios-large-title text-lg font-bold text-text-primary">
               {accountType === 'teacher' ? 'Faculty Profile' : 'Student Profile'}
             </h1>
           </div>

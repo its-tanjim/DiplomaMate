@@ -1258,7 +1258,7 @@ export const NotesAssignmentsScreen: React.FC = () => {
                 {mainTab === 'jobs' && <Briefcase aria-hidden="true" className="w-4 h-4" />}
                 {(mainTab === 'assignments' || mainTab === 'notes') && <BookOpen aria-hidden="true" className="w-4 h-4" />}
               </div>
-              <h1 className="text-base sm:text-lg font-bold text-text-primary">
+              <h1 className="ios-large-title text-base sm:text-lg font-bold text-text-primary">
                 {mainTab === 'notices' && 'Notices & Official Announcements (নোটিশ বোর্ড)'}
                 {mainTab === 'jobs' && 'Diploma Engineering Job Circulars (চাকরির বিজ্ঞপ্তি)'}
                 {mainTab === 'assignments' && (isTeacher ? 'Faculty Assignments & Submissions' : 'Assignments & Homework')}

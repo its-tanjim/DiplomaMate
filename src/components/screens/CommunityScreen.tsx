@@ -1174,7 +1174,7 @@ export const CommunityScreen: React.FC = () => {
           <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-text-primary rounded-2xl p-4 sm:p-5 text-white shadow-md relative overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+                <h1 className="ios-large-title text-xl sm:text-2xl font-bold tracking-tight text-white">
                   Academic Community Hub
                 </h1>
 

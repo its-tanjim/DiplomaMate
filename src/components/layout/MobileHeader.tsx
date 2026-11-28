@@ -30,7 +30,7 @@ export const MobileHeader: React.FC = () => {
   }, [activeScreen]);
 
   return (
-    <header className="dm-header sticky top-0 z-30 border-b shadow-sm no-print">
+    <header className="sticky top-0 z-30 border-b border-border-app bg-surface/80 backdrop-blur-xl no-print">
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-2 sm:gap-4">
         {/* Brand Zone */}
         <button 
@@ -44,7 +44,7 @@ export const MobileHeader: React.FC = () => {
           />
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-base tracking-tight text-white whitespace-nowrap">
+              <span className="font-bold text-base tracking-tight text-text-primary whitespace-nowrap">
                 DiplomaMate
               </span>
             </div>
@@ -53,11 +53,11 @@ export const MobileHeader: React.FC = () => {
 
         {/* Center: Shift & Section Badge */}
         {accountType !== 'system_admin' && (
-          <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-white bg-white/10 px-3 py-1 rounded-md border border-white/15">
-            <span className="text-white font-semibold">{userProfile.shift} Shift</span>
-            <span className="text-white/70">·</span>
+          <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-text-secondary bg-slate-100 px-3 py-1 rounded-md border border-border-app">
+            <span className="text-text-primary font-semibold">{userProfile.shift} Shift</span>
+            <span className="text-text-muted">·</span>
             <span>Sec {userProfile.section}</span>
-            <span className="text-white/70">·</span>
+            <span className="text-text-muted">·</span>
             <span>Sem {userProfile.semester}</span>
           </div>
         )}
@@ -69,36 +69,36 @@ export const MobileHeader: React.FC = () => {
             <button 
               onClick={() => window.location.replace('https://admin.diplomamate.online/')}
               title="System Administrator Account"
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 border border-border-app text-text-secondary text-xs font-semibold whitespace-nowrap hover:bg-slate-200 transition-colors"
             >
-              <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5 text-white" />
+              <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5" />
               <span>System Admin</span>
             </button>
           ) : accountType === 'teacher' ? (
             <button 
               onClick={() => setActiveScreen('profile')}
               title="Teacher Account"
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 border border-border-app text-text-secondary text-xs font-semibold whitespace-nowrap hover:bg-slate-200 transition-colors"
             >
-              <GraduationCap aria-hidden="true" className="w-3.5 h-3.5 text-white" />
+              <GraduationCap aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Teacher</span>
             </button>
           ) : accountType === 'class_captain' ? (
             <button 
               onClick={() => setActiveScreen('profile')}
               title="Class Captain Account"
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 border border-border-app text-text-secondary text-xs font-semibold whitespace-nowrap hover:bg-slate-200 transition-colors"
             >
-              <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5 text-white" />
+              <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Class Captain</span>
             </button>
           ) : (
             <button 
               onClick={() => setActiveScreen('profile')}
               title="Student Account"
-              className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold whitespace-nowrap hover:bg-white/20 transition-colors"
+              className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-100 border border-border-app text-text-secondary text-xs font-semibold whitespace-nowrap hover:bg-slate-200 transition-colors"
             >
-              <UserCheck aria-hidden="true" className="w-3.5 h-3.5 text-white" />
+              <UserCheck aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Student</span>
             </button>
           )}
@@ -109,8 +109,8 @@ export const MobileHeader: React.FC = () => {
             aria-label="Community"
             className={`min-h-10 min-w-9 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 border transition-colors ${
               activeScreen === 'community'
-                ? 'bg-white text-brand-navy border-white'
-                : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                ? 'bg-brand-blue text-white border-brand-blue'
+                : 'bg-transparent text-text-secondary border-transparent hover:text-text-primary'
             }`}
             title="Academic Community Hub & Peer Discussions"
           >
@@ -124,8 +124,8 @@ export const MobileHeader: React.FC = () => {
             aria-label="Book List"
             className={`min-h-10 min-w-9 px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 border transition-colors ${
               activeScreen === 'book_list'
-                ? 'bg-white text-brand-navy border-white'
-                : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                ? 'bg-brand-blue text-white border-brand-blue'
+                : 'bg-transparent text-text-secondary border-transparent hover:text-text-primary'
             }`}
             title="Book List & Central Subject Catalog"
           >
@@ -136,7 +136,7 @@ export const MobileHeader: React.FC = () => {
           {/* Notifications bell — broadcast inbox */}
           <button
             onClick={() => setActiveScreen('notifications')}
-            className={`min-h-10 min-w-9 p-2 rounded-xl text-white hover:text-white hover:bg-white/15 transition-colors relative flex items-center justify-center ${activeScreen === 'notifications' ? 'bg-white text-brand-navy' : ''}`}
+            className={`min-h-10 min-w-9 p-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-slate-100 transition-colors relative flex items-center justify-center ${activeScreen === 'notifications' ? 'bg-slate-100 text-brand-blue' : ''}`}
             aria-label="View Notifications"
             title="Notifications"
           >
@@ -149,7 +149,7 @@ export const MobileHeader: React.FC = () => {
           {/* Settings */}
           <button
             onClick={() => setActiveScreen('settings')}
-            className={`min-h-10 min-w-9 p-2 rounded-xl text-white hover:text-white hover:bg-white/15 transition-colors flex items-center justify-center ${activeScreen === 'settings' ? 'bg-white text-brand-navy' : ''}`}
+            className={`min-h-10 min-w-9 p-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-slate-100 transition-colors flex items-center justify-center ${activeScreen === 'settings' ? 'bg-slate-100 text-brand-blue' : ''}`}
             aria-label="Settings"
             title="Settings"
           >

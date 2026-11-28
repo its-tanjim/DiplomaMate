@@ -558,3 +558,146 @@
    combo is missed. Current state is contrast-passing (light chip + dark
    -800 text: 5.3–7.25:1) and the only failing dark pair (#5190FF text on
    blue-50, 2.77:1) is fixed by the badge rules above. */
+
+/* ==========================================================================
+   iOS reskin (main app only, v1.0.36)
+   --------------------------------------------------------------------------
+   Everything here is scoped under .ios-shell, which is added to the three
+   root divs in src/App.tsx. The admin app (src/admin-main.tsx) has no
+   .ios-shell ancestor, so its look is unchanged even though both entries
+   import this file. These rules are intentionally UNLAYERED so they beat
+   Tailwind's layered utilities (same reason as the contrast-fix block).
+   Order inside this block matters: the modal-sheet rules must come AFTER
+   the .rounded-2xl radius rule (same specificity, later wins).
+   ========================================================================== */
+
+/* Inter (bundled via @fontsource/inter in main.tsx) — SF Pro alternative. */
+.ios-shell {
+  font-family: 'Inter', -apple-system, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
+}
+
+/* iOS tokens — light: grouped background #F2F2F7, hairline separators. */
+.ios-shell {
+  --dm-app-bg: #f2f2f7;
+  --dm-surface: #ffffff;
+  --dm-subtle: #ececf1;
+  --dm-border: #c6c6c8;
+  --dm-text-primary: #000000;
+  --dm-text-secondary: #3c3c43;
+  --dm-text-muted: #8e8e93;
+  --dm-brand-blue: #3880ff;
+  --dm-brand-teal: #3880ff;
+  --dm-brand-navy: #000000;
+}
+
+/* iOS tokens — dark: pure-black background, #1C1C1E cards (iOS dark). */
+[data-theme="dark"] .ios-shell {
+  --dm-app-bg: #000000;
+  --dm-surface: #1c1c1e;
+  --dm-subtle: #2c2c2e;
+  --dm-border: #38383a;
+  --dm-text-primary: #ffffff;
+  --dm-text-secondary: #ebebf5;
+  --dm-text-muted: #8e8e93;
+  --dm-brand-blue: #0a84ff;
+  --dm-brand-teal: #0a84ff;
+  --dm-brand-navy: #ffffff;
+}
+
+/* Inset-grouped cards: 10px radius, hairline border, softer shadow. */
+.ios-shell .dm-card {
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+}
+[data-theme="dark"] .ios-shell .dm-card {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+}
+
+/* Fields / actions: iOS radii. */
+.ios-shell .dm-field {
+  border-radius: 10px;
+}
+.ios-shell .dm-primary-action,
+.ios-shell .dm-secondary-action {
+  border-radius: 12px;
+}
+
+/* Inline rounded-2xl cards (20px) become inset-grouped 10px cards. */
+.ios-shell .rounded-2xl {
+  border-radius: 10px;
+}
+
+/* Fixed-white surfaces follow the surface token (dark-mode safe). */
+.ios-shell .bg-white {
+  background-color: var(--dm-surface);
+}
+
+/* Content padding for the full-width tab bar (h-14 + safe area). */
+.ios-shell .dm-app-content {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+}
+
+/* Translucent header (kept for any .dm-header use; MobileHeader is
+   rewritten to the same treatment directly). */
+.ios-shell .dm-header {
+  background-color: rgb(255 255 255 / 0.8);
+  background-image: none;
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-color: var(--dm-border);
+}
+[data-theme="dark"] .ios-shell .dm-header {
+  background-color: rgb(28 28 30 / 0.8);
+}
+
+/* iOS switches: green when on (the pill toggles are w-11 h-6 buttons). */
+.ios-shell .w-11.h-6.bg-brand-blue {
+  background-color: #34c759;
+}
+
+/* Large titles: iOS 34pt bold, tight tracking. Applied to screen h1s. */
+.ios-shell .ios-large-title {
+  font-size: 34px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* --- Bottom sheets (Modal.tsx defaults, marker classes) -----------------
+   The shared Modal's default panel becomes an iOS bottom sheet inside the
+   main app only. Callers passing custom panel/overlay classes keep theirs
+   (e.g. the archive-confirmation modal stays a centred alert). */
+.ios-shell .dm-modal-overlay {
+  align-items: flex-end;
+  padding: 0;
+}
+.ios-shell .dm-modal-overlay:has(.dm-modal-alert) {
+  align-items: center;
+  padding: 1rem;
+}
+.ios-shell .dm-modal-panel {
+  border-radius: 20px 20px 0 0;
+  max-width: 32rem;
+  width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom));
+}
+.ios-shell .dm-modal-panel::before {
+  content: "";
+  display: block;
+  width: 2.5rem;
+  height: 0.3125rem;
+  border-radius: 9999px;
+  background-color: var(--dm-border);
+  margin: 0 auto 0.75rem;
+}
+.ios-shell .dm-modal-panel.dm-modal-alert {
+  border-radius: 14px;
+  max-width: 24rem;
+  max-height: none;
+  padding-bottom: 1.25rem;
+}
+.ios-shell .dm-modal-panel.dm-modal-alert::before {
+  display: none;
+}

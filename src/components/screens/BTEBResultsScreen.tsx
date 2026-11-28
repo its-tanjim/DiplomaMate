@@ -636,7 +636,7 @@ export const BTEBResultsScreen: React.FC = () => {
                     {activeStatement.regulation} Probidhan
                   </span>
                 </div>
-                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                <h1 className="ios-large-title text-xl sm:text-2xl font-black tracking-tight text-white">
                   Bangladesh Technical Education Board
                 </h1>
                 <p className="text-xs sm:text-sm text-blue-200 font-medium">
@@ -1410,7 +1410,7 @@ export const BTEBResultsScreen: React.FC = () => {
                   BTEB Examination Hub
                 </span>
               </div>
-              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white">
+              <h1 className="ios-large-title text-lg sm:text-xl font-bold tracking-tight text-white">
                 BTEB Examination Results
               </h1>
             </div>
