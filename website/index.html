@@ -316,12 +316,12 @@ body[data-view="more"] footer{display:block}
       <p class="bn">ডিপ্লোমা শিক্ষার্থীদের সবকিছু — এক অ্যাপে।</p>
       <p class="sub">Results, class routine, community, attendance, notes, jobs and notices — DiplomaMate keeps your whole polytechnic life in one place. Free on Android and the web.</p>
       <div class="cta-row">
-        <a class="btn" id="apkBtn" href="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.36-debug.apk">Download APK</a>
+        <a class="btn" id="apkBtn" href="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.38-debug.apk">Download APK</a>
         <a class="btn" href="https://diplomamate.online/">Open Web App</a>
       </div>
       <div class="live-line">
         <span><span class="dot grey" id="statusDot"></span><span id="statusText">Checking server…</span></span>
-        <span>Latest version: <b id="verLabel">v1.0.36</b></span>
+        <span>Latest version: <b id="verLabel">v1.0.38</b></span>
         <span>Android 9+ &middot; Web &middot; PWA</span>
       </div>
     </div>
@@ -514,8 +514,8 @@ body[data-view="more"] footer{display:block}
         <div class="dl-card">
           <h3><svg aria-hidden="true"><use href="#i-phone"/></svg> Android App</h3>
           <p>Full DiplomaMate experience on your phone. Install the APK directly — no Play Store needed.</p>
-          <a class="btn" id="apkBtn2" href="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.36-debug.apk">Download APK</a>
-          <p class="ver" id="apkVer">Latest version: v1.0.36 &middot; Android 9 or newer</p>
+          <a class="btn" id="apkBtn2" href="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.38-debug.apk">Download APK</a>
+          <p class="ver" id="apkVer">Latest version: v1.0.38 &middot; Android 9 or newer</p>
           <ol class="howto" style="margin-top:14px">
             <li>Tap Download APK</li>
             <li>Open the downloaded file</li>
@@ -561,7 +561,7 @@ body[data-view="more"] footer{display:block}
       <div>
         <h4>App</h4>
         <a href="https://diplomamate.online/">Open Web App</a>
-        <a id="apkFoot" href="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.36-debug.apk">Download APK</a>
+        <a id="apkFoot" href="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.38-debug.apk">Download APK</a>
       </div>
       <div>
         <h4>Legal</h4>
@@ -596,8 +596,8 @@ window.__dataFail = function(name){ window['__' + name + 'Failed'] = true; };
 <script>
 (function(){
   var API = 'https://api.diplomamate.online';
-  var FALLBACK_APK = 'https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.36-debug.apk';
-  var FALLBACK_VER = 'v1.0.36';
+  var FALLBACK_APK = 'https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/releases/DiplomaMate-v1.0.38-debug.apk';
+  var FALLBACK_VER = 'v1.0.38';
   document.getElementById('year').textContent = new Date().getFullYear();
   function setApk(url, ver){
     ['apkBtn','apkBtn2','apkFoot'].forEach(function(id){ var el = document.getElementById(id); if (el) el.href = url; });
