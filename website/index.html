@@ -133,17 +133,45 @@ table.data tr.total td{font-weight:800;background:var(--bg);border-bottom:0}
 .poly-card .tags{margin-top:10px;font-size:13px;font-weight:700;color:var(--primary)}
 .poly-card a.web{font-size:13.5px;font-weight:700}
 /* cgpa */
-.cgpa-inputs{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
-.cgpa-inputs label{font-size:13px;font-weight:700;color:var(--muted);display:flex;flex-direction:column;gap:6px}
-.cgpa-inputs input{font:inherit;font-size:16px;color:var(--ink);background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px;min-height:44px;width:100%}
-.cgpa-inputs input:focus{outline:2px solid var(--primary);outline-offset:1px;border-color:var(--primary)}
-.cgpa-inputs .w{font-weight:400;font-size:12px}
-.cgpa-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
-.cgpa-result{text-align:center;background:var(--card);border:1px solid var(--line);border-radius:22px;padding:28px 16px}
-.cgpa-result .val{font-size:44px;font-weight:800;line-height:1.1;color:var(--primary)}
-.cgpa-result .grade{font-size:18px;font-weight:800;margin-top:4px}
-.cgpa-result .remark{font-size:14.5px;color:var(--muted);max-width:560px;margin:8px auto 0}
-.cgpa-result .cnt{font-size:13px;color:var(--muted);margin-top:8px}
+.cgpa-head{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:18px}
+.cgpa-reg{display:flex;flex-direction:column;gap:6px}
+.cgpa-reg .reg-lab{font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--muted)}
+.cgpa-reg select{font:inherit;font-size:15px;font-weight:700;color:var(--ink);background:#fff;border:1px solid var(--border);border-radius:10px;padding:9px 12px;min-height:44px;min-width:120px}
+.cgpa-reg select:focus{outline:2px solid var(--primary);outline-offset:1px;border-color:var(--primary)}
+.cgpa-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.cgpa-final{background:linear-gradient(135deg,#22b45e,#159a4c);color:#fff;border-radius:16px;padding:16px 22px;min-width:210px;text-align:left;box-shadow:0 6px 18px rgba(21,154,76,.35)}
+.cgpa-final .lbl{font-size:12px;font-weight:800;letter-spacing:.08em}
+.cgpa-final .big{font-size:34px;font-weight:800;line-height:1.15;font-variant-numeric:tabular-nums}
+.cgpa-final .big .of{font-size:17px;font-weight:700;opacity:.85}
+.cgpa-inputs{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px}
+.cgpa-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.cgpa-card .t{font-weight:700;font-size:15px;line-height:1.3}
+.cgpa-card .w{display:block;font-weight:400;font-size:13px;color:var(--muted)}
+.stepper{display:flex;align-items:center;gap:8px;flex:none}
+.stepper button{font:inherit;font-size:18px;font-weight:700;width:40px;height:40px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--ink);cursor:pointer;line-height:1}
+.stepper button:hover{border-color:var(--primary);color:var(--primary)}
+.stepper input{font:inherit;font-size:16px;font-weight:700;color:var(--ink);background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 4px;width:64px;text-align:center;min-height:40px;font-variant-numeric:tabular-nums}
+.stepper input:focus{outline:2px solid var(--primary);outline-offset:1px;border-color:var(--primary)}
+.cgpa-meta{text-align:center;padding:4px 8px 0}
+.cgpa-meta .grade{font-size:18px;font-weight:800}
+.cgpa-meta .remark{font-size:14.5px;color:var(--muted);max-width:560px;margin:8px auto 0}
+.cgpa-meta .cnt{font-size:13px;color:var(--muted);margin-top:8px}
+/* cgpa info sections */
+.cgpa-info{max-width:860px;margin:18px auto 0}
+.cgpa-info h3{font-size:19px;font-weight:800;margin-bottom:4px}
+.cgpa-info .sub{font-size:14.5px;color:var(--muted);margin-bottom:14px}
+.formula{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center;font-weight:800;font-size:19px;margin:14px 0}
+.g-pill{display:inline-block;font-weight:700;font-size:13px;padding:2px 10px;border-radius:999px}
+.g-pill.g-a{background:#dcfce7;color:#166534}
+.g-pill.g-b{background:#d9f99d;color:#3f6212}
+.g-pill.g-c{background:#fef9c3;color:#854d0e}
+.g-pill.g-d{background:#ffedd5;color:#9a3412}
+.g-pill.g-f{background:#fecaca;color:#991b1b}
+.pill-pass{display:inline-block;font-weight:700;font-size:12px;padding:2px 10px;border-radius:999px;background:#f1f5f9;color:#475569}
+.pill-fail{display:inline-block;font-weight:700;font-size:12px;padding:2px 10px;border-radius:999px;background:#dc2626;color:#fff}
+.cgpa-info ol{padding-left:22px;display:flex;flex-direction:column;gap:6px}
+.cgpa-info ul{padding-left:22px;display:flex;flex-direction:column;gap:6px}
+.cgpa-info .tip{margin-top:14px;font-size:14.5px}
 /* notices */
 .notice-list{display:flex;flex-direction:column;gap:10px;max-width:860px;margin:0 auto}
 .notice-item{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px}
@@ -246,12 +274,11 @@ body[data-view="more"] footer{display:block}
   .syl-meta{font-size:13px;color:var(--muted);margin-top:2px}
   .syl-row.total .syl-name{font-weight:800}
 }
-/* --- CGPA: 8 input rows on mobile --- */
+/* --- CGPA: 1-column cards on mobile --- */
 @media (max-width: 767px){
-  .cgpa-inputs{grid-template-columns:1fr;gap:0;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-  .cgpa-inputs label{flex-direction:row;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--separator);font-size:15px}
-  .cgpa-inputs label:last-child{border-bottom:0}
-  .cgpa-inputs label input{margin-left:auto;width:110px;flex:none;text-align:right}
+  .cgpa-inputs{grid-template-columns:1fr;gap:10px}
+  .cgpa-head{flex-direction:column}
+  .cgpa-final{width:100%}
 }
 /* --- More view --- */
 #noticesMore{display:none}
@@ -297,7 +324,7 @@ body[data-view="more"] footer{display:block}
     <a class="brand" href="#top"><img src="https://raw.githubusercontent.com/its-tanjim/DiplomaMate/main/public/diploma-mate-logo.png" alt="DiplomaMate logo">DiplomaMate</a>
     <nav id="mainNav">
       <a href="#home">Home</a>
-      <a href="#syllabus">Syllabus</a>
+      <a href="#booklists">Booklists</a>
       <a href="#cgpa">CGPA</a>
       <a href="#results">Results</a>
       <a href="#polytechnics">Polytechnics</a>
@@ -354,7 +381,7 @@ body[data-view="more"] footer{display:block}
   </section>
 
   <nav class="tools-nav view-home" id="toolsNav" aria-label="Student tools">
-    <a href="#syllabus" class="tool-tile"><svg aria-hidden="true"><use href="#i-book"/></svg><span>Syllabus Explorer</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></a>
+    <a href="#booklists" class="tool-tile"><svg aria-hidden="true"><use href="#i-book"/></svg><span>Booklists</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></a>
     <a href="#cgpa" class="tool-tile"><svg aria-hidden="true"><use href="#i-calc"/></svg><span>CGPA Calculator</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></a>
     <a href="#results" class="tool-tile"><svg aria-hidden="true"><use href="#i-chart"/></svg><span>Check Your Results</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></a>
     <a href="#polytechnics" class="tool-tile" id="toolPoly"><svg aria-hidden="true"><use href="#i-pin"/></svg><span>Government Polytechnics</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></a>
@@ -363,8 +390,8 @@ body[data-view="more"] footer{display:block}
   <section id="syllabus" class="view-syllabus">
     <div class="wrap">
       <a class="back-btn" href="#home"><svg aria-hidden="true"><use href="#i-chev-l"/></svg><span>Home</span></a>
-      <h2 class="view-title">Syllabus Explorer</h2>
-      <p class="sec-sub">BTEB Diploma in Engineering syllabus — pick your technology and semester, see every subject with its code, credits and marks. / সিলেবাস দেখুন।</p>
+      <h2 class="view-title">Booklists</h2>
+      <p class="sec-sub">Booklists — pick your technology and semester, see every subject with its code, credits and marks. / সিলেবাস দেখুন।</p>
       <div class="panel">
         <div class="controls">
           <label>Technology
@@ -421,21 +448,119 @@ body[data-view="more"] footer{display:block}
     <div class="wrap">
       <a class="back-btn" href="#home"><svg aria-hidden="true"><use href="#i-chev-l"/></svg><span>Home</span></a>
       <h2 class="view-title">CGPA Calculator</h2>
-      <p class="sec-sub">Official BTEB semester weights — enter your semester GPAs (0–4.00) and see your CGPA instantly. / সিজিপিএ হিসাব করুন।</p>
+      <p class="sec-sub">Estimate your cumulative grade point average</p>
       <div class="panel" style="max-width:860px;margin:0 auto">
-        <div class="cgpa-inputs" id="cgpaInputs"></div>
-        <div class="cgpa-actions">
-          <button class="btn" type="button" id="cgpaCalcBtn">Calculate CGPA</button>
-          <button class="btn ghost" type="button" id="cgpaClearBtn">Clear</button>
-          <button class="btn ghost" type="button" id="cgpaSampleBtn">Load sample GPAs</button>
+        <div class="cgpa-head">
+          <div class="cgpa-reg">
+            <label class="reg-lab" for="cgpaRegSelect">REGULATION</label>
+            <select id="cgpaRegSelect" aria-label="Regulation year">
+              <option value="2010">2010</option>
+              <option value="2016">2016</option>
+              <option value="2022" selected>2022</option>
+            </select>
+          </div>
+          <div class="cgpa-actions">
+            <button class="btn ghost" type="button" id="cgpaClearBtn">Reset</button>
+            <button class="btn ghost" type="button" id="cgpaShareBtn">Share</button>
+            <button class="btn ghost" type="button" id="cgpaSampleBtn">Load sample GPAs</button>
+          </div>
+          <div class="cgpa-final" role="status" aria-label="Final CGPA">
+            <div class="lbl">FINAL CGPA</div>
+            <div class="big"><span id="cgpaValue">0.00</span> <span class="of">/ 4.00</span></div>
+          </div>
         </div>
-        <div class="cgpa-result">
-          <div class="val" id="cgpaValue">0.00</div>
+        <div class="cgpa-inputs" id="cgpaInputs"></div>
+        <div class="cgpa-meta">
           <div class="grade" id="cgpaGrade">Awaiting Input</div>
           <p class="remark" id="cgpaRemark">Enter your semester GPAs to compute your official BTEB CGPA.</p>
           <p class="cnt" id="cgpaCount"></p>
         </div>
-        <p class="src-note">BTEB official weights — Sem 1–3: 5% each &middot; Sem 4: 10% &middot; Sem 5: 15% &middot; Sem 6: 20% &middot; Sem 7: 25% &middot; Sem 8: 15%. Only the semesters you enter are counted. (Same formula as the CGPA calculator in the DiplomaMate app.)</p>
+        <p class="src-note" id="cgpaSrcNote"></p>
+      </div>
+
+      <div class="panel cgpa-info">
+        <h3>How GPA is Calculated</h3>
+        <p class="sub">The semester GPA is a credit-weighted average of grade points across all subjects.</p>
+        <div class="formula">GPA = &Sigma;(C &times; GP) / &Sigma;C</div>
+        <p>Where <strong>C</strong> is the credit of each subject and <strong>GP</strong> is the grade point obtained in that subject.</p>
+        <p class="muted" style="margin-top:14px;font-weight:700;letter-spacing:.04em">WORKED EXAMPLE &mdash; 1ST SEMESTER</p>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th>Subject</th><th>C</th><th>Marks %</th><th>Grade</th><th>GP</th><th>C&times;GP</th></tr></thead>
+            <tbody>
+              <tr><td>Engineering Drawing</td><td>2</td><td>75%</td><td><span class="g-pill g-a">A</span></td><td>3.75</td><td>7.50</td></tr>
+              <tr><td>Mathematics-I</td><td>4</td><td>82%</td><td><span class="g-pill g-a">A+</span></td><td>4.00</td><td>16.00</td></tr>
+              <tr><td>Basic Electricity</td><td>4</td><td>65%</td><td><span class="g-pill g-b">B+</span></td><td>3.25</td><td>13.00</td></tr>
+              <tr class="total"><td>Total</td><td>10</td><td></td><td></td><td></td><td>36.50</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="formula" style="font-size:16px">GPA = 36.50 / 10 = 3.65</div>
+      </div>
+
+      <div class="panel cgpa-info">
+        <h3>BTEB Grade Scale</h3>
+        <p class="sub">Grade and grade point are determined by the percentage of total marks obtained (theory + practical combined).</p>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th>Marks (%)</th><th>Grade</th><th>Point (GP)</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>80% or above</td><td><span class="g-pill g-a">A+</span></td><td>4.00</td><td><span class="pill-pass">Pass</span></td></tr>
+              <tr><td>75% to 79%</td><td><span class="g-pill g-a">A</span></td><td>3.75</td><td><span class="pill-pass">Pass</span></td></tr>
+              <tr><td>70% to 74%</td><td><span class="g-pill g-a">A-</span></td><td>3.50</td><td><span class="pill-pass">Pass</span></td></tr>
+              <tr><td>65% to 69%</td><td><span class="g-pill g-b">B+</span></td><td>3.25</td><td><span class="pill-pass">Pass</span></td></tr>
+              <tr><td>60% to 64%</td><td><span class="g-pill g-b">B</span></td><td>3.00</td><td><span class="pill-pass">Pass</span></td></tr>
+              <tr><td>55% to 59%</td><td><span class="g-pill g-b">B-</span></td><td>2.75</td><td><span class="pill-pass">Pass</span></td></tr>
+              <tr><td>50% to 54%</td><td><span class="g-pill g-c">C+</span></td><td>2.50</td><td><span class="pill-pass">Pass</span></td></tr>
+              <tr><td>45% to 49%</td><td><span class="g-pill g-c">C</span></td><td>2.25</td><td><span class="pill-pass">Pass</span></td></tr>
+              <tr><td>40% to 44%</td><td><span class="g-pill g-d">D</span></td><td>2.00</td><td><span class="pill-pass">Pass</span></td></tr>
+              <tr><td>Below 40%</td><td><span class="g-pill g-f">F</span></td><td>0.00</td><td><span class="pill-fail">Fail</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note-line" style="margin-top:16px;margin-bottom:0"><strong>&#9432; Minimum Passing Grade</strong><br>A student must obtain at least 40% marks in a subject to pass, earning a D grade with a grade point of 2.00.</div>
+      </div>
+
+      <div class="panel cgpa-info">
+        <h3>Semester Wise GPA Priorities for Regulations</h3>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th>Semester</th><th>2010</th><th>2016</th><th>2022</th></tr></thead>
+            <tbody>
+              <tr><td>1st</td><td>5%</td><td>5%</td><td>5%</td></tr>
+              <tr><td>2nd</td><td>5%</td><td>5%</td><td>5%</td></tr>
+              <tr><td>3rd</td><td>5%</td><td>5%</td><td>10%</td></tr>
+              <tr><td>4th</td><td>15%</td><td>10%</td><td>10%</td></tr>
+              <tr><td>5th</td><td>15%</td><td>15%</td><td>20%</td></tr>
+              <tr><td>6th</td><td>20%</td><td>20%</td><td>20%</td></tr>
+              <tr><td>7th</td><td>25%</td><td>25%</td><td>20%</td></tr>
+              <tr><td>8th</td><td>10%</td><td>15%</td><td>10%</td></tr>
+              <tr class="total"><td>Total</td><td>100%</td><td>100%</td><td>100%</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel cgpa-info">
+        <h3>How to Use CGPA Calculator</h3>
+        <p>Our <strong>BTEB CGPA calculator</strong> is designed for diploma/polytechnic students to easily track academic progress. Whether you&rsquo;ve completed all semesters or are planning future targets, this tool helps you calculate accurate CGPA.</p>
+        <ol style="margin-top:12px">
+          <li>Choose your regulation year (2010, 2016, or 2022)</li>
+          <li>Enter semester-wise GPA scores (0.00 to 4.00 scale)</li>
+          <li>See your automatically calculated CGPA</li>
+          <li>Use the reset button to start fresh calculations</li>
+        </ol>
+        <p class="tip"><strong>Tip:</strong> You can estimate future semester requirements by entering target GPAs for incomplete semesters.</p>
+      </div>
+
+      <div class="panel cgpa-info">
+        <h3>Benefits of Tracking Your CGPA</h3>
+        <ul>
+          <li>Monitor academic progress throughout your diploma program</li>
+          <li>Plan target GPAs for upcoming semesters</li>
+          <li>Understand how each semester impacts your overall performance</li>
+          <li>Prepare for higher education and career opportunities</li>
+        </ul>
       </div>
     </div>
   </section>
@@ -579,7 +704,7 @@ body[data-view="more"] footer{display:block}
 
 <nav id="tabbar" aria-label="Sections">
   <a href="#home" data-tab="home" aria-current="page"><svg aria-hidden="true"><use href="#i-home"/></svg><span>Home</span></a>
-  <a href="#syllabus" data-tab="syllabus"><svg aria-hidden="true"><use href="#i-book"/></svg><span>Syllabus</span></a>
+  <a href="#booklists" data-tab="syllabus"><svg aria-hidden="true"><use href="#i-book"/></svg><span>Booklists</span></a>
   <a href="#cgpa" data-tab="cgpa"><svg aria-hidden="true"><use href="#i-calc"/></svg><span>CGPA</span></a>
   <a href="#results" data-tab="results"><svg aria-hidden="true"><use href="#i-chart"/></svg><span>Results</span></a>
   <a href="#more" data-tab="more"><svg aria-hidden="true"><use href="#i-more"/></svg><span>More</span></a>
@@ -632,7 +757,7 @@ document.addEventListener('DOMContentLoaded', function(){
   var API = 'https://api.diplomamate.online';
 
   /* ---------- Multi-view pages + hash router (all widths) ---------- */
-  var VIEW_HASHES = { '#home': 'home', '#top': 'home', '#features': 'home', '#notices': 'home', '#download': 'home', '#how': 'home', '#faq': 'home', '#syllabus': 'syllabus', '#cgpa': 'cgpa', '#results': 'results', '#polytechnics': 'polytechnics', '#more': 'more' };
+  var VIEW_HASHES = { '#home': 'home', '#top': 'home', '#features': 'home', '#notices': 'home', '#download': 'home', '#how': 'home', '#faq': 'home', '#booklists': 'syllabus', '#syllabus': 'syllabus', '#cgpa': 'cgpa', '#results': 'results', '#polytechnics': 'polytechnics', '#more': 'more' };
   var VIEW_TARGETS = { home: 'home', syllabus: 'syllabus', cgpa: 'cgpa', results: 'results', polytechnics: 'polytechnics', more: 'moreMenu' };
   var SCROLL_TARGETS = { '#features': 'features', '#notices': 'notices', '#download': 'download', '#how': 'how', '#faq': 'faq' };
   var mainNav = document.getElementById('mainNav');
@@ -655,7 +780,7 @@ document.addEventListener('DOMContentLoaded', function(){
       var links = mainNav.querySelectorAll('a[href^="#"]');
       for (var j = 0; j < links.length; j++){
         var lh = links[j].getAttribute('href');
-        var isPage = (lh === '#home' || lh === '#syllabus' || lh === '#cgpa' || lh === '#results' || lh === '#polytechnics');
+        var isPage = (lh === '#home' || lh === '#booklists' || lh === '#syllabus' || lh === '#cgpa' || lh === '#results' || lh === '#polytechnics');
         if (isPage && VIEW_HASHES[lh] === v) links[j].setAttribute('aria-current', 'page'); else links[j].removeAttribute('aria-current');
       }
     }
@@ -687,7 +812,7 @@ document.addEventListener('DOMContentLoaded', function(){
   }
   function sylRender(){
     if (!sylReady()){
-      show(sylStatus, 'Syllabus data could not be loaded — check your connection and refresh, or explore the syllabus in the DiplomaMate app.', true);
+      show(sylStatus, 'Booklists data could not be loaded — check your connection and refresh, or explore the subjects in the DiplomaMate app.', true);
       if (sylTable) sylTable.style.display = 'none';
       if (sylList) sylList.innerHTML = '';
       return;
@@ -795,13 +920,40 @@ document.addEventListener('DOMContentLoaded', function(){
     polyRender();
   }
 
-  /* ---------- CGPA calculator (official BTEB weights) ---------- */
-  var WEIGHTS = [0.05, 0.05, 0.05, 0.10, 0.15, 0.20, 0.25, 0.15];
+  /* ---------- CGPA calculator (BTEB weights per regulation) ---------- */
+  var CGPA_REGULATIONS = {
+    '2010': [0.05, 0.05, 0.05, 0.15, 0.15, 0.20, 0.25, 0.10],
+    '2016': [0.05, 0.05, 0.05, 0.10, 0.15, 0.20, 0.25, 0.15],
+    '2022': [0.05, 0.05, 0.10, 0.10, 0.20, 0.20, 0.20, 0.10]
+  };
+  var CGPA_ORDINALS = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
+  var cgpaReg = '2022';
+  var WEIGHTS = CGPA_REGULATIONS[cgpaReg];
   var cgpaInputs = document.getElementById('cgpaInputs');
   var cgpaValue = document.getElementById('cgpaValue');
   var cgpaGrade = document.getElementById('cgpaGrade');
   var cgpaRemark = document.getElementById('cgpaRemark');
   var cgpaCount = document.getElementById('cgpaCount');
+  var cgpaSrcNote = document.getElementById('cgpaSrcNote');
+  var cgpaRegSelect = document.getElementById('cgpaRegSelect');
+  function cgpaWeightsText(){
+    var parts = [];
+    var i = 0;
+    while (i < 8){
+      var w = Math.round(WEIGHTS[i] * 100);
+      var j = i;
+      while (j + 1 < 8 && Math.round(WEIGHTS[j + 1] * 100) === w) j++;
+      parts.push('Sem ' + (i + 1) + (j > i ? '–' + (j + 1) : '') + ': ' + w + '%');
+      i = j + 1;
+    }
+    return 'Regulation ' + cgpaReg + ' weights — ' + parts.join(' · ') + '. Only the semesters you enter are counted.';
+  }
+  function cgpaRenderWeights(){
+    cgpaInputs.querySelectorAll('.cgpa-card .w').forEach(function(sp, i){
+      sp.textContent = Math.round(WEIGHTS[i] * 100) + ' percent';
+    });
+    if (cgpaSrcNote) cgpaSrcNote.textContent = cgpaWeightsText();
+  }
   function cgpaCalc(){
     var totalW = 0, totalWeight = 0, count = 0;
     var inputs = cgpaInputs.querySelectorAll('input');
@@ -827,16 +979,39 @@ document.addEventListener('DOMContentLoaded', function(){
   }
   if (cgpaInputs){
     WEIGHTS.forEach(function(w, i){
-      var lab = document.createElement('label');
-      lab.textContent = 'Semester ' + (i + 1) + ' ';
+      var card = document.createElement('div');
+      card.className = 'cgpa-card';
+      var t = document.createElement('div');
+      t.className = 't';
+      t.textContent = CGPA_ORDINALS[i] + ' Semester ';
       var sp = document.createElement('span');
-      sp.className = 'w'; sp.textContent = 'weight ' + Math.round(w * 100) + '%';
-      lab.appendChild(sp);
+      sp.className = 'w'; sp.textContent = Math.round(w * 100) + ' percent';
+      t.appendChild(sp);
+      card.appendChild(t);
+      var stepper = document.createElement('div');
+      stepper.className = 'stepper';
+      var minus = document.createElement('button');
+      minus.type = 'button'; minus.textContent = '−'; minus.setAttribute('aria-label', 'Decrease ' + CGPA_ORDINALS[i] + ' semester GPA');
       var inp = document.createElement('input');
-      inp.type = 'number'; inp.min = '0'; inp.max = '4'; inp.step = '0.01'; inp.placeholder = 'e.g. 3.75';
-      inp.setAttribute('aria-label', 'Semester ' + (i + 1) + ' GPA');
-      lab.appendChild(inp);
-      cgpaInputs.appendChild(lab);
+      inp.type = 'number'; inp.min = '0'; inp.max = '4'; inp.step = '0.05'; inp.placeholder = '0.00';
+      inp.setAttribute('aria-label', CGPA_ORDINALS[i] + ' Semester GPA');
+      inp.inputMode = 'decimal';
+      var plus = document.createElement('button');
+      plus.type = 'button'; plus.textContent = '+'; plus.setAttribute('aria-label', 'Increase ' + CGPA_ORDINALS[i] + ' semester GPA');
+      function step(d){
+        var v = parseFloat(inp.value);
+        if (isNaN(v)) v = 0;
+        v = Math.round((v + d) * 100) / 100;
+        if (v > 4.0) v = 4.0;
+        if (v < 0) v = 0;
+        inp.value = v.toFixed(2);
+        cgpaCalc();
+      }
+      minus.addEventListener('click', function(){ step(-0.05); });
+      plus.addEventListener('click', function(){ step(0.05); });
+      stepper.appendChild(minus); stepper.appendChild(inp); stepper.appendChild(plus);
+      card.appendChild(stepper);
+      cgpaInputs.appendChild(card);
     });
     cgpaInputs.addEventListener('input', function(e){
       var t = e.target;
@@ -847,8 +1022,6 @@ document.addEventListener('DOMContentLoaded', function(){
         cgpaCalc();
       }
     });
-    var calcBtn = document.getElementById('cgpaCalcBtn');
-    if (calcBtn) calcBtn.addEventListener('click', cgpaCalc);
     var clearBtn = document.getElementById('cgpaClearBtn');
     if (clearBtn) clearBtn.addEventListener('click', function(){
       cgpaInputs.querySelectorAll('input').forEach(function(inp){ inp.value = ''; });
@@ -860,6 +1033,25 @@ document.addEventListener('DOMContentLoaded', function(){
       cgpaInputs.querySelectorAll('input').forEach(function(inp, i){ inp.value = preset[i]; });
       cgpaCalc();
     });
+    var shareBtn = document.getElementById('cgpaShareBtn');
+    if (shareBtn) shareBtn.addEventListener('click', function(){
+      var text = 'My CGPA is ' + cgpaValue.textContent + ' / 4.00 (Regulation ' + cgpaReg + ') — calculated on DiplomaMate';
+      if (navigator.share){
+        navigator.share({ title: 'My CGPA', text: text }).catch(function(){});
+      } else if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(function(){
+          shareBtn.textContent = 'Copied!';
+          setTimeout(function(){ shareBtn.textContent = 'Share'; }, 2000);
+        }).catch(function(){});
+      }
+    });
+    if (cgpaRegSelect) cgpaRegSelect.addEventListener('change', function(){
+      cgpaReg = cgpaRegSelect.value;
+      WEIGHTS = CGPA_REGULATIONS[cgpaReg];
+      cgpaRenderWeights();
+      cgpaCalc();
+    });
+    cgpaRenderWeights();
     cgpaCalc();
   }
 
