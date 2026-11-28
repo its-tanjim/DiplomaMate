@@ -16,16 +16,42 @@ import { SearchableCollegeSelect } from '../common/SearchableCollegeSelect';
 import { SearchableDepartmentSelect } from '../common/SearchableDepartmentSelect';
 import { CatalogSubjectSelect } from '../common/CatalogSubjectSelect';
 import { 
-  UserCircle, 
   Edit3, 
-  Check, 
   ShieldCheck, 
   LogOut, 
   Building2, 
   Layers, 
   Mail,
-  Calendar
+  Calendar,
+  Home,
+  ChevronRight,
+  Info,
+  BarChart3,
+  IdCard,
+  Hash,
+  LayoutGrid,
+  BookOpen,
+  Phone
 } from 'lucide-react';
+
+// One details-grid cell: small light-blue icon tile + grey label + bold value.
+// The cell surface uses the theme token (bg-surface) so dark mode stays
+// readable; the icon tile follows the existing bg-blue-50 pattern.
+const DetailCell: React.FC<{
+  label: string;
+  value: React.ReactNode;
+  Icon: React.ComponentType<{ className?: string }>;
+}> = ({ label, value, Icon }) => (
+  <div className="p-3 bg-surface rounded-xl border border-slate-200 flex items-start gap-2.5">
+    <div className="w-8 h-8 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center shrink-0">
+      <Icon className="w-4 h-4" />
+    </div>
+    <div className="min-w-0">
+      <span className="text-slate-400 font-medium block text-[11px]">{label}</span>
+      <span className="text-text-primary font-bold text-sm mt-0.5 block">{value}</span>
+    </div>
+  </div>
+);
 
 export const ProfileScreen: React.FC = () => {
   const {
@@ -198,39 +224,43 @@ export const ProfileScreen: React.FC = () => {
     showToast('Profile updated successfully!');
   };
 
+  const openEditProfile = () => {
+    if (accountType === 'teacher') {
+      setActiveScreen('teacher_setup');
+    } else {
+      setFormData(userProfile);
+      setIsEditing(true);
+    }
+  };
+
   return (
     <div className="space-y-4 pb-8">
-      {/* Top Header Card */}
-      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
-              <UserCircle aria-hidden="true" className="w-4 h-4" />
-            </div>
-            <h1 className="ios-large-title text-lg font-bold text-text-primary">
-              {accountType === 'teacher' ? 'Faculty Profile' : 'Student Profile'}
-            </h1>
-          </div>
+      {/* Breadcrumb + Edit Profile */}
+      <div className="flex items-center justify-between gap-2">
+        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm min-w-0">
+          <button
+            type="button"
+            onClick={() => setActiveScreen('home')}
+            className="flex items-center gap-1.5 text-brand-blue font-semibold hover:underline cursor-pointer shrink-0"
+          >
+            <Home aria-hidden="true" className="w-4 h-4" />
+            <span>Dashboard</span>
+          </button>
+          <ChevronRight aria-hidden="true" className="w-4 h-4 text-slate-400 shrink-0" />
+          <span className="font-semibold text-text-primary truncate">
+            {accountType === 'teacher' ? 'Faculty Profile' : 'Student Profile'}
+          </span>
+        </nav>
 
-          <div className="flex items-center gap-2">
-            {!isEditing && (
-              <button
-                onClick={() => {
-                  if (accountType === 'teacher') {
-                    setActiveScreen('teacher_setup');
-                  } else {
-                    setFormData(userProfile);
-                    setIsEditing(true);
-                  }
-                }}
-                className="px-3 py-1.5 rounded-lg bg-blue-50 text-brand-blue text-xs font-semibold hover:bg-blue-100 transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <Edit3 aria-hidden="true" className="w-3.5 h-3.5" />
-                <span>{accountType === 'teacher' ? 'Setup Faculty Profile' : 'Edit Profile'}</span>
-              </button>
-            )}
-          </div>
-        </div>
+        {!isEditing && (
+          <button
+            onClick={openEditProfile}
+            className="shrink-0 px-3 py-1.5 rounded-lg bg-brand-blue text-white text-xs font-semibold hover:bg-blue-700 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <Edit3 aria-hidden="true" className="w-3.5 h-3.5" />
+            <span>{accountType === 'teacher' ? 'Setup Faculty Profile' : 'Edit Profile'}</span>
+          </button>
+        )}
       </div>
 
       {/* Class Captain Accreditation & Verification Card */}
@@ -453,97 +483,77 @@ export const ProfileScreen: React.FC = () => {
           </div>
         </form>
       ) : (
-        /* Profile Display Card */
-        <div className="bg-surface rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-          <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-teal-500 text-white font-bold text-xl flex items-center justify-center shadow-md shadow-blue-500/20">
-              {userProfile.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-text-primary leading-tight">
-                {userProfile.name}
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {userProfile.email || 'No email added — tap Edit to add your Gmail.'}
-              </p>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-semibold text-brand-blue bg-blue-50 px-2 py-0.5 rounded-md">
-                  {userProfile.shift} Shift
-                </span>
-                <span className="text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
-                  Section {userProfile.section}
-                </span>
-                <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
-                  Reg {userProfile.regulation || '2022'}
-                </span>
+        /* Profile Display — gradient banner, details grid, subjects, attendance */
+        <div className="space-y-4">
+          {/* Header banner */}
+          <div className="rounded-2xl bg-gradient-to-r from-blue-400 via-blue-500 to-blue-600 p-5 shadow-md shadow-blue-500/20 text-white">
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-white/20 text-white font-bold text-xl flex items-center justify-center shrink-0">
+                {userProfile.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold leading-tight truncate">
+                  {userProfile.name}
+                </h2>
+                <p className="text-xs text-blue-50 mt-0.5 flex items-center gap-1">
+                  <Mail aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{userProfile.email || 'No email added — tap Edit to add your Gmail.'}</span>
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-white bg-white/20 px-2 py-0.5 rounded-md">
+                    <Calendar aria-hidden="true" className="w-3 h-3" />
+                    {userProfile.shift} Shift
+                  </span>
+                  <span className="text-[11px] font-semibold text-white bg-white/20 px-2 py-0.5 rounded-md">
+                    Section {userProfile.section}
+                  </span>
+                  <span className="text-[11px] font-semibold text-white bg-white/20 px-2 py-0.5 rounded-md">
+                    Reg {userProfile.regulation || '2022'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Grid of Profile Fields */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 font-medium block">Polytechnic Institute</span>
-              <span className="text-text-primary font-bold text-sm mt-0.5 block">
-                {userProfile.college}
-              </span>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 font-medium block">Department / Technology</span>
-              <span className="text-text-primary font-bold text-sm mt-0.5 block">
-                {userProfile.department}
-              </span>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 font-medium block">BTEB Board Roll</span>
-              <span className="text-text-primary font-bold font-mono text-base mt-0.5 block">
-                {userProfile.boardRoll}
-              </span>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 font-medium block">Registration Number</span>
-              <span className="text-text-primary font-bold font-mono text-base mt-0.5 block">
-                {userProfile.regNumber}
-              </span>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 font-medium block">Current Semester & Regulation</span>
-              <span className="text-text-primary font-bold text-sm mt-0.5 block">
-                Semester {userProfile.semester} · Regulation {userProfile.regulation || '2022'}
-              </span>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 font-medium block">Section & Shift</span>
-              <span className="text-text-primary font-bold text-sm mt-0.5 block">
-                Section {userProfile.section} · {userProfile.shift} Shift
-              </span>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 font-medium block">Academic Session</span>
-              <span className="text-text-primary font-bold text-sm mt-0.5 block">
-                {userProfile.session}
-              </span>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 font-medium block">Contact Phone</span>
-              <span className="text-text-primary font-bold font-mono text-sm mt-0.5 block">
-                {userProfile.phone || '+880 1712-345678'}
-              </span>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 font-medium block">Email Address</span>
-              <span className="text-text-primary font-bold text-sm mt-0.5 block break-all">
-                {userProfile.email || 'No email added — tap Edit to add your Gmail.'}
-              </span>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <DetailCell label="Polytechnic Institute" value={userProfile.college} Icon={Building2} />
+            <DetailCell label="Department / Technology" value={userProfile.department} Icon={Layers} />
+            <DetailCell
+              label="BTEB Board Roll"
+              value={<span className="font-mono text-base">{userProfile.boardRoll}</span>}
+              Icon={IdCard}
+            />
+            <DetailCell
+              label="Registration Number"
+              value={<span className="font-mono text-base">{userProfile.regNumber}</span>}
+              Icon={Hash}
+            />
+            <DetailCell
+              label="Current Semester & Regulation"
+              value={`Semester ${userProfile.semester} · Regulation ${userProfile.regulation || '2022'}`}
+              Icon={Calendar}
+            />
+            <DetailCell
+              label="Section & Shift"
+              value={`Section ${userProfile.section} · ${userProfile.shift} Shift`}
+              Icon={LayoutGrid}
+            />
+            <DetailCell label="Academic Session" value={userProfile.session} Icon={BookOpen} />
+            <DetailCell
+              label="Contact Phone"
+              value={<span className="font-mono">{userProfile.phone || '+880 1712-345678'}</span>}
+              Icon={Phone}
+            />
+            <DetailCell
+              label="Email Address"
+              value={
+                <span className="break-all">
+                  {userProfile.email || 'No email added — tap Edit to add your Gmail.'}
+                </span>
+              }
+              Icon={Mail}
+            />
           </div>
 
           {/* Selected Enrolled Subjects from Catalog */}
@@ -574,17 +584,29 @@ export const ProfileScreen: React.FC = () => {
             </div>
           )}
           {(!userProfile.enrolledSubjects || userProfile.enrolledSubjects.length === 0) && (
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-xs text-slate-500">No semester subjects selected yet — tap Edit Profile to choose your subjects.</span>
+            <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 flex items-start gap-2">
+              <Info aria-hidden="true" className="w-4 h-4 text-blue-700 shrink-0 mt-px" />
+              <span className="text-xs text-slate-600">
+                No semester subjects selected yet — tap{' '}
+                <button type="button" onClick={openEditProfile} className="font-bold text-blue-700 hover:underline cursor-pointer">
+                  Edit Profile
+                </button>{' '}
+                to choose your subjects.
+              </span>
             </div>
           )}
 
           {/* My Attendance — read-only view of the student's own marks (B17) */}
           {(accountType === 'student' || accountType === 'class_captain') && (
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
-              <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
-                My Attendance
-              </span>
+            <div className="p-4 bg-emerald-50/70 rounded-2xl border border-emerald-100 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <BarChart3 aria-hidden="true" className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-bold text-slate-700">
+                  My Attendance
+                </span>
+              </div>
               {attendanceLoading ? (
                 <span className="text-xs text-slate-500">Loading your attendance…</span>
               ) : attendanceError ? (

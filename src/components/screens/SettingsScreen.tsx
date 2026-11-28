@@ -7,8 +7,6 @@ import {
   Bell, 
   Clock, 
   Volume2, 
-  ShieldCheck, 
-  UserCheck, 
   RefreshCw,
   HelpCircle, 
   Sparkles,
@@ -17,10 +15,10 @@ import {
   Moon,
   Sun,
   ChevronRight,
+  ChevronDown,
+  Crown,
   Info,
   CheckCircle2,
-  GraduationCap,
-  Globe,
   FileText,
   Trash2,
   AlertTriangle
@@ -160,18 +158,14 @@ export const SettingsScreen: React.FC = () => {
       </div>
 
       {/* Appearance */}
-      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-          <div className="w-7 h-7 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
-            <Sun className="w-4 h-4" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-text-primary">Appearance</h2>
-            <p className="text-[11px] text-slate-500">Choose how the app looks</p>
-          </div>
+      <div className="relative overflow-hidden bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+        <div aria-hidden="true" className="pointer-events-none absolute -top-10 -right-10 h-28 w-28 rounded-full bg-blue-400/10 blur-xl" />
+        <div className="relative pb-2 border-b border-slate-100">
+          <h2 className="text-sm font-bold text-text-primary">Appearance</h2>
+          <p className="text-[11px] text-slate-500">Choose how the app looks</p>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="relative flex flex-wrap gap-2">
           {([
             { value: 'light', label: 'Light', Icon: Sun },
             { value: 'dark', label: 'Dark', Icon: Moon },
@@ -182,11 +176,14 @@ export const SettingsScreen: React.FC = () => {
               type="button"
               onClick={() => setTheme(value)}
               aria-pressed={theme === value}
-              className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                theme === value ? 'bg-brand-blue text-white' : 'bg-slate-100 text-slate-700'
+              className={`flex-1 min-w-[104px] py-2.5 px-3 rounded-full text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+                theme === value
+                  ? 'bg-gradient-to-r from-[#2b6fe0] to-[#4338ca] text-white shadow-lg shadow-blue-600/30 ring-2 ring-white/70'
+                  : 'bg-slate-100 text-slate-700'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
+              <span aria-hidden="true" className="w-px h-4 bg-current opacity-25" />
               <span>{label}</span>
             </button>
           ))}
@@ -194,35 +191,29 @@ export const SettingsScreen: React.FC = () => {
       </div>
 
       {/* Language */}
-      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-          <div className="w-7 h-7 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
-            <Globe className="w-4 h-4" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-text-primary">Language / ভাষা</h2>
-            <p className="text-[11px] text-slate-500">Choose your language</p>
-          </div>
+      <div className="relative overflow-hidden bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+        <div aria-hidden="true" className="pointer-events-none absolute -top-10 -right-10 h-28 w-28 rounded-full bg-blue-400/10 blur-xl" />
+        <div className="relative pb-2 border-b border-slate-100">
+          <h2 className="text-sm font-bold text-text-primary">Language / ভাষা</h2>
+          <p className="text-[11px] text-slate-500">Choose your language</p>
         </div>
 
         <LanguageSwitcher />
       </div>
 
-      {/* Account Type Card (Strict Role Separation) */}
-      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-              accountType === 'teacher' ? 'bg-blue-50 text-blue-700' : accountType === 'class_captain' ? 'bg-teal-50 text-brand-teal' : 'bg-blue-50 text-brand-blue'
-            }`}>
-              {accountType === 'teacher' ? <GraduationCap className="w-4 h-4" /> : accountType === 'class_captain' ? <ShieldCheck className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-text-primary">Account Role</h2>
-            </div>
+      {/* Account Role Card (display only — roles come from admin/teacher approval) */}
+      <div className="relative overflow-hidden bg-surface rounded-2xl border border-slate-200 shadow-xs">
+        <div aria-hidden="true" className="absolute inset-y-0 left-0 w-1 bg-brand-blue" />
+        <div className="flex flex-wrap items-center gap-3 p-4 pl-5">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-bold text-text-primary">Account Role</h2>
+            <p className="text-[11px] text-slate-500">Manage your account permissions and role</p>
           </div>
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
-            {accountType === 'teacher' ? 'Faculty Member' : accountType === 'class_captain' ? 'Class Captain (CR)' : 'General Student'}
+          <div aria-hidden="true" className="hidden sm:block w-px self-stretch bg-slate-200" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-blue-50 border border-blue-100 text-xs font-bold text-blue-700">
+            <Crown className="w-4 h-4 text-amber-500" aria-hidden="true" />
+            <span>{accountType === 'teacher' ? 'Faculty Member' : accountType === 'class_captain' ? 'Class Captain (CR)' : 'General Student'}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
           </span>
         </div>
       </div>
