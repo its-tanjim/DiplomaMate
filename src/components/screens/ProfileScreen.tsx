@@ -20,10 +20,8 @@ import {
   Edit3, 
   Check, 
   ShieldCheck, 
-  UserCheck, 
   LogOut, 
   Building2, 
-  GraduationCap, 
   Layers, 
   Mail,
   Calendar
@@ -233,56 +231,6 @@ export const ProfileScreen: React.FC = () => {
             )}
           </div>
         </div>
-      </div>
-
-      {/* Account Type Status Banner (Strict role separation) */}
-      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs">
-        <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-              accountType === 'teacher'
-                ? 'bg-blue-50 text-blue-700'
-                : accountType === 'class_captain' 
-                  ? 'bg-teal-50 text-brand-teal'
-                  : 'bg-blue-50 text-brand-blue'
-            }`}>
-              {accountType === 'teacher' ? (
-                <GraduationCap aria-hidden="true" className="w-5 h-5" />
-              ) : accountType === 'class_captain' ? (
-                <ShieldCheck aria-hidden="true" className="w-5 h-5" />
-              ) : (
-                <UserCheck aria-hidden="true" className="w-5 h-5" />
-              )}
-            </div>
-            <div>
-              <div className="text-xs text-slate-500 font-medium">Account Role (Strictly Enforced)</div>
-              <div className="text-sm font-bold text-text-primary">
-                {accountType === 'teacher' 
-                  ? `${userProfile.designation || 'Institutional Faculty Member'}`
-                  : accountType === 'class_captain' 
-                    ? 'Official Class Captain (CR)' 
-                    : 'General Diploma Student'}
-              </div>
-            </div>
-          </div>
-
-          {accountType === 'student' && (
-            <button
-              onClick={() => setActiveScreen('captain_verification')}
-              className="self-start xs:self-auto px-3 py-1.5 rounded-xl border border-teal-200 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 transition-colors flex items-center gap-1.5 cursor-pointer"
-            >
-              <ShieldCheck aria-hidden="true" className="w-3.5 h-3.5 text-teal-600" />
-              <span>Apply for Class Captain</span>
-            </button>
-          )}
-
-          {accountType === 'teacher' && (
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200">
-              {userProfile.teacherVerificationStatus || 'Verified'} Faculty
-            </span>
-          )}
-        </div>
-        
       </div>
 
       {/* Class Captain Accreditation & Verification Card */}
@@ -587,6 +535,13 @@ export const ProfileScreen: React.FC = () => {
               <span className="text-slate-400 font-medium block">Contact Phone</span>
               <span className="text-text-primary font-bold font-mono text-sm mt-0.5 block">
                 {userProfile.phone || '+880 1712-345678'}
+              </span>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <span className="text-slate-400 font-medium block">Email Address</span>
+              <span className="text-text-primary font-bold text-sm mt-0.5 block break-all">
+                {userProfile.email || 'No email added — tap Edit to add your Gmail.'}
               </span>
             </div>
           </div>
