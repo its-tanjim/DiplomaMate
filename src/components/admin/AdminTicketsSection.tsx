@@ -258,8 +258,8 @@ export const AdminTicketsSection: React.FC = () => {
         <Modal
           onClose={() => setSelected(null)}
           labelledBy="admin-ticket-title"
-          panelClassName="my-auto max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl"
-          overlayClassName="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
+          panelClassName="dm-modal-panel max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
           showCloseButton={false}
         >
           <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-surface p-4">

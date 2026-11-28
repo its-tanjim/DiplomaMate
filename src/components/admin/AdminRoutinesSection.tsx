@@ -273,8 +273,8 @@ export const AdminRoutinesSection: React.FC = () => {
         <Modal
           onClose={() => setDraft(null)}
           labelledBy="admin-routine-modal-title"
-          panelClassName="my-auto max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl"
-          overlayClassName="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
+          panelClassName="dm-modal-panel max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
           panelAsForm
           onSubmit={saveRoutine}
           showCloseButton={false}

@@ -160,8 +160,8 @@ export function ConfirmDialog({
     <Modal
       onClose={onCancel}
       labelledBy="admin-confirm-dialog-title"
-      panelClassName="my-auto w-full max-w-md rounded-2xl bg-surface p-5 shadow-2xl"
-      overlayClassName="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
+      panelClassName="dm-modal-panel dm-modal-alert w-full max-w-md rounded-2xl bg-surface p-5 shadow-2xl"
+      overlayClassName="dm-modal-overlay fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
       showCloseButton={false}
     >
       <h2 id="admin-confirm-dialog-title" className="text-base font-bold text-text-primary">{title}</h2>

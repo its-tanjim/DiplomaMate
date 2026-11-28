@@ -279,8 +279,8 @@ export const AdminRolesSection: React.FC = () => {
         <Modal
           onClose={() => setInviteOpen(false)}
           labelledBy="admin-invite-title"
-          panelClassName="my-auto w-full max-w-lg rounded-2xl bg-surface p-5 shadow-2xl"
-          overlayClassName="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
+          panelClassName="dm-modal-panel w-full max-w-lg rounded-2xl bg-surface p-5 shadow-2xl"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
           panelAsForm
           onSubmit={invite}
           showCloseButton={false}
@@ -323,8 +323,8 @@ export const AdminRolesSection: React.FC = () => {
         <Modal
           onClose={() => setEditTarget(null)}
           labelledBy="admin-edit-role-title"
-          panelClassName="my-auto w-full max-w-md rounded-2xl bg-surface p-5 shadow-2xl"
-          overlayClassName="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
+          panelClassName="dm-modal-panel w-full max-w-md rounded-2xl bg-surface p-5 shadow-2xl"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
           panelAsForm
           onSubmit={saveRole}
           showCloseButton={false}
