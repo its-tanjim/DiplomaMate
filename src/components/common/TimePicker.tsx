@@ -63,8 +63,14 @@ export const TimePicker: React.FC<TimePickerProps> = ({
     return n < 10 ? `0${n}` : `${n}`;
   });
 
-  // Minutes: 00 to 55 in 5m steps, plus custom
+  // Minutes: 00 to 55 in 5m steps, plus the current minute when it is not
+  // on a 5-min step (e.g. 07) — otherwise the select cannot display the
+  // actual value and silently shows a wrong one (00) while the label pill
+  // shows the true time.
   const minutesList = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
+  const allMinutes = minutesList.includes(minute)
+    ? minutesList
+    : [...minutesList, minute].sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
 
   // Quick period presets common in Bangladesh Polytechnic routines
   const morningPresets = ['08:00 AM', '08:45 AM', '09:30 AM', '10:15 AM', '11:00 AM', '11:45 AM', '12:30 PM', '01:15 PM'];
@@ -81,11 +87,15 @@ export const TimePicker: React.FC<TimePickerProps> = ({
         </label>
       )}
 
-      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1.5 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all">
+      {/* The row wraps (flex-wrap) instead of squeezing the selects: in a
+          narrow picker column the AM/PM toggle drops to a second line rather
+          than crushing the hour/minute boxes to one character wide. Each
+          select wrapper has a min-width so a two-digit value always fits. */}
+      <div className="flex flex-wrap items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1.5 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all">
         <Clock aria-hidden="true" className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
 
         {/* Hour Select */}
-        <div className="relative flex-1">
+        <div className="relative flex-1 min-w-[38px]">
           <select
             value={hour}
             disabled={disabled}
@@ -103,7 +113,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
         <span className="font-bold text-slate-400 pb-3">:</span>
 
         {/* Minute Select */}
-        <div className="relative flex-1">
+        <div className="relative flex-1 min-w-[38px]">
           <select
             value={minute}
             disabled={disabled}
@@ -111,7 +121,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
             className="w-full bg-surface border border-slate-200/90 rounded-lg py-1 px-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue cursor-pointer appearance-none text-center"
             title="Select Minute"
           >
-            {minutesList.map(m => (
+            {allMinutes.map(m => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
@@ -124,7 +134,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => updateTime(hour, minute, 'AM')}
-            className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${
+            className={`px-1.5 py-1 text-xs font-bold rounded-md transition-colors ${
               meridiem === 'AM' 
                 ? 'bg-blue-600 text-white shadow-xs' 
                 : 'text-slate-600 hover:text-slate-900'
@@ -136,7 +146,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => updateTime(hour, minute, 'PM')}
-            className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${
+            className={`px-1.5 py-1 text-xs font-bold rounded-md transition-colors ${
               meridiem === 'PM' 
                 ? 'bg-blue-600 text-white shadow-xs' 
                 : 'text-slate-600 hover:text-slate-900'
