@@ -12,6 +12,7 @@ import {
   Layers,
   Calendar,
   Save,
+  Share2,
   Trash2,
   Info,
   ShieldCheck,
@@ -35,6 +36,18 @@ import {
   calculateSemesterGpaSummary,
   calculateWeightedBtebCgpa
 } from '../../data/btebGpaCalculatorUtils';
+
+/** Light-tint pill colors for a grade point (fixed dark text on a light tint). */
+const gradePillClass = (gradePoint: number): string =>
+  gradePoint >= 3.5
+    ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+    : gradePoint >= 2.75
+    ? 'bg-green-100 text-green-900 border-green-300'
+    : gradePoint >= 2.25
+    ? 'bg-yellow-100 text-yellow-900 border-yellow-300'
+    : gradePoint >= 2.0
+    ? 'bg-orange-100 text-orange-900 border-orange-300'
+    : 'bg-rose-100 text-rose-900 border-rose-300';
 
 export const SemesterScreen: React.FC = () => {
   const {
@@ -426,6 +439,32 @@ export const SemesterScreen: React.FC = () => {
       semesterGpas: semesterGpasForCgpa
     });
   }, [cgpaWeightRegulation, semesterGpasForCgpa]);
+
+  const [cgpaShareState, setCgpaShareState] = useState<'idle' | 'shared' | 'copied'>('idle');
+
+  const handleShareCgpa = async () => {
+    const cgpaText =
+      cgpaCalculation.weightedCgpa !== null ? cgpaCalculation.weightedCgpa.toFixed(2) : null;
+    if (!cgpaText) return;
+    const text = `My CGPA is ${cgpaText} / 4.00 (Regulation ${cgpaWeightRegulation}) — DiplomaMate`;
+    const canShare = typeof navigator !== 'undefined' && 'share' in navigator;
+    const canClipboard =
+      typeof navigator !== 'undefined' &&
+      typeof navigator.clipboard !== 'undefined' &&
+      navigator.clipboard !== null;
+    try {
+      if (canShare) {
+        await navigator.share({ title: 'My CGPA — DiplomaMate', text });
+        setCgpaShareState('shared');
+      } else if (canClipboard) {
+        await navigator.clipboard.writeText(text);
+        setCgpaShareState('copied');
+      }
+    } catch {
+      // User dismissed the share sheet — not an error.
+    }
+    window.setTimeout(() => setCgpaShareState('idle'), 2500);
+  };
 
   const totalCatalogCredits = catalogSubjects.reduce(
     (acc, curr) => acc + (curr.credits ?? 0),
@@ -1039,6 +1078,23 @@ export const SemesterScreen: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Share CGPA result */}
+        <div className="flex justify-end pt-1">
+          <button
+            type="button"
+            onClick={handleShareCgpa}
+            disabled={cgpaCalculation.weightedCgpa === null}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface border border-slate-200 text-xs font-bold text-text-primary shadow-xs hover:border-brand-blue disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <Share2 aria-hidden="true" className="w-3.5 h-3.5" />
+            {cgpaShareState === 'shared'
+              ? 'Shared'
+              : cgpaShareState === 'copied'
+              ? 'Copied to clipboard'
+              : 'Share CGPA'}
+          </button>
+        </div>
       </div>
 
       {/* Official BTEB Examination Results & Group Lookup Banner */}
@@ -1084,6 +1140,229 @@ export const SemesterScreen: React.FC = () => {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* How GPA is Calculated */}
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs text-xs space-y-2.5">
+        <div>
+          <h4 className="font-bold text-text-primary text-sm">How GPA is Calculated</h4>
+          <p className="text-slate-500 mt-0.5">
+            The semester GPA is a credit-weighted average of grade points across all subjects.
+          </p>
+        </div>
+        <div className="rounded-xl bg-slate-50 border border-slate-200 py-3 px-2 text-center font-mono font-extrabold text-sm text-text-primary">
+          GPA = Σ(C × GP) / ΣC
+        </div>
+        <p className="text-slate-500">
+          Where <span className="font-bold text-text-primary">C</span> is the credit of each subject
+          and <span className="font-bold text-text-primary">GP</span> is the grade point obtained in
+          that subject.
+        </p>
+        <div className="border-t border-slate-200/80 pt-2.5">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            Worked Example — 1st Semester
+          </span>
+          <div className="overflow-x-auto mt-2">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-wider text-slate-500">
+                  <th className="py-1.5 pr-2 font-bold">Subject</th>
+                  <th className="py-1.5 px-2 font-bold text-center">C</th>
+                  <th className="py-1.5 px-2 font-bold text-center">Marks %</th>
+                  <th className="py-1.5 px-2 font-bold text-center">Grade</th>
+                  <th className="py-1.5 px-2 font-bold text-center">GP</th>
+                  <th className="py-1.5 pl-2 font-bold text-right">C×GP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { subject: 'Engineering Drawing', credits: 2, marks: '75%', grade: 'A', gp: 3.75 },
+                  { subject: 'Mathematics-I', credits: 4, marks: '82%', grade: 'A+', gp: 4.0 },
+                  { subject: 'Basic Electricity', credits: 4, marks: '65%', grade: 'B+', gp: 3.25 }
+                ].map((row) => (
+                  <tr key={row.subject} className="border-t border-slate-200/80">
+                    <td className="py-2 pr-2 font-semibold text-text-primary">{row.subject}</td>
+                    <td className="py-2 px-2 text-center font-mono">{row.credits}</td>
+                    <td className="py-2 px-2 text-center font-mono">{row.marks}</td>
+                    <td className="py-2 px-2 text-center">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded-md border text-[10px] font-extrabold ${gradePillClass(
+                          row.gp
+                        )}`}
+                      >
+                        {row.grade}
+                      </span>
+                    </td>
+                    <td className="py-2 px-2 text-center font-mono font-bold">{row.gp.toFixed(2)}</td>
+                    <td className="py-2 pl-2 text-right font-mono font-bold">
+                      {(row.credits * row.gp).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t border-slate-200 font-bold">
+                  <td className="py-2 pr-2 text-text-primary">Total</td>
+                  <td className="py-2 px-2 text-center font-mono">10</td>
+                  <td className="py-2 px-2" />
+                  <td className="py-2 px-2" />
+                  <td className="py-2 px-2" />
+                  <td className="py-2 pl-2 text-right font-mono">36.50</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="rounded-xl bg-slate-50 border border-slate-200 py-2.5 px-2 text-center font-mono font-bold text-text-primary mt-2">
+            GPA = 36.50 / 10 = 3.65
+          </div>
+        </div>
+      </div>
+
+      {/* BTEB Grade Scale */}
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs text-xs space-y-2.5">
+        <div>
+          <h4 className="font-bold text-text-primary text-sm">BTEB Grade Scale</h4>
+          <p className="text-slate-500 mt-0.5">
+            Grade and grade point are determined by the percentage of total marks obtained (theory +
+            practical combined).
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-wider text-slate-500">
+                <th className="py-1.5 pr-2 font-bold">Marks (%)</th>
+                <th className="py-1.5 px-2 font-bold text-center">Grade</th>
+                <th className="py-1.5 px-2 font-bold text-center">Point (GP)</th>
+                <th className="py-1.5 pl-2 font-bold text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {OFFICIAL_BTEB_GRADE_SCALE.map((tier) => {
+                const passed = tier.minPercent >= 40;
+                return (
+                  <tr key={tier.letterGrade} className="border-t border-slate-200/80">
+                    <td className="py-2 pr-2 font-semibold text-text-primary">{tier.rangeLabel}</td>
+                    <td className="py-2 px-2 text-center">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded-md border text-[10px] font-extrabold ${gradePillClass(
+                          tier.gradePoint
+                        )}`}
+                      >
+                        {tier.letterGrade}
+                      </span>
+                    </td>
+                    <td className="py-2 px-2 text-center font-mono font-bold">
+                      {tier.gradePoint.toFixed(2)}
+                    </td>
+                    <td className="py-2 pl-2 text-right">
+                      <span
+                        className={
+                          passed
+                            ? 'inline-block px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-bold'
+                            : 'inline-block px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold'
+                        }
+                      >
+                        {passed ? 'Pass' : 'Fail'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 flex items-start gap-2">
+          <Info aria-hidden="true" className="w-4 h-4 text-brand-blue shrink-0 mt-0.5" />
+          <p className="text-slate-600">
+            <span className="font-bold text-text-primary block">Minimum Passing Grade</span>A student
+            must obtain at least 40% marks in a subject to pass, earning a D grade with a grade
+            point of 2.00.
+          </p>
+        </div>
+      </div>
+
+      {/* Semester Wise GPA Priorities */}
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs text-xs space-y-2.5">
+        <h4 className="font-bold text-text-primary text-sm">
+          Semester Wise GPA Priorities for Regulations
+        </h4>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-wider text-slate-500">
+                <th className="py-1.5 pr-2 font-bold">Semester</th>
+                {(['2010', '2016', '2022'] as CalculatorRegulation[]).map((reg) => (
+                  <th key={reg} className="py-1.5 px-2 font-bold text-center">
+                    {reg}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {([1, 2, 3, 4, 5, 6, 7, 8] as SemesterNumber[]).map((s) => (
+                <tr key={s} className="border-t border-slate-200/80">
+                  <td className="py-2 pr-2 font-semibold text-text-primary">
+                    {s === 1 ? '1st' : s === 2 ? '2nd' : s === 3 ? '3rd' : `${s}th`}
+                  </td>
+                  {(['2010', '2016', '2022'] as CalculatorRegulation[]).map((reg) => (
+                    <td key={reg} className="py-2 px-2 text-center font-mono">
+                      {PROVISIONAL_BTEB_SEMESTER_WEIGHTAGES[reg].weights[s]}%
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              <tr className="border-t border-slate-200 font-bold">
+                <td className="py-2 pr-2 text-text-primary">Total</td>
+                {(['2010', '2016', '2022'] as CalculatorRegulation[]).map((reg) => (
+                  <td key={reg} className="py-2 px-2 text-center font-mono">
+                    {([1, 2, 3, 4, 5, 6, 7, 8] as SemesterNumber[]).reduce(
+                      (acc, s) => acc + PROVISIONAL_BTEB_SEMESTER_WEIGHTAGES[reg].weights[s],
+                      0
+                    )}
+                    %
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* How to Use CGPA Calculator */}
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs text-xs space-y-2.5">
+        <h4 className="font-bold text-text-primary text-sm">How to Use CGPA Calculator</h4>
+        <p className="text-slate-500">
+          Our BTEB CGPA calculator is designed for diploma/polytechnic students to easily track
+          academic progress. Whether you have completed all semesters or are planning future
+          targets, this tool helps you calculate accurate CGPA.
+        </p>
+        <ol className="list-decimal list-inside space-y-1.5 text-slate-600">
+          <li>Choose your regulation year (2010, 2016, or 2022) with the Probidhan switcher above.</li>
+          <li>Enter semester-wise GPA scores (0.00 to 4.00 scale) in the semester grid.</li>
+          <li>See your automatically calculated CGPA in the summary cards.</li>
+          <li>Clear the semester GPA inputs to start fresh calculations.</li>
+        </ol>
+        <p className="text-slate-500">
+          <span className="font-bold text-text-primary">Tip:</span> You can estimate future
+          semester requirements by entering target GPAs for incomplete semesters.
+        </p>
+      </div>
+
+      {/* Benefits of Tracking Your CGPA */}
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs text-xs space-y-2.5">
+        <h4 className="font-bold text-text-primary text-sm">Benefits of Tracking Your CGPA</h4>
+        <ul className="space-y-1.5 text-slate-600">
+          {[
+            'Monitor academic progress throughout your diploma program',
+            'Plan target GPAs for upcoming semesters',
+            'Understand how each semester impacts your overall performance',
+            'Prepare for higher education and career opportunities'
+          ].map((item) => (
+            <li key={item} className="flex items-start gap-2">
+              <CheckCircle2 aria-hidden="true" className="w-3.5 h-3.5 text-brand-blue shrink-0 mt-0.5" />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

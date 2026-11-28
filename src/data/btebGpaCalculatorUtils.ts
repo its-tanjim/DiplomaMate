@@ -50,9 +50,9 @@ export const PROVISIONAL_BTEB_SEMESTER_WEIGHTAGES: Record<
     regulation: '2010',
     verificationStatus: 'provisional_reference',
     sourceNote:
-      'Provisional reference semester weightages for BTEB Regulation 2010 (1st: 5%, 2nd: 5%, 3rd: 5%, 4th: 10%, 5th: 15%, 6th: 20%, 7th: 25%, 8th: 15%).',
-    weightsPercent: { 1: 5, 2: 5, 3: 5, 4: 10, 5: 15, 6: 20, 7: 25, 8: 15 },
-    weights: { 1: 5, 2: 5, 3: 5, 4: 10, 5: 15, 6: 20, 7: 25, 8: 15 }
+      'Provisional reference semester weightages for BTEB Regulation 2010 (1st: 5%, 2nd: 5%, 3rd: 5%, 4th: 15%, 5th: 15%, 6th: 20%, 7th: 25%, 8th: 10%).',
+    weightsPercent: { 1: 5, 2: 5, 3: 5, 4: 15, 5: 15, 6: 20, 7: 25, 8: 10 },
+    weights: { 1: 5, 2: 5, 3: 5, 4: 15, 5: 15, 6: 20, 7: 25, 8: 10 }
   },
   '2016': {
     regulation: '2016',
