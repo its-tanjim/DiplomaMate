@@ -104,7 +104,7 @@ const AdminAppContent: React.FC = () => {
     (isServerVerifiedAdmin || (isCheckingAdminSession && systemAdminProfile !== null));
 
   return (
-    <div className="min-h-screen bg-app-bg">
+    <div className="ios-shell admin-shell min-h-screen bg-app-bg">
       {hasVerifiedAdminSession && <AdminUpdateBanner />}
       {hasVerifiedAdminSession ? <AdminPortalScreen /> : <AdminLoginScreen />}
       {toastMessage && (

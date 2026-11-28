@@ -262,7 +262,7 @@ export const AdminLoginScreen: React.FC = () => {
                 <span className="text-[10px] font-mono uppercase tracking-wider text-teal-300 block font-bold">
                   Restricted Authority Access
                 </span>
-                <h1 className="text-lg font-bold tracking-tight text-white">
+                <h1 className="ios-large-title text-lg font-bold tracking-tight text-white">
                   System Administrator Portal
                 </h1>
               </div>

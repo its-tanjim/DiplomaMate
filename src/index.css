@@ -701,3 +701,21 @@
 .ios-shell .dm-modal-panel.dm-modal-alert::before {
   display: none;
 }
+
+/* ==========================================================================
+   Admin iOS reskin (admin app only, v1.0.25)
+   --------------------------------------------------------------------------
+   Everything here nests under .admin-shell, which sits on the admin root
+   alongside .ios-shell (src/AdminApp.tsx). NEVER put admin rules under
+   bare .ios-shell — that class is also on the main app's roots, and a
+   bare rule would restyle the main app too. The .ios-shell tokens above
+   already apply to the admin (font, grouped background, cards, sheets);
+   this block holds only admin-only overrides.
+   ========================================================================== */
+
+/* Segmented tab track follows the dark surface token: Tailwind's
+   slate-100 would otherwise stay light grey in dark mode. (Light mode
+   keeps slate-100 — the correct iOS segmented-control track.) */
+[data-theme="dark"] .admin-shell .bg-slate-100 {
+  background-color: var(--dm-subtle);
+}

@@ -3,6 +3,13 @@ import AdminApp from './AdminApp.tsx';
 import { IS_ADMIN_ONLY_BUILD } from './config/buildMode';
 import './index.css';
 
+// Inter (bundled via @fontsource/inter) — SF Pro alternative, offline-safe in the APK.
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/inter/800.css';
+
 // Admin-only entry (see vite.admin.config.ts / `npm run build:admin`).
 // This entry is admin-only by construction — it never imports the main
 // App, so no student/teacher screen or update checker can end up in

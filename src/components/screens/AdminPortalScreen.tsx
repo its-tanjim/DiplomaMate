@@ -714,7 +714,7 @@ export const AdminPortalScreen: React.FC = () => {
             </div>
             <div>
               <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
-                <h1 className="text-base sm:text-lg font-bold leading-tight text-text-primary">
+                <h1 className="ios-large-title text-base sm:text-lg font-bold leading-tight text-text-primary">
                   Administrator Verification Portal
                 </h1>
                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-teal-50 text-brand-teal border border-teal-200">
@@ -2084,8 +2084,8 @@ export const AdminPortalScreen: React.FC = () => {
         <Modal
           onClose={() => setShowAddCatalogModal(false)}
           labelledBy="admin-add-catalog-title"
-          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3 max-h-[90vh] overflow-y-auto"
-          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          panelClassName="dm-modal-panel bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3 max-h-[90vh] overflow-y-auto"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
           showCloseButton={false}
         >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -2244,8 +2244,8 @@ export const AdminPortalScreen: React.FC = () => {
         <Modal
           onClose={() => setEditingCatalogRecord(null)}
           labelledBy="admin-edit-catalog-title"
-          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3"
-          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          panelClassName="dm-modal-panel bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
         >
             <h3 id="admin-edit-catalog-title" className="font-bold text-sm text-text-primary">
               Edit Catalog Subject ({editingCatalogRecord.subject_code})
@@ -2335,8 +2335,8 @@ export const AdminPortalScreen: React.FC = () => {
         <Modal
           onClose={() => setDeleteConfirmBatch(null)}
           labelledBy="admin-delete-batch-title"
-          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3"
-          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          panelClassName="dm-modal-panel dm-modal-alert bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-3"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
         >
             <h3 id="admin-delete-batch-title" className="font-bold text-base text-text-primary">
               Remove Published BTEB Result Batch?
@@ -2368,8 +2368,8 @@ export const AdminPortalScreen: React.FC = () => {
         <Modal
           onClose={() => setSelectedAppForDoc(null)}
           labelledBy="admin-doc-title"
-          panelClassName="bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
-          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          panelClassName="dm-modal-panel bg-surface rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
           showCloseButton={false}
         >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -2415,8 +2415,8 @@ export const AdminPortalScreen: React.FC = () => {
         <Modal
           onClose={() => { setActionModal(null); setActionReason(''); }}
           labelledBy="admin-captain-action-title"
-          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3"
-          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          panelClassName="dm-modal-panel bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
         >
             <h3 id="admin-captain-action-title" className="font-bold text-base text-text-primary">
               {actionModal.action === 'approve' && 'Confirm Class Captain Approval'}
@@ -2475,8 +2475,8 @@ export const AdminPortalScreen: React.FC = () => {
         <Modal
           onClose={() => setTeacherActionModal(null)}
           labelledBy="admin-teacher-action-title"
-          panelClassName="bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3"
-          overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          panelClassName="dm-modal-panel bg-surface rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-3"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
         >
             <h3 id="admin-teacher-action-title" className="font-bold text-base text-text-primary">
               {teacherActionModal.action === 'approve' ? 'Approve Faculty Verification' : 'Reject / Revoke Faculty Authorization'}

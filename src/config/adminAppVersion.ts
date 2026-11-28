@@ -4,4 +4,4 @@
 // release — the admin in-app update checker compares this number with
 // admin-latest.json to tell the admin a new APK is ready.
 export const ADMIN_VERSION_NAME = '1.0';
-export const ADMIN_VERSION_CODE = 24;
+export const ADMIN_VERSION_CODE = 25;

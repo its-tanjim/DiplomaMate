@@ -538,7 +538,7 @@ export const AdminManagementScreen: React.FC = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-text-primary">Admin Dashboard</h2>
+                  <h2 className="ios-large-title text-lg font-bold text-text-primary">Admin Dashboard</h2>
                 </div>
                 <button type="button" onClick={() => void loadManagement()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                   <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />Refresh
@@ -745,8 +745,8 @@ export const AdminManagementScreen: React.FC = () => {
         <Modal
           onClose={() => setSelectedAccount(null)}
           labelledBy="admin-account-details-title"
-          panelClassName="my-auto w-full max-w-xl rounded-2xl bg-surface shadow-2xl"
-          overlayClassName="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
+          panelClassName="dm-modal-panel w-full max-w-xl rounded-2xl bg-surface shadow-2xl"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
           showCloseButton={false}
         >
             <div className="flex items-center justify-between border-b border-slate-100 p-4"><div><h2 id="admin-account-details-title" className="font-bold text-text-primary">Account details</h2><p className="text-xs text-slate-500">{roleLabel[selectedAccount.role]} · {selectedAccount.id}</p></div><button type="button" onClick={() => setSelectedAccount(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X aria-hidden="true" className="h-4 w-4" /></button></div>
@@ -789,8 +789,8 @@ export const AdminManagementScreen: React.FC = () => {
         <Modal
           onClose={() => setCommunityModal(null)}
           labelledBy="admin-community-modal-title"
-          panelClassName="my-auto max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl"
-          overlayClassName="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
+          panelClassName="dm-modal-panel max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
           panelAsForm
           onSubmit={saveCommunity}
           showCloseButton={false}
@@ -815,8 +815,8 @@ export const AdminManagementScreen: React.FC = () => {
         <Modal
           onClose={() => setMembersCommunity(null)}
           labelledBy="admin-members-title"
-          panelClassName="my-auto max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl"
-          overlayClassName="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
+          panelClassName="dm-modal-panel max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-2xl"
+          overlayClassName="dm-modal-overlay fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3"
           showCloseButton={false}
         >
             <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-surface p-4"><div><h2 id="admin-members-title" className="font-bold text-text-primary">Members · {membersCommunity.name}</h2><p className="text-xs text-slate-500">{activeCommunityMembers.length} membership records</p></div><button type="button" onClick={() => setMembersCommunity(null)} aria-label="Close" className="rounded-lg p-2 hover:bg-slate-100"><X aria-hidden="true" className="h-4 w-4" /></button></div>
