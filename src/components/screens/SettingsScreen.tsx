@@ -208,58 +208,6 @@ export const SettingsScreen: React.FC = () => {
         <LanguageSwitcher />
       </div>
 
-      {/* Legal — Privacy Policy & Terms of Service */}
-      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-          <div className="w-7 h-7 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
-            <FileText className="w-4 h-4" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-text-primary">{lang === 'bn' ? 'আইনি' : 'Legal'}</h2>
-            <p className="text-[11px] text-slate-500">{lang === 'bn' ? 'গোপনীয়তা নীতি ও সেবার শর্তাবলি' : 'Privacy Policy & Terms of Service'}</p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setActiveScreen('privacy_policy')}
-          className="w-full flex items-center justify-between py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-text-primary transition-colors cursor-pointer"
-        >
-          <span>{lang === 'bn' ? 'গোপনীয়তা নীতি' : 'Privacy Policy'}</span>
-          <ChevronRight className="w-4 h-4 text-slate-400" />
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveScreen('terms')}
-          className="w-full flex items-center justify-between py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-text-primary transition-colors cursor-pointer"
-        >
-          <span>{lang === 'bn' ? 'সেবার শর্তাবলি' : 'Terms of Service'}</span>
-          <ChevronRight className="w-4 h-4 text-slate-400" />
-        </button>
-      </div>
-
-      {/* Help & Support — file a ticket, see your tickets */}
-      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-          <div className="w-7 h-7 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
-            <HelpCircle className="w-4 h-4" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-text-primary">{lang === 'bn' ? 'সাহায্য ও সহায়তা' : 'Help & Support'}</h2>
-            <p className="text-[11px] text-slate-500">{lang === 'bn' ? 'সমস্যা জানান বা সাহায্য চান' : 'Report a problem or ask for help'}</p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setActiveScreen('support')}
-          className="w-full flex items-center justify-between py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-text-primary transition-colors cursor-pointer"
-        >
-          <span>{lang === 'bn' ? 'সাপোর্ট টিকিট খুলুন' : 'Help / Support — open a ticket'}</span>
-          <ChevronRight className="w-4 h-4 text-slate-400" />
-        </button>
-      </div>
-
       {/* Account Type Card (Strict Role Separation) */}
       <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
         <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -450,6 +398,58 @@ export const SettingsScreen: React.FC = () => {
       {/* About Applet */}
       <div className="p-4 bg-slate-100/70 rounded-2xl text-center space-y-1 text-slate-500 text-xs">
         <div className="font-bold text-text-primary">DiplomaMate {currentVersionLabel()}</div>
+      </div>
+
+      {/* Help & Support — file a ticket, see your tickets */}
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+          <div className="w-7 h-7 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
+            <HelpCircle className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-text-primary">{lang === 'bn' ? 'সাহায্য ও সহায়তা' : 'Help & Support'}</h2>
+            <p className="text-[11px] text-slate-500">{lang === 'bn' ? 'সমস্যা জানান বা সাহায্য চান' : 'Report a problem or ask for help'}</p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setActiveScreen('support')}
+          className="w-full flex items-center justify-between py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-text-primary transition-colors cursor-pointer"
+        >
+          <span>{lang === 'bn' ? 'সাপোর্ট টিকিট খুলুন' : 'Help / Support — open a ticket'}</span>
+          <ChevronRight className="w-4 h-4 text-slate-400" />
+        </button>
+      </div>
+
+      {/* Legal — Privacy Policy & Terms of Service */}
+      <div className="bg-surface rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+          <div className="w-7 h-7 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
+            <FileText className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-text-primary">{lang === 'bn' ? 'আইনি' : 'Legal'}</h2>
+            <p className="text-[11px] text-slate-500">{lang === 'bn' ? 'গোপনীয়তা নীতি ও সেবার শর্তাবলি' : 'Privacy Policy & Terms of Service'}</p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setActiveScreen('privacy_policy')}
+          className="w-full flex items-center justify-between py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-text-primary transition-colors cursor-pointer"
+        >
+          <span>{lang === 'bn' ? 'গোপনীয়তা নীতি' : 'Privacy Policy'}</span>
+          <ChevronRight className="w-4 h-4 text-slate-400" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveScreen('terms')}
+          className="w-full flex items-center justify-between py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-text-primary transition-colors cursor-pointer"
+        >
+          <span>{lang === 'bn' ? 'সেবার শর্তাবলি' : 'Terms of Service'}</span>
+          <ChevronRight className="w-4 h-4 text-slate-400" />
+        </button>
       </div>
 
       {/* Delete my account */}
